@@ -1,0 +1,28 @@
+feature,area,priority,original,clone,notes
+Streaming chat with markdown and code blocks,chat,must,yes,no,
+Stop and regenerate,chat,must,yes,no,
+Conversation history with search,history,must,yes,no,local only
+Rename and delete by swipe,history,must,yes,no,
+Attach photos from gallery,files,must,yes,no,
+Take a photo with the camera,files,must,yes,no,
+Attach documents (PDF text docx csv),files,must,yes,no,extract text on device
+Voice input (speech to text),voice,should,yes,no,
+Spoken replies (text to speech),voice,should,yes,no,
+Real-time voice conversation,voice,could,yes,no,needs provider with realtime audio; later
+Image generation,images,should,yes,no,only providers that offer it
+Memory (view/delete/temporary chat),memory,should,yes,no,local file
+Custom instructions,settings,should,yes,no,
+Projects (instructions + files),projects,could,yes,no,
+Export and share a conversation,share,could,yes,no,
+Dark and light theme,settings,should,yes,no,
+Model picker,settings,must,yes,no,per provider
+Sign in and cloud sync,account,skip,yes,skip,local-only app; no accounts
+Subscriptions and paywall,billing,skip,yes,skip,not applicable
+Custom GPT store,community,skip,yes,skip,other users' content
+Agent mode on a cloud computer,agent,skip,yes,skip,OpenAI infrastructure
+Multiple providers (OpenAI-compatible, Anthropic, Gemini),added,must,no,no,user request
+Custom base URL and model list per provider,added,must,no,no,user request
+Skills (user-defined),added,must,no,no,user request
+Many files and images per message,added,must,no,no,user request
+More file types with on-device extraction,added,should,no,no,user request
+Per-chat provider and model switch,added,should,no,no,
