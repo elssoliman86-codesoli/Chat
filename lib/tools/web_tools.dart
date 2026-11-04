@@ -83,6 +83,20 @@ class WebTools {
     return hits;
   }
 
+  /// Search hits as title, url and snippet. Empty when every engine failed.
+  static Future<List<Map<String, String>>> results(String query) async {
+    var hits = <Map<String, String>>[];
+    try {
+      hits = await _duckduckgo(query);
+    } catch (_) {}
+    if (hits.isEmpty) {
+      try {
+        hits = await _bing(query);
+      } catch (_) {}
+    }
+    return hits;
+  }
+
   /// Numbered results as plain text for the model.
   static Future<String> search(String query, {int max = 7}) async {
     var hits = <Map<String, String>>[];

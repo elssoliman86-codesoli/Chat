@@ -162,6 +162,7 @@ class AppStore extends ChangeNotifier {
       providerId: p?.id ?? '',
       model: p?.model ?? '',
       temporary: temporary,
+      web: settings.webAlways,
     );
     current = c;
     notifyListeners();

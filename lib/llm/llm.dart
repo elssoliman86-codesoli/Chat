@@ -44,6 +44,7 @@ class LlmRequest {
     this.tools = const <ToolSpec>[],
     this.temperature,
     this.pdfNative = false,
+    this.vision = true,
   });
 
   final String system;
@@ -52,6 +53,9 @@ class LlmRequest {
   final List<ToolSpec> tools;
   final double? temperature;
   final bool pdfNative;
+
+  /// False when the model cannot read images: they are replaced by a short note.
+  final bool vision;
 }
 
 class LlmException implements Exception {

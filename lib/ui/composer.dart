@@ -1,20 +1,32 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../core/models.dart';
 import '../data/services.dart';
 import '../files/attachment_service.dart';
+import 'browser_screen.dart';
+import 'theme.dart';
 
 /// The message box: text, attachments, send and stop.
 class Composer extends StatefulWidget {
-  const Composer({super.key, required this.onSend, required this.busy, required this.onStop});
+  const Composer({
+    super.key,
+    required this.onSend,
+    required this.busy,
+    required this.onStop,
+    required this.webOn,
+    required this.onToggleWeb,
+  });
 
   final Future<void> Function(String text, List<Attachment> files) onSend;
   final bool busy;
   final VoidCallback onStop;
+  final bool webOn;
+  final VoidCallback onToggleWeb;
 
   @override
   State<Composer> createState() => ComposerState();
@@ -39,6 +51,26 @@ class ComposerState extends State<Composer> {
         ..clear()
         ..addAll(files);
     });
+  }
+
+  /// Adds a ready attachment (for example a page from the browser).
+  void addAttachment(Attachment a) {
+    if (_files.length + _loading >= store.settings.maxAttachments) {
+      _toast('Limit is ${store.settings.maxAttachments} files per message (Settings)');
+      return;
+    }
+    setState(() => _files.add(a));
+  }
+
+  Future<void> openBrowser([String url = '']) async {
+    final page = await Navigator.push<Attachment>(
+      context,
+      CupertinoPageRoute<Attachment>(fullscreenDialog: true, builder: (_) => BrowserScreen(url: url)),
+    );
+    if (page != null) {
+      addAttachment(page);
+      if (_text.text.trim().isEmpty) _text.text = 'Summarize this page.';
+    }
   }
 
   void _toast(String message) {
@@ -111,32 +143,24 @@ class ComposerState extends State<Composer> {
       showDragHandle: true,
       builder: (sheet) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(
-            leading: const Icon(Icons.photo_camera_outlined),
-            title: const Text('Camera'),
-            onTap: () {
-              Navigator.pop(sheet);
-              _camera();
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.photo_library_outlined),
-            title: const Text('Photos (several)'),
-            onTap: () {
-              Navigator.pop(sheet);
-              _photos();
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.attach_file_rounded),
-            title: const Text('Files (PDF, Word, Excel, PowerPoint, text, code)'),
-            onTap: () {
-              Navigator.pop(sheet);
-              _pickFiles();
-            },
-          ),
+          _sheetRow(sheet, CupertinoIcons.camera, 'Camera', _camera),
+          _sheetRow(sheet, CupertinoIcons.photo, 'Photos', _photos),
+          _sheetRow(sheet, CupertinoIcons.doc, 'Files', _pickFiles),
+          _sheetRow(sheet, CupertinoIcons.compass, 'Browser', openBrowser),
+          const SizedBox(height: 8),
         ]),
       ),
+    );
+  }
+
+  Widget _sheetRow(BuildContext sheet, IconData icon, String title, VoidCallback run) {
+    return ListTile(
+      leading: Icon(icon, size: 24),
+      title: Text(title, style: const TextStyle(fontSize: 17)),
+      onTap: () {
+        Navigator.pop(sheet);
+        run();
+      },
     );
   }
 
@@ -154,17 +178,16 @@ class ComposerState extends State<Composer> {
 
   @override
   Widget build(BuildContext context) {
+    final pal = paletteOf(context);
     final theme = Theme.of(context);
+    final canSend = !widget.busy;
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
+        padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
         child: Container(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(26),
-          ),
-          padding: const EdgeInsets.fromLTRB(6, 6, 6, 4),
+          decoration: BoxDecoration(color: pal.field, borderRadius: BorderRadius.circular(26)),
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             if (_files.isNotEmpty || _loading > 0)
               SizedBox(
@@ -182,42 +205,70 @@ class ComposerState extends State<Composer> {
                   ],
                 ),
               ),
-            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              IconButton(
-                tooltip: 'Attach',
-                icon: const Icon(Icons.add_circle_outline_rounded),
-                onPressed: _attachMenu,
-              ),
-              Expanded(
-                child: TextField(
-                  controller: _text,
-                  minLines: 1,
-                  maxLines: 8,
-                  textInputAction: TextInputAction.newline,
-                  keyboardType: TextInputType.multiline,
-                  decoration: const InputDecoration(
-                    hintText: 'Message',
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(vertical: 10),
-                  ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: TextField(
+                controller: _text,
+                minLines: 1,
+                maxLines: 8,
+                textInputAction: TextInputAction.newline,
+                keyboardType: TextInputType.multiline,
+                style: const TextStyle(fontSize: 17),
+                decoration: InputDecoration(
+                  hintText: 'Message',
+                  hintStyle: TextStyle(color: pal.secondary),
+                  filled: false,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
                 ),
               ),
-              widget.busy
-                  ? IconButton.filled(
-                      tooltip: 'Stop',
-                      icon: const Icon(Icons.stop_rounded),
-                      onPressed: widget.onStop,
-                    )
-                  : IconButton.filled(
-                      tooltip: 'Send',
-                      icon: const Icon(Icons.arrow_upward_rounded),
-                      onPressed: _send,
-                    ),
+            ),
+            Row(children: [
+              _round(CupertinoIcons.plus, _attachMenu, pal.bubble, theme.colorScheme.onSurface),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: widget.onToggleWeb,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  height: 36,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: widget.webOn ? iosBlue.withValues(alpha: 0.18) : pal.bubble,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(CupertinoIcons.globe, size: 17, color: widget.webOn ? iosBlue : pal.secondary),
+                    const SizedBox(width: 5),
+                    Text('Search',
+                        style: TextStyle(
+                            fontSize: 14.5, fontWeight: FontWeight.w500, color: widget.webOn ? iosBlue : pal.secondary)),
+                  ]),
+                ),
+              ),
+              const Spacer(),
+              _round(
+                widget.busy ? CupertinoIcons.stop_fill : CupertinoIcons.arrow_up,
+                canSend ? _send : widget.onStop,
+                theme.colorScheme.onSurface,
+                theme.colorScheme.surface,
+              ),
             ]),
           ]),
         ),
+      ),
+    );
+  }
+
+  Widget _round(IconData icon, VoidCallback onTap, Color bg, Color fg) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+        child: Icon(icon, size: 19, color: fg),
       ),
     );
   }
@@ -237,11 +288,11 @@ class ComposerState extends State<Composer> {
         height: 64,
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
+          color: paletteOf(context).bubble,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(a.kind == AttachmentKind.pdf ? Icons.picture_as_pdf_outlined : Icons.description_outlined, size: 22),
+          Icon(a.kind == AttachmentKind.pdf ? CupertinoIcons.doc_richtext : CupertinoIcons.doc_text, size: 22),
           const SizedBox(height: 2),
           Text(a.name, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 9)),
         ]),
@@ -259,7 +310,7 @@ class ComposerState extends State<Composer> {
             child: CircleAvatar(
               radius: 10,
               backgroundColor: theme.colorScheme.inverseSurface,
-              child: Icon(Icons.close_rounded, size: 14, color: theme.colorScheme.onInverseSurface),
+              child: Icon(CupertinoIcons.xmark, size: 11, color: theme.colorScheme.onInverseSurface),
             ),
           ),
         ),

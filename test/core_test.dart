@@ -82,4 +82,21 @@ void main() {
     expect(joinUrl('https://a.b/v1/', '/chat'), 'https://a.b/v1/chat');
     expect(errorMessage(401, '{"error":{"message":"bad key"}}'), contains('bad key'));
   });
+
+  test('no-vision models and sources survive JSON', () {
+    final p = ProviderConfig(id: 'p', name: 'N', kind: ProviderKind.openai, baseUrl: 'u', noVision: ['m1']);
+    expect(ProviderConfig.fromJson(p.toJson()).noVision, ['m1']);
+    final m = ChatMessage(role: 'assistant', text: 'x', sources: ['Title\thttps://a.b']);
+    expect(ChatMessage.fromJson(m.toJson()).sources.single, 'Title\thttps://a.b');
+  });
+
+  test('new settings keep their defaults and values', () {
+    final d = AppSettings.fromJson(<String, dynamic>{});
+    expect(d.webAlways, true);
+    expect(d.pluginGithub, true);
+    final s = AppSettings(githubToken: 't', favorites: ['a|b']);
+    final back = AppSettings.fromJson(s.toJson());
+    expect(back.githubToken, 't');
+    expect(back.favorites, ['a|b']);
+  });
 }

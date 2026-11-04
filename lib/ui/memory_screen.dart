@@ -1,7 +1,10 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../core/models.dart';
 import '../data/services.dart';
+import 'kit.dart';
+import 'theme.dart';
 
 class MemoryScreen extends StatelessWidget {
   const MemoryScreen({super.key});
@@ -15,7 +18,7 @@ class MemoryScreen extends StatelessWidget {
         content: TextField(controller: controller, autofocus: true, maxLines: 3),
         actions: [
           TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(d, controller.text), child: const Text('Add')),
+          TextButton(onPressed: () => Navigator.pop(d, controller.text), child: const Text('Add')),
         ],
       ),
     );
@@ -27,45 +30,45 @@ class MemoryScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: store,
-      builder: (context, _) => Scaffold(
-        appBar: AppBar(title: const Text('Memory'), actions: [
+      builder: (context, _) => GroupedPage(
+        title: 'Memory',
+        actions: [
+          IconButton(icon: const Icon(CupertinoIcons.plus), onPressed: () => _add(context)),
           if (store.memory.isNotEmpty)
             IconButton(
               tooltip: 'Clear all',
-              icon: const Icon(Icons.delete_sweep_outlined),
+              icon: const Icon(CupertinoIcons.trash),
               onPressed: () {
                 store.memory.clear();
                 store.saveMemory();
               },
             ),
-        ]),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => _add(context),
-          child: const Icon(Icons.add_rounded),
-        ),
-        body: store.memory.isEmpty
-            ? const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(28),
-                  child: Text(
-                    'Nothing remembered yet.\nSay "remember that…" in a chat, or add facts here. Temporary chats never use memory.',
-                    textAlign: TextAlign.center,
+        ],
+        children: [
+          if (store.memory.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(28),
+              child: Text(
+                'Nothing remembered yet.\nSay "remember that…" in a chat, or add facts with +. Temporary chats never use memory.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: paletteOf(context).secondary),
+              ),
+            )
+          else
+            Group(children: [
+              for (final MemoryFact m in store.memory)
+                Cell(
+                  title: m.text,
+                  trailing: IconButton(
+                    icon: const Icon(CupertinoIcons.xmark_circle_fill, color: iosGray),
+                    onPressed: () {
+                      store.memory.remove(m);
+                      store.saveMemory();
+                    },
                   ),
                 ),
-              )
-            : ListView(children: [
-                for (final MemoryFact m in store.memory)
-                  ListTile(
-                    title: Text(m.text),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () {
-                        store.memory.remove(m);
-                        store.saveMemory();
-                      },
-                    ),
-                  ),
-              ]),
+            ]),
+        ],
       ),
     );
   }

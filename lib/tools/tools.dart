@@ -1,5 +1,7 @@
 import '../core/models.dart';
 import '../llm/llm.dart';
+import 'browser_service.dart';
+import 'github_tools.dart';
 import 'web_tools.dart';
 
 /// Everything a tool needs from the app while it runs.
@@ -8,15 +10,17 @@ abstract class ToolHost {
   void addMemory(String text);
   void loadSkill(Skill skill);
   bool get memoryAllowed;
+  String get githubToken;
 }
 
 class ToolDef {
-  const ToolDef({required this.id, required this.title, required this.spec, required this.run, this.web = false});
+  const ToolDef({required this.id, required this.title, required this.spec, required this.run, this.group = 'core'});
 
   final String id;
   final String title;
   final ToolSpec spec;
-  final bool web;
+  /// core, web, browser or github: decides which switch turns the tool on.
+  final String group;
   final Future<String> Function(Map<String, dynamic> args, ToolHost host) run;
 }
 
@@ -30,7 +34,7 @@ final List<ToolDef> builtinTools = <ToolDef>[
   ToolDef(
     id: 'web_search',
     title: 'Web search',
-    web: true,
+    group: 'web',
     spec: ToolSpec(
       name: 'web_search',
       description: 'Search the web. Returns numbered results with title, URL and a snippet.',
@@ -43,7 +47,7 @@ final List<ToolDef> builtinTools = <ToolDef>[
   ToolDef(
     id: 'fetch_page',
     title: 'Read a web page',
-    web: true,
+    group: 'web',
     spec: ToolSpec(
       name: 'fetch_page',
       description: 'Open a web page and return its readable text.',
@@ -52,6 +56,105 @@ final List<ToolDef> builtinTools = <ToolDef>[
       }, <String>['url']),
     ),
     run: (args, host) => WebTools.fetchText((args['url'] ?? '').toString()),
+  ),
+  ToolDef(
+    id: 'browse_page',
+    title: 'Built-in browser',
+    group: 'browser',
+    spec: ToolSpec(
+      name: 'browse_page',
+      description: 'Open a page in a real browser that runs JavaScript and return the text it shows. '
+          'Use it for prices, stock, scores and other live data that fetch_page cannot see.',
+      parameters: _schema(<String, Map<String, String>>{
+        'url': <String, String>{'type': 'string', 'description': 'Full https URL'},
+      }, <String>['url']),
+    ),
+    run: (args, host) async {
+      final url = (args['url'] ?? '').toString();
+      try {
+        final text = await BrowserService.instance.render(url);
+        if (text.trim().isNotEmpty) return text;
+      } catch (_) {}
+      return WebTools.fetchText(url, maxChars: 9000);
+    },
+  ),
+  ToolDef(
+    id: 'github_search',
+    title: 'GitHub search',
+    group: 'github',
+    spec: ToolSpec(
+      name: 'github_search',
+      description: 'Search GitHub. type is repositories (default), code or issues.',
+      parameters: <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'query': <String, String>{'type': 'string', 'description': 'GitHub search query'},
+          'type': <String, dynamic>{
+            'type': 'string',
+            'enum': <String>['repositories', 'code', 'issues'],
+          },
+        },
+        'required': <String>['query'],
+      },
+    ),
+    run: (args, host) => GithubTools.search(
+        (args['query'] ?? '').toString(), (args['type'] ?? 'repositories').toString(), host.githubToken),
+  ),
+  ToolDef(
+    id: 'github_repo',
+    title: 'GitHub repository',
+    group: 'github',
+    spec: ToolSpec(
+      name: 'github_repo',
+      description: 'Overview of a GitHub repository: stats, file list and README.',
+      parameters: _schema(<String, Map<String, String>>{
+        'repo': <String, String>{'type': 'string', 'description': 'owner/name or a github.com URL'},
+      }, <String>['repo']),
+    ),
+    run: (args, host) => GithubTools.repo((args['repo'] ?? '').toString(), host.githubToken),
+  ),
+  ToolDef(
+    id: 'github_file',
+    title: 'GitHub file',
+    group: 'github',
+    spec: ToolSpec(
+      name: 'github_file',
+      description: 'Read one file (or list a folder) of a GitHub repository.',
+      parameters: <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'repo': <String, String>{'type': 'string', 'description': 'owner/name'},
+          'path': <String, String>{'type': 'string', 'description': 'File or folder path'},
+          'ref': <String, String>{'type': 'string', 'description': 'Branch, tag or commit (optional)'},
+        },
+        'required': <String>['repo', 'path'],
+      },
+    ),
+    run: (args, host) => GithubTools.file((args['repo'] ?? '').toString(), (args['path'] ?? '').toString(),
+        (args['ref'] ?? '').toString(), host.githubToken),
+  ),
+  ToolDef(
+    id: 'github_issues',
+    title: 'GitHub issues and PRs',
+    group: 'github',
+    spec: ToolSpec(
+      name: 'github_issues',
+      description: 'List issues and pull requests of a repository, or read one with its comments by number.',
+      parameters: <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'repo': <String, String>{'type': 'string', 'description': 'owner/name'},
+          'state': <String, dynamic>{
+            'type': 'string',
+            'enum': <String>['open', 'closed', 'all'],
+          },
+          'number': <String, String>{'type': 'integer', 'description': 'Issue or PR number (optional)'},
+        },
+        'required': <String>['repo'],
+      },
+    ),
+    run: (args, host) => GithubTools.issues((args['repo'] ?? '').toString(), (args['state'] ?? 'open').toString(),
+        int.tryParse((args['number'] ?? '0').toString()) ?? 0, host.githubToken),
   ),
   ToolDef(
     id: 'current_time',

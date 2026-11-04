@@ -1,8 +1,10 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../core/models.dart';
 import '../data/services.dart';
 import 'skills_screen.dart';
+import 'theme.dart';
 
 Future<void> showSkillPicker(BuildContext context, Conversation c) {
   return showModalBottomSheet<void>(
@@ -25,18 +27,19 @@ class _SkillSheetState extends State<_SkillSheet> {
   @override
   Widget build(BuildContext context) {
     final skills = store.skills.where((s) => s.enabled).toList();
+    final pal = paletteOf(context);
     return SafeArea(
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
         child: ListView(shrinkWrap: true, children: [
           const Padding(
             padding: EdgeInsets.fromLTRB(20, 0, 20, 4),
-            child: Text('Skills for this chat', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+            child: Text('Skills for this chat', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
           ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
             child: Text('Switched-on skills are always followed. Others marked "auto" are loaded when they fit.',
-                style: TextStyle(fontSize: 12)),
+                style: TextStyle(fontSize: 13, color: pal.secondary)),
           ),
           if (skills.isEmpty) const Padding(padding: EdgeInsets.all(20), child: Text('No skills yet.')),
           for (final s in skills)
@@ -57,11 +60,11 @@ class _SkillSheetState extends State<_SkillSheet> {
               },
             ),
           ListTile(
-            leading: const Icon(Icons.tune_rounded),
+            leading: const Icon(CupertinoIcons.slider_horizontal_3),
             title: const Text('Manage skills'),
             onTap: () {
               Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const SkillsScreen()));
+              Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => const SkillsScreen()));
             },
           ),
         ]),

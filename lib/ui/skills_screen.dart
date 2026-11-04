@@ -1,18 +1,22 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:io';
 
 import '../core/models.dart';
 import '../core/skill_import.dart';
 import '../data/services.dart';
 import '../tools/tools.dart';
+import 'kit.dart';
+import 'theme.dart';
 
 class SkillsScreen extends StatelessWidget {
   const SkillsScreen({super.key});
 
   void _edit(BuildContext context, Skill skill, {bool isNew = false}) {
-    Navigator.push(context, MaterialPageRoute<void>(builder: (_) => SkillEditScreen(skill: skill, isNew: isNew)));
+    Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => SkillEditScreen(skill: skill, isNew: isNew)));
   }
 
   Future<void> _import(BuildContext context) async {
@@ -22,12 +26,12 @@ class SkillsScreen extends StatelessWidget {
       builder: (sheet) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(
-            leading: const Icon(Icons.content_paste_rounded),
+            leading: const Icon(CupertinoIcons.doc_on_clipboard),
             title: const Text('Paste SKILL.md text'),
             onTap: () => Navigator.pop(sheet, 'paste'),
           ),
           ListTile(
-            leading: const Icon(Icons.file_open_outlined),
+            leading: const Icon(CupertinoIcons.folder),
             title: const Text('Pick a .md file'),
             onTap: () => Navigator.pop(sheet, 'file'),
           ),
@@ -68,44 +72,41 @@ class SkillsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: store,
-      builder: (context, _) => Scaffold(
-        appBar: AppBar(title: const Text('Skills'), actions: [
-          IconButton(tooltip: 'Import', icon: const Icon(Icons.download_rounded), onPressed: () => _import(context)),
-        ]),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => _edit(context, Skill(id: newId(), name: ''), isNew: true),
-          icon: const Icon(Icons.add_rounded),
-          label: const Text('New skill'),
-        ),
-        body: ListView(children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
+      builder: (context, _) => GroupedPage(
+        title: 'Skills',
+        actions: [
+          IconButton(tooltip: 'Import', icon: const Icon(CupertinoIcons.arrow_down_doc), onPressed: () => _import(context)),
+          IconButton(
+            tooltip: 'New skill',
+            icon: const Icon(CupertinoIcons.plus),
+            onPressed: () => _edit(context, Skill(id: newId(), name: ''), isNew: true),
+          ),
+        ],
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 14),
             child: Text(
               'A skill is a set of instructions plus the tools it may use. '
-              'Switch one on inside a chat (⚡), or let the assistant load it by itself when it fits.',
-              style: TextStyle(fontSize: 13),
+              'Switch one on inside a chat (the bolt), or let the assistant load it by itself when it fits.',
+              style: TextStyle(fontSize: 13.5, color: paletteOf(context).secondary),
             ),
           ),
-          for (final s in store.skills)
-            ListTile(
-              title: Text(s.name),
-              subtitle: Text(
-                '${s.description}${s.tools.isEmpty ? '' : '\nTools: ${s.tools.join(', ')}'}',
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
+          Group(children: [
+            for (final s in store.skills)
+              Cell(
+                title: s.name,
+                subtitle: '${s.description}${s.tools.isEmpty ? '' : '\nTools: ${s.tools.join(', ')}'}',
+                onTap: () => _edit(context, s),
+                trailing: Switch(
+                  value: s.enabled,
+                  onChanged: (v) {
+                    s.enabled = v;
+                    store.saveSkills();
+                  },
+                ),
               ),
-              isThreeLine: s.tools.isNotEmpty,
-              trailing: Switch(
-                value: s.enabled,
-                onChanged: (v) {
-                  s.enabled = v;
-                  store.saveSkills();
-                },
-              ),
-              onTap: () => _edit(context, s),
-            ),
-          const SizedBox(height: 90),
-        ]),
+          ]),
+        ],
       ),
     );
   }
@@ -164,57 +165,47 @@ class _SkillEditScreenState extends State<SkillEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.isNew ? 'New skill' : _s.name),
-        actions: [
-          if (!widget.isNew)
-            IconButton(tooltip: 'Delete', icon: const Icon(Icons.delete_outline_rounded), onPressed: _delete),
-          TextButton(onPressed: _save, child: const Text('Save')),
-        ],
-      ),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
-        const SizedBox(height: 14),
-        TextField(
-          controller: _desc,
-          maxLines: 2,
-          decoration: const InputDecoration(
-            labelText: 'When to use it',
-            helperText: 'One line. The assistant reads this to decide whether to load the skill.',
+    return GroupedPage(
+      title: widget.isNew ? 'New skill' : _s.name,
+      actions: [
+        if (!widget.isNew) IconButton(tooltip: 'Delete', icon: const Icon(CupertinoIcons.trash), onPressed: _delete),
+        TextButton(onPressed: _save, child: const Text('Save')),
+      ],
+      children: [
+        Group(children: [
+          FieldCell(controller: _name, label: 'Name'),
+          FieldCell(
+            controller: _desc,
+            label: 'When to use it (the assistant reads this to decide)',
+            lines: 2,
           ),
-        ),
-        const SizedBox(height: 14),
-        TextField(
-          controller: _instr,
-          minLines: 8,
-          maxLines: 20,
-          decoration: const InputDecoration(labelText: 'Instructions', alignLabelWithHint: true),
-        ),
-        const SizedBox(height: 14),
-        const Text('Tools this skill may use', style: TextStyle(fontWeight: FontWeight.w600)),
-        for (final t in builtinTools.where((t) => t.id != 'current_time'))
-          CheckboxListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(t.title),
-            subtitle: Text(t.spec.name),
-            value: _tools.contains(t.id),
-            onChanged: (v) => setState(() {
-              if (v == true) {
-                _tools.add(t.id);
-              } else {
-                _tools.remove(t.id);
-              }
-            }),
+        ]),
+        Group(header: 'Instructions', children: [
+          FieldCell(controller: _instr, label: 'What the assistant should do', lines: 8),
+        ]),
+        Group(header: 'Tools this skill may use', children: [
+          for (final t in builtinTools.where((t) => t.id != 'current_time'))
+            SwitchCell(
+              title: t.title,
+              subtitle: t.spec.name,
+              value: _tools.contains(t.id),
+              onChanged: (v) => setState(() {
+                if (v) {
+                  _tools.add(t.id);
+                } else {
+                  _tools.remove(t.id);
+                }
+              }),
+            ),
+        ]),
+        Group(children: [
+          SwitchCell(
+            title: 'Load automatically when it fits',
+            value: _auto,
+            onChanged: (v) => setState(() => _auto = v),
           ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Let the assistant load it automatically'),
-          value: _auto,
-          onChanged: (v) => setState(() => _auto = v),
-        ),
-        const SizedBox(height: 40),
-      ]),
+        ]),
+      ],
     );
   }
 }

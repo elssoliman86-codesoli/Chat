@@ -3,6 +3,7 @@ import 'dart:async';
 import '../core/models.dart';
 import '../llm/llm.dart';
 import '../tools/tools.dart';
+import '../tools/web_tools.dart';
 import 'app_store.dart';
 
 /// Runs a conversation turn: builds the prompt, streams the answer, runs tools and repeats.
@@ -29,6 +30,9 @@ class ChatEngine implements ToolHost {
   void loadSkill(Skill skill) => _loadedSkills.add(skill.id);
 
   @override
+  String get githubToken => store.settings.githubToken;
+
+  @override
   bool get memoryAllowed => store.settings.memoryEnabled && !(_running?.temporary ?? false);
 
   void _notifySoon() {
@@ -41,7 +45,17 @@ class ChatEngine implements ToolHost {
     final b = StringBuffer();
     b.writeln('You are a helpful assistant inside a personal chat app on an Android phone. '
         'Reply in the language the user writes in. Use Markdown. Be accurate and say when you are not sure.');
-    b.writeln('Current local time: ${DateTime.now().toIso8601String()}');
+    final now = DateTime.now();
+    const days = <String>['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const months = <String>[
+      'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    b.writeln('Today is ${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]} ${now.year} '
+        '(local time ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}, '
+        'UTC${now.timeZoneOffset.isNegative ? '-' : '+'}${now.timeZoneOffset.inHours.abs()}).');
+    b.writeln('Your training data is out of date. For prices, news, versions, scores, releases and anything else that '
+        'changes, use the web results or tools you are given, say the date of the information, and never present '
+        'remembered figures as current. If you could not check, say so.');
     if (s.customInstructions.trim().isNotEmpty) {
       b.writeln('\nInstructions from the user:\n${s.customInstructions.trim()}');
     }
@@ -70,9 +84,12 @@ class ChatEngine implements ToolHost {
 
   List<ToolSpec> buildTools(Conversation c, ProviderConfig provider) {
     if (!provider.supportsTools) return const <ToolSpec>[];
+    final st = store.settings;
     final ids = <String>{'current_time'};
-    if (store.settings.webTools) ids.addAll(<String>['web_search', 'fetch_page']);
-    if (store.settings.memoryEnabled && !c.temporary) ids.add('remember');
+    if (st.webTools) ids.addAll(<String>['web_search', 'fetch_page']);
+    if (st.pluginBrowser) ids.add('browse_page');
+    if (st.pluginGithub) ids.addAll(<String>['github_search', 'github_repo', 'github_file', 'github_issues']);
+    if (st.memoryEnabled && !c.temporary) ids.add('remember');
     for (final k in _activeSkills(c)) {
       ids.addAll(k.tools);
     }
@@ -128,6 +145,71 @@ class ChatEngine implements ToolHost {
 
   void stop() => _abort?.abort();
 
+  /// Searches the web for the last question and returns text to put in front of it.
+  Future<String?> _webContext(Conversation c, ChatMessage reply) async {
+    if (!c.web || !store.settings.webTools) return null;
+    ChatMessage? last;
+    for (final m in c.messages) {
+      if (m.role == 'user') last = m;
+    }
+    final query = (last?.text ?? '').trim();
+    if (query.length < 8 || query.split(RegExp(r'\s+')).length < 2) return null;
+    final short = query.length > 200 ? query.substring(0, 200) : query;
+    final hits = await WebTools.results(short);
+    if (hits.isEmpty) return null;
+    final top = hits.take(3).toList();
+    final pages = await Future.wait(top.map((h) => WebTools.fetchText(h['url'] ?? '', maxChars: 3500)));
+    final b = StringBuffer();
+    final d = DateTime.now();
+    b.writeln('[Web results fetched just now, ${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}. '
+        'Prefer them over your memory for anything that changes. Say which source you used and its date when known.]');
+    var n = 0;
+    for (final h in hits.take(7)) {
+      n++;
+      b.writeln('$n. ${h['title']} - ${h['url']}\n   ${h['snippet'] ?? ''}');
+    }
+    for (var i = 0; i < top.length; i++) {
+      final text = pages[i];
+      if (text.startsWith('Could not open') || text.startsWith('The page had no')) continue;
+      b.writeln('\n--- ${top[i]['title']} (${top[i]['url']}) ---\n$text');
+      reply.sources.add('${top[i]['title']}\t${top[i]['url']}');
+    }
+    for (final h in hits.skip(top.length).take(3)) {
+      reply.sources.add('${h['title']}\t${h['url']}');
+    }
+    return b.toString();
+  }
+
+  /// A copy of [history] where the last user message carries [context] in front of the question.
+  List<ChatMessage> _withContext(List<ChatMessage> history, String? context) {
+    if (context == null) return history;
+    final copy = List<ChatMessage>.of(history);
+    for (var i = copy.length - 1; i >= 0; i--) {
+      final m = copy[i];
+      if (m.role == 'user') {
+        copy[i] = ChatMessage(
+          id: m.id,
+          role: 'user',
+          text: '$context\n\nUser question:\n${m.text}',
+          attachments: m.attachments,
+          at: m.at,
+        );
+        break;
+      }
+    }
+    return copy;
+  }
+
+  bool _looksLikeNoVision(Object e) {
+    final t = e.toString().toLowerCase();
+    return t.contains('multimodal') ||
+        t.contains('image input') ||
+        t.contains('does not support image') ||
+        t.contains('vision') ||
+        t.contains('image_url') ||
+        t.contains('modalit');
+  }
+
   Future<void> _run(Conversation c) async {
     final provider = store.providerById(c.providerId) ?? store.defaultProvider;
     _running = c;
@@ -141,18 +223,31 @@ class ChatEngine implements ToolHost {
       if (c.model.isEmpty) throw LlmException('Pick a model for ${provider.name}.');
       final client = createClient(provider);
       final maxSteps = store.settings.maxToolSteps.clamp(1, 20);
-      for (var step = 0; step < maxSteps; step++) {
+      String? context;
+      var contextDone = false;
+      var step = 0;
+      while (step < maxSteps) {
         final reply = ChatMessage(role: 'assistant', model: c.model);
         final history = List<ChatMessage>.of(c.messages);
         c.messages.add(reply);
         store.changed();
+        if (!contextDone) {
+          contextDone = true;
+          try {
+            context = await _webContext(c, reply);
+          } catch (_) {
+            context = null;
+          }
+          store.changed();
+        }
         final request = LlmRequest(
           system: buildSystem(c),
-          messages: history,
+          messages: _withContext(history, context),
           model: c.model,
           tools: buildTools(c, provider),
           temperature: store.settings.temperature,
           pdfNative: provider.pdfNative,
+          vision: !provider.noVision.contains(c.model),
         );
         final abort = AbortHandle();
         _abort = abort;
@@ -167,6 +262,14 @@ class ChatEngine implements ToolHost {
             }
           }
         } catch (e) {
+          final hadImages = history.any((m) => m.attachments.any((a) => a.kind == AttachmentKind.image));
+          if (!abort.aborted && hadImages && request.vision && reply.text.isEmpty && _looksLikeNoVision(e)) {
+            // This model cannot see images: remember that and try again without them.
+            provider.noVision.add(c.model);
+            store.saveProviders();
+            c.messages.remove(reply);
+            continue;
+          }
           if (!abort.aborted) {
             reply.error = true;
             reply.text = reply.text.isEmpty ? e.toString() : '${reply.text}\n\n⚠️ $e';
@@ -174,7 +277,7 @@ class ChatEngine implements ToolHost {
         }
         if (abort.aborted || reply.error) break;
         if (reply.toolCalls.isEmpty) {
-          if (reply.text.trim().isEmpty) c.messages.remove(reply);
+          if (reply.text.trim().isEmpty && reply.sources.isEmpty) c.messages.remove(reply);
           break;
         }
         for (final call in reply.toolCalls) {
@@ -184,7 +287,8 @@ class ChatEngine implements ToolHost {
           if (_abort?.aborted ?? false) break;
         }
         if (_abort?.aborted ?? false) break;
-        if (step == maxSteps - 1) {
+        step++;
+        if (step == maxSteps) {
           c.messages.add(ChatMessage(
               role: 'assistant', error: true, text: 'Stopped after $maxSteps tool steps. Ask me to continue.'));
         }

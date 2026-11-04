@@ -1,8 +1,12 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../core/models.dart';
 import '../data/services.dart';
 import '../llm/llm.dart';
+import 'kit.dart';
+import 'model_list.dart';
+import 'theme.dart';
 
 class ProvidersScreen extends StatelessWidget {
   const ProvidersScreen({super.key});
@@ -18,7 +22,7 @@ class ProvidersScreen extends StatelessWidget {
           child: ListView(shrinkWrap: true, children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text('Pick a provider', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+              child: Text('Pick a provider', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
             ),
             for (final p in providerPresets)
               ListTile(
@@ -40,43 +44,43 @@ class ProvidersScreen extends StatelessWidget {
       model: preset.model,
       pdfNative: preset.pdfNative,
     );
-    await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => ProviderEditScreen(provider: p, isNew: true)));
+    await Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => ProviderEditScreen(provider: p, isNew: true)));
   }
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: store,
-      builder: (context, _) => Scaffold(
-        appBar: AppBar(title: const Text('Providers')),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => _add(context),
-          icon: const Icon(Icons.add_rounded),
-          label: const Text('Add'),
-        ),
-        body: store.providers.isEmpty
-            ? const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(28),
-                  child: Text(
-                    'No providers yet.\nTap Add, pick one and paste your own API key. Keys stay on this phone.',
-                    textAlign: TextAlign.center,
-                  ),
+      builder: (context, _) => GroupedPage(
+        title: 'Providers',
+        actions: [IconButton(icon: const Icon(CupertinoIcons.plus), onPressed: () => _add(context))],
+        children: [
+          if (store.providers.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(28),
+              child: Text(
+                'No providers yet.\nTap + , pick one and paste your own API key. Keys stay on this phone.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: paletteOf(context).secondary),
+              ),
+            )
+          else
+            Group(children: [
+              for (final p in store.providers)
+                Cell(
+                  title: p.name,
+                  subtitle: '${p.model.isEmpty ? 'no model' : shortModelName(p.model)} · ${p.models.length} models',
+                  icon: CupertinoIcons.cloud_fill,
+                  color: p.apiKey.isEmpty && !p.baseUrl.startsWith('http://') ? iosOrange : iosBlue,
+                  chevron: true,
+                  trailing: store.defaultProvider?.id == p.id
+                      ? const Padding(padding: EdgeInsets.only(right: 6), child: Icon(CupertinoIcons.star_fill, size: 16, color: iosOrange))
+                      : null,
+                  onTap: () => Navigator.push(
+                      context, CupertinoPageRoute<void>(builder: (_) => ProviderEditScreen(provider: p))),
                 ),
-              )
-            : ListView(children: [
-                for (final p in store.providers)
-                  ListTile(
-                    leading: Icon(store.defaultProvider?.id == p.id ? Icons.star_rounded : Icons.cloud_outlined),
-                    title: Text(p.name),
-                    subtitle: Text('${p.model.isEmpty ? 'no model' : p.model} · ${p.baseUrl}',
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: p.apiKey.isEmpty ? const Icon(Icons.key_off_outlined, size: 18) : null,
-                    onTap: () => Navigator.push(
-                        context, MaterialPageRoute<void>(builder: (_) => ProviderEditScreen(provider: p))),
-                  ),
-                const SizedBox(height: 90),
-              ]),
+            ]),
+        ],
       ),
     );
   }
@@ -231,104 +235,110 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
     if (mounted) Navigator.pop(context);
   }
 
+  Future<void> _chooseModel() async {
+    final all = <String>{if (_model.text.trim().isNotEmpty) _model.text.trim(), ..._models}.toList();
+    final temp = ProviderConfig(id: _p.id, name: _name.text.trim().isEmpty ? _p.name : _name.text.trim(), kind: _kind, baseUrl: '', models: all, model: _model.text.trim());
+    final picked = await Navigator.push<String>(
+      context,
+      CupertinoPageRoute<String>(builder: (_) => ModelListPage(provider: temp, selected: _model.text.trim())),
+    );
+    if (picked != null) setState(() => _model.text = picked);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.isNew ? 'New provider' : _p.name),
-        actions: [
-          if (!widget.isNew && store.providers.contains(_p))
-            IconButton(tooltip: 'Delete', icon: const Icon(Icons.delete_outline_rounded), onPressed: _delete),
-          TextButton(onPressed: _save, child: const Text('Save')),
-        ],
-      ),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
-        const SizedBox(height: 14),
-        SegmentedButton<ProviderKind>(
-          segments: const [
-            ButtonSegment(value: ProviderKind.openai, label: Text('OpenAI style')),
-            ButtonSegment(value: ProviderKind.anthropic, label: Text('Anthropic')),
-            ButtonSegment(value: ProviderKind.gemini, label: Text('Gemini')),
-          ],
-          selected: {_kind},
-          onSelectionChanged: (s) => setState(() => _kind = s.first),
-        ),
-        const SizedBox(height: 14),
-        TextField(
-          controller: _url,
-          keyboardType: TextInputType.url,
-          autocorrect: false,
-          decoration: const InputDecoration(labelText: 'Base URL', helperText: 'Example: https://api.openai.com/v1'),
-        ),
-        const SizedBox(height: 14),
-        TextField(
-          controller: _key,
-          obscureText: !_showKey,
-          autocorrect: false,
-          enableSuggestions: false,
-          decoration: InputDecoration(
-            labelText: 'API key',
-            helperText: 'Stored only on this phone.',
-            suffixIcon: IconButton(
-              icon: Icon(_showKey ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+    final pal = paletteOf(context);
+    return GroupedPage(
+      title: widget.isNew ? 'New provider' : _p.name,
+      actions: [
+        if (!widget.isNew && store.providers.contains(_p))
+          IconButton(tooltip: 'Delete', icon: const Icon(CupertinoIcons.trash), onPressed: _delete),
+        TextButton(onPressed: _save, child: const Text('Save')),
+      ],
+      children: [
+        Group(children: [
+          FieldCell(controller: _name, label: 'Name'),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: SizedBox(
+              width: double.infinity,
+              child: CupertinoSlidingSegmentedControl<ProviderKind>(
+                groupValue: _kind,
+                children: const {
+                  ProviderKind.openai: Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('OpenAI style')),
+                  ProviderKind.anthropic: Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('Anthropic')),
+                  ProviderKind.gemini: Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('Gemini')),
+                },
+                onValueChanged: (v) => setState(() => _kind = v ?? _kind),
+              ),
+            ),
+          ),
+          FieldCell(
+            controller: _url,
+            label: 'Base URL',
+            keyboard: TextInputType.url,
+            hint: 'https://api.openai.com/v1',
+          ),
+          FieldCell(
+            controller: _key,
+            label: 'API key (stored only on this phone)',
+            obscure: !_showKey,
+            suffix: IconButton(
+              icon: Icon(_showKey ? CupertinoIcons.eye_slash : CupertinoIcons.eye, size: 20),
               onPressed: () => setState(() => _showKey = !_showKey),
             ),
           ),
-        ),
-        const SizedBox(height: 14),
-        TextField(
-          controller: _model,
-          autocorrect: false,
-          decoration: const InputDecoration(labelText: 'Default model'),
-        ),
-        const SizedBox(height: 10),
-        Row(children: [
-          OutlinedButton.icon(
-            onPressed: _busy ? null : _fetch,
-            icon: const Icon(Icons.download_rounded),
-            label: const Text('Fetch models'),
+        ]),
+        Group(header: 'Model', children: [
+          FieldCell(controller: _model, label: 'Default model'),
+          Cell(
+            title: _models.isEmpty ? 'Fetch models from the provider' : 'Choose from ${_models.length} models',
+            icon: _models.isEmpty ? CupertinoIcons.arrow_down_circle : CupertinoIcons.list_bullet,
+            color: iosBlue,
+            chevron: _models.isNotEmpty,
+            onTap: _busy ? null : (_models.isEmpty ? _fetch : _chooseModel),
           ),
-          const SizedBox(width: 10),
-          OutlinedButton.icon(
-            onPressed: _busy ? null : _test,
-            icon: const Icon(Icons.bolt_rounded),
-            label: const Text('Test'),
+          if (_models.isNotEmpty)
+            Cell(
+              title: 'Refresh model list',
+              icon: CupertinoIcons.arrow_clockwise,
+              color: iosGray,
+              onTap: _busy ? null : _fetch,
+            ),
+          Cell(
+            title: 'Test connection',
+            icon: CupertinoIcons.bolt_fill,
+            color: iosGreen,
+            onTap: _busy ? null : _test,
           ),
         ]),
-        if (_busy) const Padding(padding: EdgeInsets.only(top: 10), child: LinearProgressIndicator()),
-        if (_status.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 10), child: SelectableText(_status)),
-        if (_models.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          Text('${_models.length} models (tap to use)', style: const TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
-          Wrap(spacing: 6, runSpacing: 0, children: [
-            for (final m in _models.take(60))
-              ActionChip(label: Text(m, style: const TextStyle(fontSize: 12)), onPressed: () => setState(() => _model.text = m)),
-          ]),
-        ],
-        const SizedBox(height: 10),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Send PDFs as files'),
-          subtitle: const Text('Turn off if the provider rejects PDFs; the model is then told it cannot read them.'),
-          value: _pdf,
-          onChanged: (v) => setState(() => _pdf = v),
-        ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Supports tools'),
-          subtitle: const Text('Web search, skills and memory. Turn off if you get errors about tools.'),
-          value: _tools,
-          onChanged: (v) => setState(() => _tools = v),
-        ),
-        TextField(
-          controller: _tokens,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Max reply tokens'),
-        ),
-        const SizedBox(height: 40),
-      ]),
+        if (_busy) const Padding(padding: EdgeInsets.only(bottom: 12), child: LinearProgressIndicator()),
+        if (_status.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 18),
+            child: SelectableText(_status, style: TextStyle(fontSize: 13.5, color: pal.secondary)),
+          ),
+        Group(header: 'Capabilities', footer: 'Turn these off if the provider returns errors about PDFs or tools.', children: [
+          SwitchCell(title: 'Send PDFs as files', value: _pdf, onChanged: (v) => setState(() => _pdf = v)),
+          SwitchCell(title: 'Supports tools', subtitle: 'Web search, skills, memory, GitHub', value: _tools, onChanged: (v) => setState(() => _tools = v)),
+          FieldCell(controller: _tokens, label: 'Max reply tokens', keyboard: TextInputType.number),
+        ]),
+        if (_p.noVision.isNotEmpty)
+          Group(
+            header: 'Text-only models',
+            footer: 'These models rejected images, so photos are replaced by a note when you use them.',
+            children: [
+              for (final m in _p.noVision)
+                Cell(
+                  title: shortModelName(m),
+                  trailing: IconButton(
+                    icon: const Icon(CupertinoIcons.xmark_circle_fill, color: iosGray),
+                    onPressed: () => setState(() => _p.noVision.remove(m)),
+                  ),
+                ),
+            ],
+          ),
+      ],
     );
   }
 }

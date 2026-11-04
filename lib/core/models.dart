@@ -125,7 +125,9 @@ class ProviderConfig {
     this.pdfNative = false,
     this.supportsTools = true,
     this.maxTokens = 8192,
-  }) : models = models ?? <String>[];
+    List<String>? noVision,
+  })  : models = models ?? <String>[],
+        noVision = noVision ?? <String>[];
 
   final String id;
   String name;
@@ -138,6 +140,9 @@ class ProviderConfig {
   bool supportsTools;
   int maxTokens;
 
+  /// Models that answered an image with a "no multimodal" error.
+  List<String> noVision;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'name': name,
@@ -149,6 +154,7 @@ class ProviderConfig {
         'pdfNative': pdfNative,
         'supportsTools': supportsTools,
         'maxTokens': maxTokens,
+        'noVision': noVision,
       };
 
   factory ProviderConfig.fromJson(Map<String, dynamic> j) => ProviderConfig(
@@ -162,6 +168,7 @@ class ProviderConfig {
         pdfNative: j['pdfNative'] as bool? ?? false,
         supportsTools: j['supportsTools'] as bool? ?? true,
         maxTokens: (j['maxTokens'] as num?)?.toInt() ?? 8192,
+        noVision: (j['noVision'] as List?)?.whereType<String>().toList(),
       );
 }
 
@@ -250,7 +257,9 @@ class ChatMessage {
     int? at,
     this.error = false,
     this.model = '',
+    List<String>? sources,
   })  : id = id ?? newId(),
+        sources = sources ?? <String>[],
         attachments = attachments ?? <Attachment>[],
         toolCalls = toolCalls ?? <ToolCall>[],
         at = at ?? DateTime.now().millisecondsSinceEpoch;
@@ -268,6 +277,9 @@ class ChatMessage {
   bool error;
   String model;
 
+  /// Web pages used for this answer, each as "title<TAB>url".
+  final List<String> sources;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'role': role,
@@ -279,6 +291,7 @@ class ChatMessage {
         'at': at,
         'error': error,
         'model': model,
+        'sources': sources,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
@@ -298,6 +311,7 @@ class ChatMessage {
         at: (j['at'] as num?)?.toInt(),
         error: j['error'] as bool? ?? false,
         model: j['model'] as String? ?? '',
+        sources: (j['sources'] as List?)?.whereType<String>().toList(),
       );
 }
 
@@ -312,6 +326,7 @@ class Conversation {
     List<ChatMessage>? messages,
     List<String>? activeSkillIds,
     this.temporary = false,
+    this.web = true,
   })  : createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         messages = messages ?? <ChatMessage>[],
@@ -329,6 +344,9 @@ class Conversation {
   /// A temporary chat does not use or write memory and is not kept on disk.
   bool temporary;
 
+  /// Search the web before answering.
+  bool web;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'title': title,
@@ -339,6 +357,7 @@ class Conversation {
         'messages': messages.map((m) => m.toJson()).toList(),
         'activeSkillIds': activeSkillIds,
         'temporary': temporary,
+        'web': web,
       };
 
   factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
@@ -354,6 +373,7 @@ class Conversation {
             .toList(),
         activeSkillIds: (j['activeSkillIds'] as List?)?.whereType<String>().toList(),
         temporary: j['temporary'] as bool? ?? false,
+        web: j['web'] as bool? ?? true,
       );
 }
 
@@ -425,7 +445,12 @@ class AppSettings {
     this.maxAttachments = 20,
     this.maxToolSteps = 8,
     this.defaultProviderId = '',
-  });
+    this.webAlways = true,
+    this.pluginGithub = true,
+    this.pluginBrowser = true,
+    this.githubToken = '',
+    List<String>? favorites,
+  }) : favorites = favorites ?? <String>[];
 
   /// system, dark or light.
   String themeMode;
@@ -439,6 +464,15 @@ class AppSettings {
   int maxToolSteps;
   String defaultProviderId;
 
+  /// New chats search the web before answering.
+  bool webAlways;
+  bool pluginGithub;
+  bool pluginBrowser;
+  String githubToken;
+
+  /// Favorite models, each as "providerId|model".
+  List<String> favorites;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'themeMode': themeMode,
         'customInstructions': customInstructions,
@@ -448,6 +482,11 @@ class AppSettings {
         'maxAttachments': maxAttachments,
         'maxToolSteps': maxToolSteps,
         'defaultProviderId': defaultProviderId,
+        'webAlways': webAlways,
+        'pluginGithub': pluginGithub,
+        'pluginBrowser': pluginBrowser,
+        'githubToken': githubToken,
+        'favorites': favorites,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -459,6 +498,11 @@ class AppSettings {
         maxAttachments: (j['maxAttachments'] as num?)?.toInt() ?? 20,
         maxToolSteps: (j['maxToolSteps'] as num?)?.toInt() ?? 8,
         defaultProviderId: j['defaultProviderId'] as String? ?? '',
+        webAlways: j['webAlways'] as bool? ?? true,
+        pluginGithub: j['pluginGithub'] as bool? ?? true,
+        pluginBrowser: j['pluginBrowser'] as bool? ?? true,
+        githubToken: j['githubToken'] as String? ?? '',
+        favorites: (j['favorites'] as List?)?.whereType<String>().toList(),
       );
 }
 
