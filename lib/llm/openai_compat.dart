@@ -32,7 +32,11 @@ class OpenAiCompatClient implements LlmClient {
             buffer.writeln(documentBlock(a));
             buffer.writeln();
           } else if (a.kind == AttachmentKind.image && !r.vision) {
-            buffer.writeln('[Image "${a.name}" was attached, but this model cannot see images.]');
+            if (a.text.trim().isNotEmpty) {
+              buffer.writeln('[Image "${a.name}" cannot be shown to you. Text and description read from it by another tool:\n${a.text}\n[End of image]]');
+            } else {
+              buffer.writeln('[Image "${a.name}" was attached, but this model cannot see images.]');
+            }
           } else if (a.kind == AttachmentKind.image) {
             parts.add(<String, dynamic>{
               'type': 'image_url',

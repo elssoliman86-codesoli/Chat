@@ -1,5 +1,7 @@
 import '../core/models.dart';
 import '../llm/llm.dart';
+import '../plugins/installer.dart';
+import '../plugins/plugin.dart';
 import 'browser_service.dart';
 import 'github_tools.dart';
 import 'web_tools.dart';
@@ -11,7 +13,26 @@ abstract class ToolHost {
   void loadSkill(Skill skill);
   bool get memoryAllowed;
   String get githubToken;
+  void installSkill(Skill skill);
+  void registerPlugin(Plugin plugin);
+
+  /// Asks the person to approve a risky action.
+  Future<bool> confirm(String message);
+
+  /// Pauses the task and asks the person to do something or answer; returns what they said.
+  Future<String> askUser(String question);
+
+  /// Runs a tool that belongs to an installed plugin, or returns null when [name] is not one.
+  Future<String?> runPluginTool(String name, Map<String, dynamic> args);
 }
+
+Map<String, dynamic> _obj(Map<String, dynamic> props, [List<String> required = const <String>[]]) =>
+    <String, dynamic>{'type': 'object', 'properties': props, 'required': required};
+
+Map<String, dynamic> _str(String description) => <String, dynamic>{'type': 'string', 'description': description};
+
+String _s(Map<String, dynamic> a, String k) => (a[k] ?? '').toString();
+int _i(Map<String, dynamic> a, String k) => int.tryParse((a[k] ?? '0').toString()) ?? 0;
 
 class ToolDef {
   const ToolDef({required this.id, required this.title, required this.spec, required this.run, this.group = 'core'});
@@ -157,6 +178,312 @@ final List<ToolDef> builtinTools = <ToolDef>[
         int.tryParse((args['number'] ?? '0').toString()) ?? 0, host.githubToken),
   ),
   ToolDef(
+    id: 'github_tree',
+    title: 'GitHub file tree',
+    group: 'github',
+    spec: ToolSpec(
+      name: 'github_tree',
+      description: 'List every file of a repository (path and size). Use it first to understand and analyze a project.',
+      parameters: _obj(<String, dynamic>{'repo': _str('owner/name'), 'ref': _str('Branch or tag (optional)')}, <String>['repo']),
+    ),
+    run: (a, host) => GithubTools.tree(_s(a, 'repo'), _s(a, 'ref'), host.githubToken),
+  ),
+  ToolDef(
+    id: 'github_commits',
+    title: 'GitHub commit history',
+    group: 'github',
+    spec: ToolSpec(
+      name: 'github_commits',
+      description: 'Recent commits of a repository, optionally for one branch or file path.',
+      parameters: _obj(<String, dynamic>{'repo': _str('owner/name'), 'branch': _str('Branch (optional)'), 'path': _str('File path (optional)')}, <String>['repo']),
+    ),
+    run: (a, host) => GithubTools.commits(_s(a, 'repo'), _s(a, 'branch'), _s(a, 'path'), host.githubToken),
+  ),
+  ToolDef(
+    id: 'github_branches',
+    title: 'GitHub branches',
+    group: 'github',
+    spec: ToolSpec(
+      name: 'github_branches',
+      description: 'List the branches of a repository.',
+      parameters: _obj(<String, dynamic>{'repo': _str('owner/name')}, <String>['repo']),
+    ),
+    run: (a, host) => GithubTools.branches(_s(a, 'repo'), host.githubToken),
+  ),
+  ToolDef(
+    id: 'github_runs',
+    title: 'GitHub Actions runs',
+    group: 'github',
+    spec: ToolSpec(
+      name: 'github_runs',
+      description: 'Latest GitHub Actions workflow runs with their status.',
+      parameters: _obj(<String, dynamic>{'repo': _str('owner/name')}, <String>['repo']),
+    ),
+    run: (a, host) => GithubTools.runs(_s(a, 'repo'), host.githubToken),
+  ),
+  ToolDef(
+    id: 'github_commit',
+    title: 'GitHub commit (edit files)',
+    group: 'github_write',
+    spec: ToolSpec(
+      name: 'github_commit',
+      description: 'Edit a repository: create, change or delete several files in ONE commit. Give the COMPLETE new content '
+          'of every file in files (never a fragment). The branch is created from base_branch (default branch) when it does not exist.',
+      parameters: _obj(<String, dynamic>{
+        'repo': _str('owner/name'),
+        'branch': _str('Branch to commit to'),
+        'message': _str('Commit message'),
+        'files': <String, dynamic>{
+          'type': 'array',
+          'description': 'Files to create or overwrite',
+          'items': _obj(<String, dynamic>{'path': _str('Path in the repo'), 'content': _str('Complete file content')}, <String>['path', 'content']),
+        },
+        'deletes': <String, dynamic>{
+          'type': 'array',
+          'description': 'Paths to delete',
+          'items': <String, dynamic>{'type': 'string'},
+        },
+        'base_branch': _str('Branch to start from when creating a new branch (optional)'),
+      }, <String>['repo', 'branch', 'message']),
+    ),
+    run: (a, host) => GithubTools.commit(
+      _s(a, 'repo'),
+      _s(a, 'branch'),
+      _s(a, 'message'),
+      (a['files'] as List?) ?? <dynamic>[],
+      (a['deletes'] as List?) ?? <dynamic>[],
+      _s(a, 'base_branch'),
+      host.githubToken,
+    ),
+  ),
+  ToolDef(
+    id: 'github_create_pr',
+    title: 'GitHub pull request',
+    group: 'github_write',
+    spec: ToolSpec(
+      name: 'github_create_pr',
+      description: 'Open a pull request from a branch.',
+      parameters: _obj(<String, dynamic>{
+        'repo': _str('owner/name'),
+        'title': _str('PR title'),
+        'head': _str('Branch with the changes'),
+        'base': _str('Target branch (default branch if empty)'),
+        'body': _str('Description'),
+      }, <String>['repo', 'title', 'head']),
+    ),
+    run: (a, host) => GithubTools.createPr(_s(a, 'repo'), _s(a, 'title'), _s(a, 'head'), _s(a, 'base'), _s(a, 'body'), host.githubToken),
+  ),
+  ToolDef(
+    id: 'github_merge_pr',
+    title: 'GitHub merge pull request',
+    group: 'github_write',
+    spec: ToolSpec(
+      name: 'github_merge_pr',
+      description: 'Merge a pull request. The person is asked to approve first.',
+      parameters: _obj(<String, dynamic>{
+        'repo': _str('owner/name'),
+        'number': <String, dynamic>{'type': 'integer', 'description': 'PR number'},
+        'method': <String, dynamic>{'type': 'string', 'enum': <String>['squash', 'merge', 'rebase']},
+      }, <String>['repo', 'number']),
+    ),
+    run: (a, host) async {
+      final ok = await host.confirm('Merge pull request #${_i(a, 'number')} in ${_s(a, 'repo')}?');
+      if (!ok) return 'The person declined the merge.';
+      return GithubTools.mergePr(_s(a, 'repo'), _i(a, 'number'), _s(a, 'method'), host.githubToken);
+    },
+  ),
+  ToolDef(
+    id: 'github_create_issue',
+    title: 'GitHub new issue',
+    group: 'github_write',
+    spec: ToolSpec(
+      name: 'github_create_issue',
+      description: 'Create an issue.',
+      parameters: _obj(<String, dynamic>{
+        'repo': _str('owner/name'),
+        'title': _str('Title'),
+        'body': _str('Description'),
+        'labels': <String, dynamic>{'type': 'array', 'items': <String, dynamic>{'type': 'string'}},
+      }, <String>['repo', 'title']),
+    ),
+    run: (a, host) => GithubTools.createIssue(
+        _s(a, 'repo'), _s(a, 'title'), _s(a, 'body'), (a['labels'] as List?) ?? <dynamic>[], host.githubToken),
+  ),
+  ToolDef(
+    id: 'github_comment',
+    title: 'GitHub comment',
+    group: 'github_write',
+    spec: ToolSpec(
+      name: 'github_comment',
+      description: 'Comment on an issue or pull request.',
+      parameters: _obj(<String, dynamic>{
+        'repo': _str('owner/name'),
+        'number': <String, dynamic>{'type': 'integer', 'description': 'Issue or PR number'},
+        'body': _str('Comment text'),
+      }, <String>['repo', 'number', 'body']),
+    ),
+    run: (a, host) => GithubTools.comment(_s(a, 'repo'), _i(a, 'number'), _s(a, 'body'), host.githubToken),
+  ),
+  ToolDef(
+    id: 'github_create_repo',
+    title: 'GitHub new repository',
+    group: 'github_write',
+    spec: ToolSpec(
+      name: 'github_create_repo',
+      description: 'Create a new repository for the token owner. The person is asked to approve first.',
+      parameters: _obj(<String, dynamic>{
+        'name': _str('Repository name'),
+        'description': _str('Short description'),
+        'private': <String, dynamic>{'type': 'boolean'},
+      }, <String>['name']),
+    ),
+    run: (a, host) async {
+      final ok = await host.confirm('Create repository "${_s(a, 'name')}" on GitHub?');
+      if (!ok) return 'The person declined.';
+      return GithubTools.createRepo(_s(a, 'name'), _s(a, 'description'), a['private'] == true, host.githubToken);
+    },
+  ),
+  ToolDef(
+    id: 'install_skills',
+    title: 'Install skills from a repo',
+    group: 'install',
+    spec: ToolSpec(
+      name: 'install_skills',
+      description: 'Install skills into this app. source is a GitHub repo (owner/name or link, a /tree/branch/folder link works) '
+          'or a link to one SKILL.md file. Every SKILL.md found becomes a skill the person can call with /name.',
+      parameters: _obj(<String, dynamic>{'source': _str('GitHub repo or SKILL.md link')}, <String>['source']),
+    ),
+    run: (a, host) => installSkillsFrom(host, _s(a, 'source')),
+  ),
+  ToolDef(
+    id: 'create_skill',
+    title: 'Create a skill',
+    group: 'install',
+    spec: ToolSpec(
+      name: 'create_skill',
+      description: 'Create or update a skill in this app from text the person gave you.',
+      parameters: _obj(<String, dynamic>{
+        'name': _str('Short name'),
+        'description': _str('One line: when to use it'),
+        'instructions': _str('Full instructions'),
+        'tools': <String, dynamic>{'type': 'array', 'items': <String, dynamic>{'type': 'string'}, 'description': 'Tool ids it may use (optional)'},
+      }, <String>['name', 'instructions']),
+    ),
+    run: (a, host) async {
+      final skill = Skill(
+        id: newId(),
+        name: _s(a, 'name'),
+        description: _s(a, 'description'),
+        instructions: _s(a, 'instructions'),
+        tools: ((a['tools'] as List?) ?? <dynamic>[]).map((e) => e.toString()).toList(),
+      );
+      host.installSkill(skill);
+      return 'Skill "${skill.name}" saved. The person can call it with /name.';
+    },
+  ),
+  ToolDef(
+    id: 'install_plugin',
+    title: 'Install a plugin',
+    group: 'install',
+    spec: ToolSpec(
+      name: 'install_plugin',
+      description: 'Install a plugin into this app from a link: a remote MCP server URL, a plugin.json link, or a GitHub repo '
+          'that contains plugin.json or SKILL.md files. token is an optional access token for the plugin.',
+      parameters: _obj(<String, dynamic>{
+        'url': _str('MCP server URL, plugin.json URL or GitHub repo'),
+        'token': _str('Access token if the plugin needs one (optional)'),
+        'name': _str('Name to show (optional)'),
+      }, <String>['url']),
+    ),
+    run: (a, host) => installPluginFrom(host, _s(a, 'url'), _s(a, 'token'), _s(a, 'name')),
+  ),
+  ToolDef(
+    id: 'ask_user',
+    title: 'Ask the person',
+    group: 'core',
+    spec: ToolSpec(
+      name: 'ask_user',
+      description: 'Stop and ask the person. Use it when you need their permission, a login or captcha done by hand, '
+          'a choice, or missing information. Returns what they answered.',
+      parameters: _obj(<String, dynamic>{'question': _str('What you need from them, short and clear')}, <String>['question']),
+    ),
+    run: (a, host) => host.askUser(_s(a, 'question')),
+  ),
+  ToolDef(
+    id: 'browser_open',
+    title: 'Browser: open a page',
+    group: 'browser',
+    spec: ToolSpec(
+      name: 'browser_open',
+      description: 'Open a web address in the visible built-in browser (the person can watch) and return what is on the page: '
+          'text plus numbered clickable elements. Use the browser tools to do tasks on websites end to end.',
+      parameters: _obj(<String, dynamic>{'url': _str('Address, for example https://mail.google.com')}, <String>['url']),
+    ),
+    run: (a, host) => BrowserService.instance.open(_s(a, 'url')),
+  ),
+  ToolDef(
+    id: 'browser_read',
+    title: 'Browser: read the page',
+    group: 'browser',
+    spec: ToolSpec(
+      name: 'browser_read',
+      description: 'Describe the page the browser shows now: text and numbered clickable elements.',
+      parameters: _obj(<String, dynamic>{}),
+    ),
+    run: (a, host) => BrowserService.instance.read(),
+  ),
+  ToolDef(
+    id: 'browser_click',
+    title: 'Browser: click',
+    group: 'browser',
+    spec: ToolSpec(
+      name: 'browser_click',
+      description: 'Click the element with this number from the latest page description. Returns the new page description.',
+      parameters: _obj(<String, dynamic>{'id': <String, dynamic>{'type': 'integer', 'description': 'Element number'}}, <String>['id']),
+    ),
+    run: (a, host) => BrowserService.instance.click(_i(a, 'id')),
+  ),
+  ToolDef(
+    id: 'browser_type',
+    title: 'Browser: type',
+    group: 'browser',
+    spec: ToolSpec(
+      name: 'browser_type',
+      description: 'Type text into the input element with this number. submit=true presses Enter afterwards. '
+          'Never type passwords or payment details: use ask_user so the person does it.',
+      parameters: _obj(<String, dynamic>{
+        'id': <String, dynamic>{'type': 'integer', 'description': 'Element number'},
+        'text': _str('Text to type'),
+        'submit': <String, dynamic>{'type': 'boolean', 'description': 'Press Enter after typing'},
+      }, <String>['id', 'text']),
+    ),
+    run: (a, host) => BrowserService.instance.type(_i(a, 'id'), _s(a, 'text'), a['submit'] == true),
+  ),
+  ToolDef(
+    id: 'browser_scroll',
+    title: 'Browser: scroll',
+    group: 'browser',
+    spec: ToolSpec(
+      name: 'browser_scroll',
+      description: 'Scroll the page down (default) or up and describe what is now visible.',
+      parameters: _obj(<String, dynamic>{
+        'direction': <String, dynamic>{'type': 'string', 'enum': <String>['down', 'up']},
+      }),
+    ),
+    run: (a, host) => BrowserService.instance.scroll(_s(a, 'direction') != 'up'),
+  ),
+  ToolDef(
+    id: 'browser_back',
+    title: 'Browser: back',
+    group: 'browser',
+    spec: ToolSpec(
+      name: 'browser_back',
+      description: 'Go back one page.',
+      parameters: _obj(<String, dynamic>{}),
+    ),
+    run: (a, host) => BrowserService.instance.back(),
+  ),
+  ToolDef(
     id: 'current_time',
     title: 'Current date and time',
     spec: const ToolSpec(
@@ -212,6 +539,10 @@ const ToolSpec useSkillSpec = ToolSpec(
 /// Runs one tool call and returns text for the model. Never throws.
 Future<String> runTool(ToolCall call, ToolHost host) async {
   try {
+    final pluginResult = await host.runPluginTool(call.name, call.args);
+    if (pluginResult != null) {
+      return pluginResult.length > 12000 ? pluginResult.substring(0, 12000) : pluginResult;
+    }
     if (call.name == 'use_skill') {
       final wanted = (call.args['name'] ?? '').toString().trim().toLowerCase();
       for (final s in host.skills) {

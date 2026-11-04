@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../core/models.dart';
 import '../data/services.dart';
-import 'browser_screen.dart';
+import '../tools/browser_service.dart';
 import 'memory_screen.dart';
 import 'plugins_screen.dart';
 import 'providers_screen.dart';
@@ -104,7 +104,11 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
           }),
           _nav(CupertinoIcons.bolt, 'Skills', () => _open(const SkillsScreen())),
           _nav(CupertinoIcons.square_grid_2x2, 'Plugins', () => _open(const PluginsScreen())),
-          _nav(CupertinoIcons.compass, 'Browser', () => _open(const BrowserScreen(), full: true)),
+          _nav(CupertinoIcons.compass, 'Browser', () {
+            Navigator.pop(context);
+            final b = BrowserService.instance;
+            b.show(address: b.url.value.isEmpty ? 'https://duckduckgo.com' : null, full: true);
+          }),
           const SizedBox(height: 6),
           Expanded(
             child: rows.isEmpty

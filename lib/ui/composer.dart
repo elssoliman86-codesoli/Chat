@@ -8,7 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../core/models.dart';
 import '../data/services.dart';
 import '../files/attachment_service.dart';
-import 'browser_screen.dart';
+import '../tools/browser_service.dart';
 import 'theme.dart';
 
 /// The message box: text, attachments, send and stop.
@@ -128,15 +128,15 @@ class ComposerState extends State<Composer> {
     setState(() => _files.add(a));
   }
 
-  Future<void> openBrowser([String url = '']) async {
-    final page = await Navigator.push<Attachment>(
-      context,
-      CupertinoPageRoute<Attachment>(fullscreenDialog: true, builder: (_) => BrowserScreen(url: url)),
-    );
-    if (page != null) {
-      addAttachment(page);
-      if (_text.text.trim().isEmpty) _text.text = 'Summarize this page.';
-    }
+  void openBrowser([String url = '']) {
+    final b = BrowserService.instance;
+    b.show(address: url.isNotEmpty ? url : (b.url.value.isEmpty ? 'https://duckduckgo.com' : null), full: true);
+  }
+
+  /// A page the person sent from the browser with "Ask about this page".
+  void addPage(Attachment page) {
+    addAttachment(page);
+    if (_text.text.trim().isEmpty) _text.text = 'Summarize this page.';
   }
 
   void _toast(String message) {

@@ -142,8 +142,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Slider(
           value: s.maxToolSteps.toDouble(),
           min: 1,
-          max: 20,
-          divisions: 19,
+          max: 40,
+          divisions: 39,
           label: '${s.maxToolSteps}',
           onChanged: (v) => setState(() => s.maxToolSteps = v.round()),
           onChangeEnd: (_) => _save(),

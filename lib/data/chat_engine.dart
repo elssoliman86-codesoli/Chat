@@ -1,10 +1,15 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
+
 import '../core/models.dart';
 import '../llm/llm.dart';
+import '../plugins/plugin.dart';
+import '../tools/image_reader.dart';
 import '../tools/tools.dart';
 import '../tools/web_tools.dart';
 import 'app_store.dart';
+import 'services.dart' show navigatorKey;
 
 /// Runs a conversation turn: builds the prompt, streams the answer, runs tools and repeats.
 class ChatEngine implements ToolHost {
@@ -31,6 +36,100 @@ class ChatEngine implements ToolHost {
 
   @override
   String get githubToken => store.settings.githubToken;
+
+  @override
+  void installSkill(Skill skill) {
+    final i = store.skills.indexWhere((k) => k.name.trim().toLowerCase() == skill.name.trim().toLowerCase());
+    if (i >= 0) {
+      final old = store.skills[i];
+      old.description = skill.description;
+      old.instructions = skill.instructions;
+      old.tools = skill.tools;
+    } else {
+      store.skills.add(skill);
+    }
+    store.saveSkills();
+  }
+
+  @override
+  void registerPlugin(Plugin plugin) {
+    store.plugins.removeWhere((p) => p.name.toLowerCase() == plugin.name.toLowerCase());
+    store.plugins.add(plugin);
+    store.savePlugins();
+  }
+
+  @override
+  Future<bool> confirm(String message) async {
+    final ctx = navigatorKey.currentContext;
+    if (ctx == null) return false;
+    final ok = await showDialog<bool>(
+      context: ctx,
+      builder: (d) => AlertDialog(
+        title: const Text('Approve?'),
+        content: Text(message),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('No')),
+          TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('Yes')),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
+  @override
+  Future<String> askUser(String question) async {
+    final ctx = navigatorKey.currentContext;
+    if (ctx == null) return 'The person is not available.';
+    final controller = TextEditingController();
+    final answer = await showDialog<String>(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (d) => AlertDialog(
+        title: const Text('Needs you'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(question),
+          const SizedBox(height: 12),
+          TextField(controller: controller, decoration: const InputDecoration(hintText: 'Answer (optional)'), minLines: 1, maxLines: 4),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, null), child: const Text('Cancel task')),
+          TextButton(
+            onPressed: () => Navigator.pop(d, controller.text.trim().isEmpty ? 'Done.' : controller.text.trim()),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return answer ?? 'The person cancelled. Stop the task.';
+  }
+
+  (Plugin, PluginTool)? _findPluginTool(String name) {
+    for (final p in store.plugins) {
+      if (!p.enabled) continue;
+      for (final t in p.tools) {
+        if (p.specName(t) == name) return (p, t);
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<String?> runPluginTool(String name, Map<String, dynamic> args) async {
+    final found = _findPluginTool(name);
+    if (found == null) return null;
+    final (plugin, tool) = found;
+    try {
+      if (plugin.kind == 'mcp') {
+        final client = McpClient(plugin.url, token: plugin.token);
+        await client.connect();
+        return await client.call(tool.name, args);
+      }
+      return await runHttpTool(plugin, tool, args);
+    } catch (e) {
+      return 'Plugin failed: $e';
+    }
+  }
 
   @override
   bool get memoryAllowed => store.settings.memoryEnabled && !(_running?.temporary ?? false);
@@ -82,6 +181,39 @@ class ChatEngine implements ToolHost {
         b.writeln('- ${k.name}: ${k.description}');
       }
     }
+    final st = store.settings;
+    if (st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty) {
+      b.writeln('\nGitHub: you have the person\'s GitHub token with write access through tools. When asked to change, fix, '
+          'add or refactor something in a repository, DO IT yourself: read it with github_tree and github_file, then call '
+          'github_commit with the complete new content of every file you change. Work on a new branch (for example '
+          '"assistant/<short-topic>") unless the person says to commit to the main branch, and open a pull request when '
+          'it makes sense. Never paste code into the chat as a replacement for editing. Report what you changed with the '
+          'commit or PR link. Ask first only when the request is ambiguous or destructive.');
+    }
+    if (st.pluginBrowser) {
+      b.writeln('\nBrowser: for tasks on websites use browser_open, then browser_read, browser_click and browser_type, and keep '
+          'going until the whole task is done without asking the person to do steps you can do. The browser is visible to '
+          'them in a panel. When you need a login, a captcha, a payment, a permission or a decision, call ask_user and '
+          'wait: the page stays open so they can act, then continue. Never type passwords or card numbers yourself. '
+          'Ask for confirmation before irreversible actions (sending, buying, deleting, publishing).');
+    }
+    if (st.pluginGmail && st.pluginBrowser) {
+      b.writeln('\nGmail: work in https://mail.google.com with the browser tools. Search with the search box, open threads to '
+          'read them, use Compose to write. Before sending any email, show the recipient, subject and body with ask_user '
+          'and send only after approval. Never delete or archive without approval. If Gmail shows a sign-in page, '
+          'call ask_user so the person signs in in the panel.');
+    }
+    if (st.pluginCanva && st.pluginBrowser) {
+      b.writeln('\nCanva: work in https://www.canva.com with the browser tools. Search templates, create the design, edit '
+          'text, and use Share or Download only after the person approves. If Canva shows a sign-in page, call ask_user '
+          'so they sign in in the panel.');
+    }
+    b.writeln('\nTo add skills or plugins to this app when the person gives you a link or text, use install_skills, '
+        'install_plugin or create_skill. When you need permission, a login, a captcha or a decision from the person, '
+        'call ask_user instead of guessing.');
+    for (final p in store.plugins.where((p) => p.enabled && p.instructions.trim().isNotEmpty)) {
+      b.writeln('\n## Plugin: ${p.name}\n${p.instructions.trim()}');
+    }
     return b.toString();
   }
 
@@ -91,11 +223,18 @@ class ChatEngine implements ToolHost {
   List<ToolSpec> buildTools(Conversation c, ProviderConfig provider) {
     if (!provider.supportsTools) return const <ToolSpec>[];
     final st = store.settings;
-    final ids = <String>{'current_time'};
-    if (st.webTools) ids.addAll(<String>['web_search', 'fetch_page']);
-    if (st.pluginBrowser) ids.add('browse_page');
-    if (st.pluginGithub) ids.addAll(<String>['github_search', 'github_repo', 'github_file', 'github_issues']);
-    if (st.memoryEnabled && !c.temporary) ids.add('remember');
+    final ids = <String>{};
+    for (final t in builtinTools) {
+      final on = switch (t.group) {
+        'web' => st.webTools,
+        'browser' => st.pluginBrowser,
+        'github' => st.pluginGithub,
+        'github_write' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
+        _ => true,
+      };
+      if (on) ids.add(t.id);
+    }
+    if (!(st.memoryEnabled && !c.temporary)) ids.remove('remember');
     for (final k in _activeSkills(c)) {
       ids.addAll(k.tools);
     }
@@ -103,6 +242,11 @@ class ChatEngine implements ToolHost {
     for (final id in ids) {
       final def = toolById(id);
       if (def != null) specs.add(def.spec);
+    }
+    for (final p in store.plugins.where((p) => p.enabled)) {
+      for (final t in p.tools) {
+        specs.add(ToolSpec(name: p.specName(t), description: '${p.name}: ${t.description}', parameters: t.parameters));
+      }
     }
     final hasAuto = store.skills.any((k) => k.enabled && k.autoUse);
     if (hasAuto) specs.add(useSkillSpec);
@@ -217,6 +361,46 @@ class ChatEngine implements ToolHost {
     return copy;
   }
 
+  /// Reads the text of images for a model that cannot see, using the helper model or Google Lens.
+  Future<void> _readImages(Conversation c, ChatMessage reply, ProviderConfig provider) async {
+    final mode = store.settings.imageReader;
+    if (mode == 'off') return;
+    final todo = <Attachment>[];
+    for (final m in c.messages) {
+      if (m.role != 'user') continue;
+      for (final a in m.attachments) {
+        if (a.kind == AttachmentKind.image && a.text.trim().isEmpty) todo.add(a);
+      }
+    }
+    if (todo.isEmpty) return;
+    final note = StringBuffer();
+    for (final a in todo.take(12)) {
+      String text = '';
+      try {
+        if (mode == 'lens') {
+          text = await ImageReader.viaLens(a, this);
+        }
+        if (text.trim().isEmpty) {
+          final hp = store.providerById(store.settings.helperProviderId);
+          final hm = store.settings.helperModel;
+          if (hp != null && hm.isNotEmpty && !hp.noVision.contains(hm)) {
+            text = await ImageReader.viaHelper(a, hp, hm);
+          }
+        }
+      } catch (e) {
+        text = '';
+      }
+      if (text.trim().isEmpty) continue;
+      a.text = text.length > 12000 ? text.substring(0, 12000) : text;
+      note.writeln('${a.name}\n${a.text}\n');
+    }
+    if (note.isNotEmpty) {
+      reply.note = note.toString().trim();
+      reply.touch();
+      store.scheduleSave(c);
+    }
+  }
+
   bool _looksLikeNoVision(Object e) {
     final t = e.toString().toLowerCase();
     return t.contains('multimodal') ||
@@ -239,7 +423,7 @@ class ChatEngine implements ToolHost {
       if (c.model.isEmpty) c.model = provider.model;
       if (c.model.isEmpty) throw LlmException('Pick a model for ${provider.name}.');
       final client = createClient(provider);
-      final maxSteps = store.settings.maxToolSteps.clamp(1, 20);
+      final maxSteps = store.settings.maxToolSteps.clamp(1, 40);
       String? context;
       var contextDone = false;
       var step = 0;
@@ -256,6 +440,11 @@ class ChatEngine implements ToolHost {
             context = null;
           }
           store.changed();
+        }
+        if (provider.noVision.contains(c.model)) {
+          try {
+            await _readImages(c, reply, provider);
+          } catch (_) {}
         }
         final request = LlmRequest(
           system: buildSystem(c),

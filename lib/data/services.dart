@@ -1,3 +1,5 @@
+import 'package:flutter/widgets.dart';
+
 import '../files/attachment_service.dart';
 import 'app_store.dart';
 import 'chat_engine.dart';
@@ -6,3 +8,6 @@ import 'chat_engine.dart';
 final AppStore store = AppStore();
 final ChatEngine engine = ChatEngine(store);
 final AttachmentService attachments = AttachmentService();
+
+/// Lets the engine show dialogs (approvals, questions) from anywhere.
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();

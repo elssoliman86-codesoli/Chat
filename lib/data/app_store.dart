@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/models.dart';
+import '../plugins/plugin.dart';
 
 String _encodeChat(Map<String, dynamic> json) => jsonEncode(json);
 
@@ -20,6 +21,7 @@ class AppStore extends ChangeNotifier {
   List<ProviderConfig> providers = <ProviderConfig>[];
   List<Skill> skills = <Skill>[];
   List<MemoryFact> memory = <MemoryFact>[];
+  List<Plugin> plugins = <Plugin>[];
   AppSettings settings = AppSettings();
   List<Conversation> conversations = <Conversation>[];
   Conversation? current;
@@ -37,6 +39,7 @@ class AppStore extends ChangeNotifier {
     providers = _decodeList(prefs.getString('providers'), ProviderConfig.fromJson);
     skills = _decodeList(prefs.getString('skills'), Skill.fromJson);
     memory = _decodeList(prefs.getString('memory'), MemoryFact.fromJson);
+    plugins = _decodeList(prefs.getString('plugins'), Plugin.fromJson);
     final rawSettings = prefs.getString('settings');
     if (rawSettings != null) {
       try {
@@ -121,6 +124,11 @@ class AppStore extends ChangeNotifier {
 
   Future<void> saveSkills() async {
     await _saveJson('skills', skills.map((s) => s.toJson()).toList());
+    notifyListeners();
+  }
+
+  Future<void> savePlugins() async {
+    await _saveJson('plugins', plugins.map((p) => p.toJson()).toList());
     notifyListeners();
   }
 

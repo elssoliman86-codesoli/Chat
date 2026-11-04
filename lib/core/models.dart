@@ -211,8 +211,8 @@ class Attachment {
   final String path;
   final int size;
 
-  /// Extracted text for documents.
-  final String text;
+  /// Extracted text for documents, or the text read from an image for models that cannot see.
+  String text;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
@@ -267,6 +267,7 @@ class ChatMessage extends ChangeNotifier {
     this.error = false,
     this.model = '',
     List<String>? sources,
+    this.note = '',
   })  : id = id ?? newId(),
         sources = sources ?? <String>[],
         attachments = attachments ?? <Attachment>[],
@@ -292,6 +293,9 @@ class ChatMessage extends ChangeNotifier {
   /// Web pages used for this answer, each as "title<TAB>url".
   final List<String> sources;
 
+  /// Shown above the reply but never sent to the model, for example the text read from an image.
+  String note;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'role': role,
@@ -304,6 +308,7 @@ class ChatMessage extends ChangeNotifier {
         'error': error,
         'model': model,
         'sources': sources,
+        'note': note,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
@@ -324,6 +329,7 @@ class ChatMessage extends ChangeNotifier {
         error: j['error'] as bool? ?? false,
         model: j['model'] as String? ?? '',
         sources: (j['sources'] as List?)?.whereType<String>().toList(),
+        note: j['note'] as String? ?? '',
       );
 }
 
@@ -455,12 +461,18 @@ class AppSettings {
     this.webTools = true,
     this.memoryEnabled = true,
     this.maxAttachments = 20,
-    this.maxToolSteps = 8,
+    this.maxToolSteps = 20,
     this.defaultProviderId = '',
     this.webAlways = true,
     this.pluginGithub = true,
     this.pluginBrowser = true,
+    this.githubWrite = true,
     this.githubToken = '',
+    this.pluginGmail = false,
+    this.pluginCanva = false,
+    this.imageReader = 'helper',
+    this.helperProviderId = '',
+    this.helperModel = '',
     List<String>? favorites,
   }) : favorites = favorites ?? <String>[];
 
@@ -480,7 +492,17 @@ class AppSettings {
   bool webAlways;
   bool pluginGithub;
   bool pluginBrowser;
+
+  /// Let the assistant commit, open pull requests and issues with the token.
+  bool githubWrite;
   String githubToken;
+  bool pluginGmail;
+  bool pluginCanva;
+
+  /// How images are read for models that cannot see: off, helper (another model) or lens (Google Lens in the browser).
+  String imageReader;
+  String helperProviderId;
+  String helperModel;
 
   /// Favorite models, each as "providerId|model".
   List<String> favorites;
@@ -497,7 +519,13 @@ class AppSettings {
         'webAlways': webAlways,
         'pluginGithub': pluginGithub,
         'pluginBrowser': pluginBrowser,
+        'githubWrite': githubWrite,
         'githubToken': githubToken,
+        'pluginGmail': pluginGmail,
+        'pluginCanva': pluginCanva,
+        'imageReader': imageReader,
+        'helperProviderId': helperProviderId,
+        'helperModel': helperModel,
         'favorites': favorites,
       };
 
@@ -508,14 +536,23 @@ class AppSettings {
         webTools: j['webTools'] as bool? ?? true,
         memoryEnabled: j['memoryEnabled'] as bool? ?? true,
         maxAttachments: (j['maxAttachments'] as num?)?.toInt() ?? 20,
-        maxToolSteps: (j['maxToolSteps'] as num?)?.toInt() ?? 8,
+        maxToolSteps: _steps((j['maxToolSteps'] as num?)?.toInt()),
         defaultProviderId: j['defaultProviderId'] as String? ?? '',
         webAlways: j['webAlways'] as bool? ?? true,
         pluginGithub: j['pluginGithub'] as bool? ?? true,
         pluginBrowser: j['pluginBrowser'] as bool? ?? true,
+        githubWrite: j['githubWrite'] as bool? ?? true,
         githubToken: j['githubToken'] as String? ?? '',
+        pluginGmail: j['pluginGmail'] as bool? ?? false,
+        pluginCanva: j['pluginCanva'] as bool? ?? false,
+        imageReader: j['imageReader'] as String? ?? 'helper',
+        helperProviderId: j['helperProviderId'] as String? ?? '',
+        helperModel: j['helperModel'] as String? ?? '',
         favorites: (j['favorites'] as List?)?.whereType<String>().toList(),
       );
 }
+
+/// The old default of 8 steps is too small for agent tasks, so it becomes 20.
+int _steps(int? saved) => (saved == null || saved == 8) ? 20 : saved;
 
 String prettyJson(Object? value) => const JsonEncoder.withIndent('  ').convert(value);

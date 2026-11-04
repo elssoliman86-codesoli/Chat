@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../core/models.dart';
 import '../data/services.dart';
+import 'browser_dock.dart';
 import 'composer.dart';
 import 'history_drawer.dart';
 import 'message_view.dart';
@@ -123,7 +124,8 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ],
           ),
-          body: Column(children: [
+          body: Stack(children: [
+            Column(children: [
             Expanded(
               child: c.messages.isEmpty
                   ? _Empty(
@@ -172,6 +174,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 store.changed();
               },
             ),
+            ]),
+            Positioned.fill(child: DockLayer(onAttach: (page) => _composer.currentState?.addPage(page))),
           ]),
         );
       },

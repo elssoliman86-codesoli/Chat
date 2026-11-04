@@ -5,12 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/models.dart';
-import 'browser_screen.dart';
+import 'browser_dock.dart';
 import 'markdown_view.dart';
 import 'theme.dart';
 
 void openLink(BuildContext context, String url) {
-  Navigator.push(context, CupertinoPageRoute<void>(fullscreenDialog: true, builder: (_) => BrowserScreen(url: url)));
+  showBrowser(context, address: url, full: false);
 }
 
 class MessageView extends StatefulWidget {
@@ -230,6 +230,7 @@ class _MessageViewState extends State<MessageView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final c in message.toolCalls) _toolChip(context, c),
+          if (message.note.isNotEmpty) _NoteCard(note: message.note),
           if (message.sources.isNotEmpty) _sources(context),
           if (empty && streaming && message.toolCalls.isEmpty)
             const Padding(
@@ -339,5 +340,61 @@ class _MessageViewState extends State<MessageView> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(content: Text('Copied'), duration: Duration(seconds: 1)));
+  }
+}
+
+/// Text read from an image, shown above the reply. It can be opened and copied.
+class _NoteCard extends StatefulWidget {
+  const _NoteCard({required this.note});
+
+  final String note;
+
+  @override
+  State<_NoteCard> createState() => _NoteCardState();
+}
+
+class _NoteCardState extends State<_NoteCard> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = paletteOf(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(14)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => setState(() => _open = !_open),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(children: [
+              Icon(CupertinoIcons.doc_text_viewfinder, size: 18, color: pal.accent),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('Text read from the image', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600))),
+              Icon(_open ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down, size: 16, color: pal.secondary),
+            ]),
+          ),
+        ),
+        if (_open)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SelectableText(widget.note, style: const TextStyle(fontSize: 15, height: 1.4)),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: widget.note));
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied'), duration: Duration(seconds: 1)));
+                  },
+                  icon: const Icon(CupertinoIcons.doc_on_doc, size: 16),
+                  label: const Text('Copy'),
+                ),
+              ),
+            ]),
+          ),
+      ]),
+    );
   }
 }

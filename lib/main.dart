@@ -20,6 +20,7 @@ class OmniChatApp extends StatelessWidget {
       builder: (context, mode, _) {
         return MaterialApp(
           title: 'Omni Chat',
+          navigatorKey: navigatorKey,
           debugShowCheckedModeBanner: false,
           themeMode: themeModeFor(mode),
           theme: buildTheme(Brightness.light),
