@@ -41,7 +41,6 @@ class _PluginsScreenState extends State<PluginsScreen> {
             title: 'Web search and pages',
             subtitle: 'web_search, fetch_page',
             icon: CupertinoIcons.globe,
-            color: iosBlue,
             value: s.webTools,
             onChanged: (v) => set(() => s.webTools = v),
           ),

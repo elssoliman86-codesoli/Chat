@@ -9,6 +9,7 @@ import 'history_drawer.dart';
 import 'message_view.dart';
 import 'model_list.dart';
 import 'model_picker.dart';
+import 'plugins_screen.dart';
 import 'providers_screen.dart';
 import 'skill_picker.dart';
 import 'theme.dart';
@@ -26,12 +27,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Conversation get _chat => store.current ?? store.newConversation();
 
   Future<void> _send(String text, List<Attachment> files) => engine.send(_chat, text, files);
-
-  void _edit(ChatMessage m) {
-    final c = _chat;
-    final removed = engine.truncateFrom(c, m.id);
-    if (removed != null) _composer.currentState?.load(removed.text, removed.attachments);
-  }
 
   void _newChat({bool temporary = false}) {
     if (engine.busy) engine.stop();
@@ -149,7 +144,14 @@ class _ChatScreenState extends State<ChatScreen> {
                           message: m,
                           streaming: streaming,
                           onRegenerate: isLastAssistant && !running ? () => engine.regenerate(c) : null,
-                          onEdit: m.role == 'user' && !running ? () => _edit(m) : null,
+                          onEditUser: m.role == 'user' && !running ? (t) => engine.editAndResend(c, m.id, t) : null,
+                          onEditReply: m.role == 'assistant' && !running && !m.error
+                              ? (t) {
+                                  m.text = t;
+                                  m.touch();
+                                  store.scheduleSave(c);
+                                }
+                              : null,
                         );
                       },
                     ),
@@ -159,6 +161,10 @@ class _ChatScreenState extends State<ChatScreen> {
               onSend: _send,
               busy: running,
               onStop: engine.stop,
+              chat: c,
+              onNewChat: _newChat,
+              onSkills: () => showSkillPicker(context, c),
+              onPlugins: () => Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => const PluginsScreen())),
               webOn: c.web,
               onToggleWeb: () {
                 c.web = !c.web;

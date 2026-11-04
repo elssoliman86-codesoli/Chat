@@ -20,6 +20,10 @@ class Composer extends StatefulWidget {
     required this.onStop,
     required this.webOn,
     required this.onToggleWeb,
+    required this.chat,
+    required this.onNewChat,
+    required this.onSkills,
+    required this.onPlugins,
   });
 
   final Future<void> Function(String text, List<Attachment> files) onSend;
@@ -27,6 +31,10 @@ class Composer extends StatefulWidget {
   final VoidCallback onStop;
   final bool webOn;
   final VoidCallback onToggleWeb;
+  final Conversation chat;
+  final VoidCallback onNewChat;
+  final VoidCallback onSkills;
+  final VoidCallback onPlugins;
 
   @override
   State<Composer> createState() => ComposerState();
@@ -36,6 +44,64 @@ class ComposerState extends State<Composer> {
   final TextEditingController _text = TextEditingController();
   final List<Attachment> _files = <Attachment>[];
   int _loading = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _text.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  static String slug(String name) =>
+      name.toLowerCase().trim().replaceAll(RegExp(r'[^a-z0-9\u0600-\u06FF]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
+
+  /// Commands and skills matching what was typed after the slash.
+  List<({String label, String hint, IconData icon, VoidCallback run})> _slashItems() {
+    final t = _text.text;
+    if (!t.startsWith('/') || t.contains(' ') || t.contains('\n')) return const [];
+    final q = t.substring(1).toLowerCase();
+    final items = <({String label, String hint, IconData icon, VoidCallback run})>[];
+    void clear() => _text.clear();
+    final commands = <({String label, String hint, IconData icon, VoidCallback run})>[
+      (label: 'skills', hint: 'Pick skills for this chat', icon: CupertinoIcons.bolt, run: () { clear(); widget.onSkills(); }),
+      (label: 'new', hint: 'Start a new chat', icon: CupertinoIcons.square_pencil, run: () { clear(); widget.onNewChat(); }),
+      (label: 'web', hint: 'Turn web search on or off', icon: CupertinoIcons.globe, run: () { clear(); widget.onToggleWeb(); }),
+      (label: 'browser', hint: 'Open the browser', icon: CupertinoIcons.compass, run: () { clear(); openBrowser(); }),
+      (label: 'plugins', hint: 'Plugins and GitHub token', icon: CupertinoIcons.square_grid_2x2, run: () { clear(); widget.onPlugins(); }),
+    ];
+    for (final c in commands) {
+      if (c.label.startsWith(q)) items.add(c);
+    }
+    for (final sk in store.skills.where((k) => k.enabled)) {
+      final id = slug(sk.name);
+      if (id.isEmpty || !id.startsWith(q)) continue;
+      final on = widget.chat.activeSkillIds.contains(sk.id);
+      items.add((
+        label: id,
+        hint: '${on ? 'Turn off' : 'Turn on'} skill: ${sk.description.isEmpty ? sk.name : sk.description}',
+        icon: on ? CupertinoIcons.bolt_fill : CupertinoIcons.bolt,
+        run: () {
+          clear();
+          _toggleSkill(sk);
+        },
+      ));
+    }
+    return items.take(7).toList();
+  }
+
+  void _toggleSkill(Skill sk) {
+    final ids = widget.chat.activeSkillIds;
+    final on = ids.contains(sk.id);
+    if (on) {
+      ids.remove(sk.id);
+    } else {
+      ids.add(sk.id);
+    }
+    store.scheduleSave(widget.chat);
+    store.changed();
+    _toast('${sk.name}: ${on ? 'off' : 'on'}');
+  }
 
   @override
   void dispose() {
@@ -166,7 +232,18 @@ class ComposerState extends State<Composer> {
 
   Future<void> _send() async {
     if (widget.busy || _loading > 0) return;
-    final text = _text.text;
+    var text = _text.text;
+    final slash = RegExp(r'^/(\S+)\s+([\s\S]*)$').firstMatch(text);
+    if (slash != null) {
+      final id = slash.group(1)!.toLowerCase();
+      for (final sk in store.skills) {
+        if (sk.enabled && slug(sk.name) == id) {
+          if (!widget.chat.activeSkillIds.contains(sk.id)) widget.chat.activeSkillIds.add(sk.id);
+          text = slash.group(2)!;
+          break;
+        }
+      }
+    }
     final files = List<Attachment>.of(_files);
     if (text.trim().isEmpty && files.isEmpty) return;
     setState(() {
@@ -181,11 +258,34 @@ class ComposerState extends State<Composer> {
     final pal = paletteOf(context);
     final theme = Theme.of(context);
     final canSend = !widget.busy;
+    final slashItems = _slashItems();
     return SafeArea(
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
-        child: Container(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (slashItems.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(color: pal.field, borderRadius: BorderRadius.circular(16)),
+            child: Column(children: [
+              for (final it in slashItems)
+                InkWell(
+                  onTap: it.run,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    child: Row(children: [
+                      Icon(it.icon, size: 18, color: pal.accent),
+                      const SizedBox(width: 12),
+                      Text('/${it.label}', style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600)),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(it.hint, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: pal.secondary))),
+                    ]),
+                  ),
+                ),
+            ]),
+          ),
+        Container(
           decoration: BoxDecoration(color: pal.field, borderRadius: BorderRadius.circular(26)),
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -235,15 +335,15 @@ class ComposerState extends State<Composer> {
                   height: 36,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
-                    color: widget.webOn ? iosBlue.withValues(alpha: 0.18) : pal.bubble,
+                    color: widget.webOn ? pal.accent.withValues(alpha: 0.18) : pal.bubble,
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(CupertinoIcons.globe, size: 17, color: widget.webOn ? iosBlue : pal.secondary),
+                    Icon(CupertinoIcons.globe, size: 17, color: widget.webOn ? pal.accent : pal.secondary),
                     const SizedBox(width: 5),
                     Text('Search',
                         style: TextStyle(
-                            fontSize: 14.5, fontWeight: FontWeight.w500, color: widget.webOn ? iosBlue : pal.secondary)),
+                            fontSize: 14.5, fontWeight: FontWeight.w500, color: widget.webOn ? pal.accent : pal.secondary)),
                   ]),
                 ),
               ),
@@ -257,6 +357,7 @@ class ComposerState extends State<Composer> {
             ]),
           ]),
         ),
+        ]),
       ),
     );
   }

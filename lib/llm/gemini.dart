@@ -164,4 +164,23 @@ class GeminiClient implements LlmClient {
     }
     return ids;
   }
+
+  @override
+  Future<PingResult> ping(String model) {
+    return postForStatus(
+      Uri.parse(joinUrl(config.baseUrl, '/v1beta/models/${_model(model)}:generateContent')),
+      _headers,
+      <String, dynamic>{
+        'contents': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'role': 'user',
+            'parts': <Map<String, String>>[
+              <String, String>{'text': 'Hi'},
+            ],
+          },
+        ],
+        'generationConfig': <String, dynamic>{'maxOutputTokens': 16},
+      },
+    );
+  }
 }

@@ -3,44 +3,151 @@ import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../core/models.dart';
 import 'browser_screen.dart';
+import 'markdown_view.dart';
 import 'theme.dart';
 
 void openLink(BuildContext context, String url) {
   Navigator.push(context, CupertinoPageRoute<void>(fullscreenDialog: true, builder: (_) => BrowserScreen(url: url)));
 }
 
-class MessageView extends StatelessWidget {
+class MessageView extends StatefulWidget {
   const MessageView({
     super.key,
     required this.message,
     required this.streaming,
     this.onRegenerate,
-    this.onEdit,
+    this.onEditUser,
+    this.onEditReply,
   });
 
   final ChatMessage message;
   final bool streaming;
   final VoidCallback? onRegenerate;
-  final VoidCallback? onEdit;
+
+  /// Called with the new text when the person edits their own message and sends it again.
+  final void Function(String text)? onEditUser;
+
+  /// Called with the new text when the person corrects the assistant's reply.
+  final void Function(String text)? onEditReply;
+
+  @override
+  State<MessageView> createState() => _MessageViewState();
+}
+
+class _MessageViewState extends State<MessageView> {
+  bool _editing = false;
+  TextEditingController? _controller;
+
+  ChatMessage get message => widget.message;
+  bool get streaming => widget.streaming;
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return message.role == 'user' ? _user(context) : _assistant(context);
+    // Only this message redraws while its text streams in.
+    return ListenableBuilder(
+      listenable: message,
+      builder: (context, _) => message.role == 'user' ? _user(context) : _assistant(context),
+    );
+  }
+
+  void _startEdit() {
+    _controller?.dispose();
+    _controller = TextEditingController(text: message.text);
+    setState(() => _editing = true);
+  }
+
+  Widget _editor(BuildContext context) {
+    final pal = paletteOf(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 6, 14, 6),
+      padding: const EdgeInsets.fromLTRB(14, 10, 10, 8),
+      decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(22)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        TextField(
+          controller: _controller,
+          autofocus: true,
+          minLines: 1,
+          maxLines: 10,
+          style: const TextStyle(fontSize: 17),
+          decoration: const InputDecoration(
+            filled: false,
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            isDense: true,
+          ),
+        ),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          TextButton(onPressed: () => setState(() => _editing = false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              final t = _controller?.text.trim() ?? '';
+              if (t.isEmpty && message.attachments.isEmpty) return;
+              setState(() => _editing = false);
+              widget.onEditUser?.call(t);
+            },
+            child: const Text('Send'),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  Future<void> _editReply(BuildContext context) async {
+    final controller = TextEditingController(text: message.text);
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheet) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(sheet).viewInsets.bottom),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(sheet).size.height * 0.55),
+                child: TextField(
+                  controller: controller,
+                  autofocus: true,
+                  minLines: 4,
+                  maxLines: null,
+                  keyboardType: TextInputType.multiline,
+                  decoration: const InputDecoration(hintText: 'Edit the reply'),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                TextButton(onPressed: () => Navigator.pop(sheet), child: const Text('Cancel')),
+                FilledButton(onPressed: () => Navigator.pop(sheet, controller.text), child: const Text('Save')),
+              ]),
+            ]),
+          ),
+        ),
+      ),
+    );
+    controller.dispose();
+    if (result != null && result.trim().isNotEmpty) widget.onEditReply?.call(result);
   }
 
   Widget _user(BuildContext context) {
+    if (_editing) return _editor(context);
     final images = message.attachments.where((a) => a.kind == AttachmentKind.image).toList();
     final files = message.attachments.where((a) => a.kind != AttachmentKind.image).toList();
-    return Align(
-      alignment: Alignment.centerRight,
-      child: GestureDetector(
-        onLongPress: () => _menu(context),
-        child: Container(
-          margin: const EdgeInsets.fromLTRB(56, 6, 14, 6),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Container(
+          margin: const EdgeInsets.fromLTRB(56, 6, 14, 2),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(color: paletteOf(context).bubble, borderRadius: BorderRadius.circular(22)),
           child: Column(
@@ -71,18 +178,27 @@ class MessageView extends StatelessWidget {
             ],
           ),
         ),
-      ),
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            _action(context, CupertinoIcons.doc_on_doc, () => _copy(context)),
+            if (widget.onEditUser != null) _action(context, CupertinoIcons.pencil, _startEdit),
+          ]),
+        ),
+      ],
     );
   }
 
   Widget _thumb(Attachment a) {
-    final f = File(a.path);
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
-      child: f.existsSync()
-          ? Image.file(f, width: 104, height: 104, fit: BoxFit.cover, cacheWidth: 312,
-              errorBuilder: (_, __, ___) => const SizedBox(width: 104, height: 104, child: Icon(CupertinoIcons.photo)))
-          : const SizedBox(width: 104, height: 104, child: Icon(CupertinoIcons.photo)),
+      child: Image.file(File(a.path),
+          width: 104,
+          height: 104,
+          fit: BoxFit.cover,
+          cacheWidth: 312,
+          gaplessPlayback: true,
+          errorBuilder: (_, __, ___) => const SizedBox(width: 104, height: 104, child: Icon(CupertinoIcons.photo))),
     );
   }
 
@@ -95,7 +211,7 @@ class MessageView extends StatelessWidget {
         border: Border.all(color: pal.separator, width: 0.8),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(a.kind == AttachmentKind.pdf ? CupertinoIcons.doc_richtext : CupertinoIcons.doc_text, size: 18, color: iosBlue),
+        Icon(a.kind == AttachmentKind.pdf ? CupertinoIcons.doc_richtext : CupertinoIcons.doc_text, size: 18, color: pal.accent),
         const SizedBox(width: 6),
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 190),
@@ -106,7 +222,6 @@ class MessageView extends StatelessWidget {
   }
 
   Widget _assistant(BuildContext context) {
-    final theme = Theme.of(context);
     final pal = paletteOf(context);
     final empty = message.text.trim().isEmpty;
     return Padding(
@@ -124,33 +239,16 @@ class MessageView extends StatelessWidget {
           if (!empty)
             message.error
                 ? Text(message.text, style: const TextStyle(color: iosRed, fontSize: 15.5, height: 1.4))
-                : MarkdownBody(
-                    data: message.text,
-                    selectable: true,
-                    onTapLink: (text, href, title) {
-                      if (href != null && href.startsWith('http')) openLink(context, href);
-                    },
-                    styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                      p: const TextStyle(fontSize: 17, height: 1.5),
-                      a: const TextStyle(color: iosBlue),
-                      h1: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
-                      h2: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
-                      h3: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                      code: TextStyle(fontFamily: 'monospace', fontSize: 14.5, backgroundColor: pal.bubble),
-                      codeblockPadding: const EdgeInsets.all(12),
-                      codeblockDecoration: BoxDecoration(color: pal.field, borderRadius: BorderRadius.circular(12)),
-                      blockquoteDecoration: BoxDecoration(
-                        border: Border(left: BorderSide(color: pal.separator, width: 3)),
-                      ),
-                      tableBorder: TableBorder.all(color: pal.separator, width: 0.5),
-                    ),
-                  ),
+                : streaming
+                    ? MarkdownText(text: message.text, onLink: (u) => openLink(context, u))
+                    : SelectionArea(child: MarkdownText(text: message.text, onLink: (u) => openLink(context, u))),
           if (!empty && !streaming)
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Row(children: [
                 _action(context, CupertinoIcons.doc_on_doc, () => _copy(context)),
-                if (onRegenerate != null) _action(context, CupertinoIcons.arrow_clockwise, onRegenerate!),
+                if (widget.onEditReply != null) _action(context, CupertinoIcons.pencil, () => _editReply(context)),
+                if (widget.onRegenerate != null) _action(context, CupertinoIcons.arrow_clockwise, widget.onRegenerate!),
                 if (message.model.isNotEmpty)
                   Flexible(
                     child: Padding(
@@ -198,7 +296,7 @@ class MessageView extends StatelessWidget {
                     decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(17)),
                     alignment: Alignment.center,
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(CupertinoIcons.globe, size: 14, color: iosBlue),
+                      Icon(CupertinoIcons.globe, size: 14, color: pal.accent),
                       const SizedBox(width: 6),
                       Text(host, style: const TextStyle(fontSize: 13)),
                     ]),
@@ -241,33 +339,5 @@ class MessageView extends StatelessWidget {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(content: Text('Copied'), duration: Duration(seconds: 1)));
-  }
-
-  void _menu(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheet) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(
-            leading: const Icon(CupertinoIcons.doc_on_doc),
-            title: const Text('Copy'),
-            onTap: () {
-              Navigator.pop(sheet);
-              _copy(context);
-            },
-          ),
-          if (onEdit != null)
-            ListTile(
-              leading: const Icon(CupertinoIcons.pencil),
-              title: const Text('Edit and resend'),
-              onTap: () {
-                Navigator.pop(sheet);
-                onEdit!();
-              },
-            ),
-        ]),
-      ),
-    );
   }
 }

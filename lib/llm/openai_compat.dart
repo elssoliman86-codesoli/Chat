@@ -177,4 +177,22 @@ class OpenAiCompatClient implements LlmClient {
     ids.sort();
     return ids;
   }
+
+  @override
+  Future<PingResult> ping(String model) async {
+    final url = Uri.parse(joinUrl(config.baseUrl, '/chat/completions'));
+    Map<String, dynamic> body(String key) => <String, dynamic>{
+          'model': model,
+          'messages': <Map<String, String>>[
+            <String, String>{'role': 'user', 'content': 'Hi'},
+          ],
+          key: 8,
+          'stream': false,
+        };
+    var r = await postForStatus(url, _headers, body('max_tokens'));
+    if (r.status == 400 && r.detail.contains('max_completion_tokens')) {
+      r = await postForStatus(url, _headers, body('max_completion_tokens'));
+    }
+    return r;
+  }
 }

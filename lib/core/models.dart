@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 /// Which wire protocol a provider speaks.
 enum ProviderKind { openai, anthropic, gemini }
 
@@ -126,8 +128,10 @@ class ProviderConfig {
     this.supportsTools = true,
     this.maxTokens = 8192,
     List<String>? noVision,
+    Map<String, int>? health,
   })  : models = models ?? <String>[],
-        noVision = noVision ?? <String>[];
+        noVision = noVision ?? <String>[],
+        health = health ?? <String, int>{};
 
   final String id;
   String name;
@@ -143,6 +147,9 @@ class ProviderConfig {
   /// Models that answered an image with a "no multimodal" error.
   List<String> noVision;
 
+  /// Last test result per model: the HTTP status, or 0 for no answer.
+  Map<String, int> health;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'name': name,
@@ -155,6 +162,7 @@ class ProviderConfig {
         'supportsTools': supportsTools,
         'maxTokens': maxTokens,
         'noVision': noVision,
+        'health': health,
       };
 
   factory ProviderConfig.fromJson(Map<String, dynamic> j) => ProviderConfig(
@@ -169,6 +177,7 @@ class ProviderConfig {
         supportsTools: j['supportsTools'] as bool? ?? true,
         maxTokens: (j['maxTokens'] as num?)?.toInt() ?? 8192,
         noVision: (j['noVision'] as List?)?.whereType<String>().toList(),
+        health: (j['health'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
       );
 }
 
@@ -245,7 +254,7 @@ class ToolCall {
       );
 }
 
-class ChatMessage {
+class ChatMessage extends ChangeNotifier {
   ChatMessage({
     String? id,
     required this.role,
@@ -265,6 +274,9 @@ class ChatMessage {
         at = at ?? DateTime.now().millisecondsSinceEpoch;
 
   final String id;
+
+  /// Tells the one message view that shows this message to redraw.
+  void touch() => notifyListeners();
 
   /// user, assistant or tool.
   final String role;

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/models.dart';
@@ -77,9 +78,42 @@ class AbortHandle {
   }
 }
 
+/// Result of a one-token test request to a model.
+class PingResult {
+  const PingResult(this.status, this.detail, this.ms);
+
+  /// HTTP status, or 0 when the request timed out or the network failed.
+  final int status;
+  final String detail;
+  final int ms;
+
+  bool get ok => status >= 200 && status < 300;
+}
+
 abstract class LlmClient {
   Stream<LlmEvent> stream(LlmRequest request, AbortHandle abort);
   Future<List<String>> listModels();
+
+  /// Sends a tiny request and reports the HTTP status, to see which models really answer.
+  Future<PingResult> ping(String model);
+}
+
+/// POSTs [body] and returns status and a short error text, never throws.
+Future<PingResult> postForStatus(Uri url, Map<String, String> headers, Object body,
+    {Duration timeout = const Duration(seconds: 25)}) async {
+  final watch = Stopwatch()..start();
+  try {
+    final res = await http
+        .post(url, headers: <String, String>{...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body))
+        .timeout(timeout);
+    final text = utf8.decode(res.bodyBytes, allowMalformed: true);
+    final ok = res.statusCode >= 200 && res.statusCode < 300;
+    return PingResult(res.statusCode, ok ? '' : errorMessage(res.statusCode, text), watch.elapsedMilliseconds);
+  } on TimeoutException {
+    return PingResult(0, 'Timed out', watch.elapsedMilliseconds);
+  } catch (e) {
+    return PingResult(0, e.toString(), watch.elapsedMilliseconds);
+  }
 }
 
 LlmClient createClient(ProviderConfig config) {
@@ -126,6 +160,8 @@ String errorMessage(int status, String body) {
   return 'HTTP $status: $detail'.trim();
 }
 
+String _encodeBody(Object body) => jsonEncode(body);
+
 Future<http.StreamedResponse> postStream(
   http.Client client,
   Uri url,
@@ -135,7 +171,7 @@ Future<http.StreamedResponse> postStream(
   final req = http.Request('POST', url);
   req.headers.addAll(headers);
   req.headers['Content-Type'] = 'application/json';
-  req.body = jsonEncode(body);
+  req.body = await compute(_encodeBody, body);
   final res = await client.send(req).timeout(const Duration(seconds: 90));
   if (res.statusCode < 200 || res.statusCode >= 300) {
     final text = await res.stream.bytesToString();

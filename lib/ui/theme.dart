@@ -20,6 +20,8 @@ class Palette extends ThemeExtension<Palette> {
     required this.cell,
     required this.separator,
     required this.secondary,
+    this.accent = iosBlue,
+    this.glass = false,
   });
 
   final Color bubble;
@@ -28,6 +30,21 @@ class Palette extends ThemeExtension<Palette> {
   final Color cell;
   final Color separator;
   final Color secondary;
+  final Color accent;
+
+  /// Glass look: translucent surfaces over a gradient, glossy icon tiles.
+  final bool glass;
+
+  static const Palette emerald = Palette(
+    bubble: Color(0x3334D399),
+    field: Color(0x2EFFFFFF),
+    grouped: Color(0x00000000),
+    cell: Color(0x24FFFFFF),
+    separator: Color(0x2EFFFFFF),
+    secondary: Color(0xFF9FD8C3),
+    accent: Color(0xFF34D399),
+    glass: true,
+  );
 
   static const Palette dark = Palette(
     bubble: Color(0xFF2C2C2E),
@@ -56,20 +73,51 @@ class Palette extends ThemeExtension<Palette> {
 
 Palette paletteOf(BuildContext context) => Theme.of(context).extension<Palette>() ?? Palette.dark;
 
-ThemeData buildTheme(Brightness b) {
+ThemeMode themeModeFor(String mode) => switch (mode) {
+      'light' => ThemeMode.light,
+      'system' => ThemeMode.system,
+      _ => ThemeMode.dark,
+    };
+
+/// Gradient behind every page in the emerald theme.
+class AppBackdrop extends StatelessWidget {
+  const AppBackdrop({super.key, required this.emerald, required this.child});
+
+  final bool emerald;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!emerald) return child;
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF03281E), Color(0xFF065F46), Color(0xFF022C22)],
+          stops: [0.0, 0.55, 1.0],
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+ThemeData buildTheme(Brightness b, {bool emerald = false}) {
   final dark = b == Brightness.dark;
-  final p = dark ? Palette.dark : Palette.light;
-  final bg = dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF);
+  final p = emerald ? Palette.emerald : (dark ? Palette.dark : Palette.light);
+  final bg = emerald ? Colors.transparent : (dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF));
+  final solid = emerald ? const Color(0xFF06281F) : bg;
   final fg = dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000);
   final scheme = ColorScheme(
     brightness: b,
-    primary: iosBlue,
-    onPrimary: Colors.white,
-    secondary: iosBlue,
+    primary: p.accent,
+    onPrimary: emerald ? const Color(0xFF02150F) : Colors.white,
+    secondary: p.accent,
     onSecondary: Colors.white,
     error: iosRed,
     onError: Colors.white,
-    surface: bg,
+    surface: solid,
     onSurface: fg,
     surfaceContainerHighest: p.bubble,
     surfaceContainerHigh: p.field,
@@ -100,22 +148,22 @@ ThemeData buildTheme(Brightness b) {
       titleTextStyle: TextStyle(color: fg, fontSize: 17, fontWeight: FontWeight.w600),
     ),
     drawerTheme: DrawerThemeData(
-      backgroundColor: dark ? const Color(0xFF0A0A0A) : const Color(0xFFFFFFFF),
+      backgroundColor: emerald ? const Color(0xF2052A20) : (dark ? const Color(0xFF0A0A0A) : const Color(0xFFFFFFFF)),
       surfaceTintColor: Colors.transparent,
       width: 316,
     ),
     bottomSheetTheme: BottomSheetThemeData(
-      backgroundColor: dark ? const Color(0xFF1C1C1E) : const Color(0xFFFFFFFF),
+      backgroundColor: emerald ? const Color(0xF2052A20) : (dark ? const Color(0xFF1C1C1E) : const Color(0xFFFFFFFF)),
       surfaceTintColor: Colors.transparent,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: dark ? const Color(0xFF1C1C1E) : const Color(0xFFFFFFFF),
+      backgroundColor: emerald ? const Color(0xFF06281F) : (dark ? const Color(0xFF1C1C1E) : const Color(0xFFFFFFFF)),
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
     popupMenuTheme: PopupMenuThemeData(
-      color: dark ? const Color(0xFF2C2C2E) : const Color(0xFFFFFFFF),
+      color: emerald ? const Color(0xFF0B3A2D) : (dark ? const Color(0xFF2C2C2E) : const Color(0xFFFFFFFF)),
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
@@ -130,17 +178,17 @@ ThemeData buildTheme(Brightness b) {
       fillColor: p.cell,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: iosBlue)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: p.accent)),
     ),
     switchTheme: SwitchThemeData(
       thumbColor: const WidgetStatePropertyAll<Color>(Colors.white),
       trackColor: WidgetStateProperty.resolveWith<Color>(
-          (s) => s.contains(WidgetState.selected) ? iosGreen : (dark ? const Color(0xFF39393D) : const Color(0xFFE9E9EA))),
+          (s) => s.contains(WidgetState.selected) ? (emerald ? p.accent : iosGreen) : (dark ? const Color(0xFF39393D) : const Color(0xFFE9E9EA))),
       trackOutlineColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
     ),
-    sliderTheme: const SliderThemeData(activeTrackColor: iosBlue, thumbColor: Colors.white),
+    sliderTheme: SliderThemeData(activeTrackColor: p.accent, thumbColor: Colors.white),
     textTheme: ThemeData(brightness: b).textTheme.apply(bodyColor: fg, displayColor: fg),
-    progressIndicatorTheme: const ProgressIndicatorThemeData(color: iosBlue),
+    progressIndicatorTheme: ProgressIndicatorThemeData(color: p.accent),
   );
 }
 

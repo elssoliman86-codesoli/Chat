@@ -157,4 +157,15 @@ class AnthropicClient implements LlmClient {
     }
     return ids;
   }
+
+  @override
+  Future<PingResult> ping(String model) {
+    return postForStatus(Uri.parse(joinUrl(config.baseUrl, '/v1/messages')), _headers, <String, dynamic>{
+      'model': model,
+      'max_tokens': 8,
+      'messages': <Map<String, String>>[
+        <String, String>{'role': 'user', 'content': 'Hi'},
+      ],
+    });
+  }
 }

@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/models.dart';
 
+String _encodeChat(Map<String, dynamic> json) => jsonEncode(json);
+
 /// Everything the app remembers, kept on this phone.
 class AppStore extends ChangeNotifier {
   SharedPreferences? _prefs;
@@ -22,6 +24,9 @@ class AppStore extends ChangeNotifier {
   List<Conversation> conversations = <Conversation>[];
   Conversation? current;
   bool loaded = false;
+
+  /// The theme page only needs to rebuild when this changes, not on every chat update.
+  final ValueNotifier<String> themeMode = ValueNotifier<String>('dark');
 
   /// Public wrapper so other classes can refresh listeners.
   void changed() => notifyListeners();
@@ -58,6 +63,7 @@ class AppStore extends ChangeNotifier {
     }
     loadedChats.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     conversations = loadedChats;
+    themeMode.value = settings.themeMode;
     loaded = true;
     notifyListeners();
   }
@@ -127,6 +133,7 @@ class AppStore extends ChangeNotifier {
     final prefs = _prefs ?? await SharedPreferences.getInstance();
     _prefs = prefs;
     await prefs.setString('settings', jsonEncode(settings.toJson()));
+    themeMode.value = settings.themeMode;
     notifyListeners();
   }
 
@@ -196,7 +203,8 @@ class AppStore extends ChangeNotifier {
       }
       if (c == null) continue;
       try {
-        await File('${dir.path}/$id.json').writeAsString(jsonEncode(c.toJson()));
+        final text = await compute(_encodeChat, c.toJson());
+        await File('${dir.path}/$id.json').writeAsString(text);
       } catch (_) {}
     }
     conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));

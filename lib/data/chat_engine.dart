@@ -35,9 +35,15 @@ class ChatEngine implements ToolHost {
   @override
   bool get memoryAllowed => store.settings.memoryEnabled && !(_running?.temporary ?? false);
 
-  void _notifySoon() {
+  ChatMessage? _streaming;
+
+  /// Redraws only the message that is being written, at most ten times a second.
+  void _notifySoon(ChatMessage m) {
+    _streaming = m;
     if (_notifyTimer?.isActive ?? false) return;
-    _notifyTimer = Timer(const Duration(milliseconds: 60), store.changed);
+    _notifyTimer = Timer(const Duration(milliseconds: 100), () {
+      _streaming?.touch();
+    });
   }
 
   String buildSystem(Conversation c) {
@@ -129,6 +135,17 @@ class ChatEngine implements ToolHost {
     store.scheduleSave(c);
     store.changed();
     await _run(c);
+  }
+
+  /// Replaces one of the person's messages with new text and answers again from there.
+  Future<void> editAndResend(Conversation c, String messageId, String text) async {
+    if (busy) return;
+    final i = c.messages.indexWhere((m) => m.id == messageId);
+    if (i < 0) return;
+    final old = c.messages[i];
+    final files = List<Attachment>.of(old.attachments);
+    c.messages.removeRange(i, c.messages.length);
+    await send(c, text, files);
   }
 
   /// Removes [messageId] and everything after it. Returns the removed user message.
@@ -255,7 +272,7 @@ class ChatEngine implements ToolHost {
           await for (final event in client.stream(request, abort)) {
             if (event is TextDelta) {
               reply.text += event.text;
-              _notifySoon();
+              _notifySoon(reply);
             } else if (event is ToolCallDone) {
               reply.toolCalls.add(event.call);
               store.changed();
@@ -299,6 +316,8 @@ class ChatEngine implements ToolHost {
       _running = null;
       _abort = null;
       _notifyTimer?.cancel();
+      _streaming?.touch();
+      _streaming = null;
       store.scheduleSave(c);
       store.changed();
     }

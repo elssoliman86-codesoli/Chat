@@ -41,6 +41,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'dark': Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('Dark')),
                 'light': Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('Light')),
                 'system': Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('System')),
+                'emerald': Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('Emerald')),
               },
               onValueChanged: (v) => setState(() {
                 s.themeMode = v ?? 'dark';
@@ -95,7 +96,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _save();
               }),
               trailing: store.defaultProvider?.id == p.id
-                  ? const Icon(CupertinoIcons.checkmark_alt, color: iosBlue, size: 22)
+                  ? Icon(CupertinoIcons.checkmark_alt, color: pal.accent, size: 22)
                   : null,
             ),
         ]),

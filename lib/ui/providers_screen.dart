@@ -71,7 +71,7 @@ class ProvidersScreen extends StatelessWidget {
                   title: p.name,
                   subtitle: '${p.model.isEmpty ? 'no model' : shortModelName(p.model)} · ${p.models.length} models',
                   icon: CupertinoIcons.cloud_fill,
-                  color: p.apiKey.isEmpty && !p.baseUrl.startsWith('http://') ? iosOrange : iosBlue,
+                  color: p.apiKey.isEmpty && !p.baseUrl.startsWith('http://') ? iosOrange : null,
                   chevron: true,
                   trailing: store.defaultProvider?.id == p.id
                       ? const Padding(padding: EdgeInsets.only(right: 6), child: Icon(CupertinoIcons.star_fill, size: 16, color: iosOrange))
@@ -237,7 +237,10 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
 
   Future<void> _chooseModel() async {
     final all = <String>{if (_model.text.trim().isNotEmpty) _model.text.trim(), ..._models}.toList();
-    final temp = ProviderConfig(id: _p.id, name: _name.text.trim().isEmpty ? _p.name : _name.text.trim(), kind: _kind, baseUrl: '', models: all, model: _model.text.trim());
+    final temp = _draft()
+      ..models = all
+      ..health = _p.health
+      ..noVision = _p.noVision;
     final picked = await Navigator.push<String>(
       context,
       CupertinoPageRoute<String>(builder: (_) => ModelListPage(provider: temp, selected: _model.text.trim())),
@@ -294,7 +297,6 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
           Cell(
             title: _models.isEmpty ? 'Fetch models from the provider' : 'Choose from ${_models.length} models',
             icon: _models.isEmpty ? CupertinoIcons.arrow_down_circle : CupertinoIcons.list_bullet,
-            color: iosBlue,
             chevron: _models.isNotEmpty,
             onTap: _busy ? null : (_models.isEmpty ? _fetch : _chooseModel),
           ),

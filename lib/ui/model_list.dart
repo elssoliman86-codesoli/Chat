@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../core/models.dart';
+import '../data/model_checker.dart';
 import '../data/services.dart';
 import 'theme.dart';
 
@@ -74,11 +75,26 @@ class ModelList extends StatefulWidget {
 class _ModelListState extends State<ModelList> {
   String _query = '';
   String _only = '';
+  bool _workingOnly = false;
+
+  bool _ok(int? status) => status != null && status >= 200 && status < 300;
+
+  List<(ProviderConfig, String)> _visibleJobs() {
+    final seen = <String>{};
+    final jobs = <(ProviderConfig, String)>[];
+    for (final r in _rows()) {
+      if (r is _Model && seen.add(favoriteKey(r.provider, r.model))) jobs.add((r.provider, r.model));
+    }
+    return jobs;
+  }
 
   List<_Row> _rows() {
     final q = _query.trim().toLowerCase();
     final rows = <_Row>[];
-    bool match(String m) => q.isEmpty || m.toLowerCase().contains(q);
+    bool match(String m, ProviderConfig p) {
+      if (_workingOnly && !_ok(p.health[m])) return false;
+      return q.isEmpty || m.toLowerCase().contains(q);
+    }
 
     if (q.isEmpty && _only.isEmpty) {
       final fav = <_Model>[];
@@ -94,7 +110,8 @@ class _ModelListState extends State<ModelList> {
     }
     for (final p in widget.providers) {
       if (_only.isNotEmpty && p.id != _only) continue;
-      final all = modelsOf(p).where(match).toList();
+      final all = modelsOf(p).where((m) => match(m, p)).toList()
+        ..sort((a, b) => (_ok(p.health[b]) ? 1 : 0).compareTo(_ok(p.health[a]) ? 1 : 0));
       if (all.isEmpty) continue;
       rows.add(_Header(p.name, count: all.length));
       final vendors = all.map(modelVendor).toSet();
@@ -107,7 +124,11 @@ class _ModelListState extends State<ModelList> {
         final sorted = vendors.toList()..sort();
         for (final v in sorted) {
           rows.add(_Sub(v.isEmpty ? 'Other' : v));
-          final list = all.where((m) => modelVendor(m) == v).toList()..sort();
+          final list = all.where((m) => modelVendor(m) == v).toList()
+            ..sort((a, b) {
+              final c = (_ok(p.health[b]) ? 1 : 0).compareTo(_ok(p.health[a]) ? 1 : 0);
+              return c != 0 ? c : a.compareTo(b);
+            });
           for (final m in list) {
             rows.add(_Model(p, m));
           }
@@ -119,8 +140,14 @@ class _ModelListState extends State<ModelList> {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(listenable: checker, builder: (context, _) => _content(context));
+  }
+
+  Widget _content(BuildContext context) {
     final pal = paletteOf(context);
     final rows = _rows();
+    final jobs = _visibleJobs();
+    final okCount = jobs.where((j) => _ok(j.$1.health[j.$2])).length;
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -146,6 +173,39 @@ class _ModelListState extends State<ModelList> {
               _chip('All', _only.isEmpty, () => setState(() => _only = '')),
               for (final p in widget.providers) _chip(p.name, _only == p.id, () => setState(() => _only = p.id)),
             ],
+          ),
+        ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 2, 8, 0),
+        child: Row(children: [
+          if (checker.running) ...[
+            Expanded(
+              child: Text('Testing ${checker.done}/${checker.total}…', style: TextStyle(fontSize: 13, color: pal.secondary)),
+            ),
+            TextButton(onPressed: checker.cancel, child: const Text('Stop')),
+          ] else ...[
+            TextButton.icon(
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+              onPressed: jobs.isEmpty ? null : () => checker.run(jobs.take(150).toList()),
+              icon: const Icon(CupertinoIcons.checkmark_shield, size: 17),
+              label: Text('Test ${jobs.length > 150 ? 150 : jobs.length} models'),
+            ),
+            const Spacer(),
+            Text('Working only', style: TextStyle(fontSize: 13, color: pal.secondary)),
+            Transform.scale(
+              scale: 0.8,
+              child: Switch(value: _workingOnly, onChanged: (v) => setState(() => _workingOnly = v)),
+            ),
+          ],
+        ]),
+      ),
+      if (checker.running) LinearProgressIndicator(value: checker.total == 0 ? null : checker.done / checker.total, minHeight: 2),
+      if (!checker.running && okCount > 0)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 2),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text('$okCount answered with 200 (of ${jobs.length} shown)', style: TextStyle(fontSize: 12, color: pal.secondary)),
           ),
         ),
       Expanded(
@@ -190,7 +250,8 @@ class _ModelListState extends State<ModelList> {
                               ),
                           ]),
                         ),
-                        if (selected) const Icon(CupertinoIcons.checkmark_alt, color: iosBlue, size: 22),
+                        _badge(m.provider.health[m.model], pal),
+                        if (selected) Icon(CupertinoIcons.checkmark_alt, color: pal.accent, size: 22),
                         IconButton(
                           visualDensity: VisualDensity.compact,
                           icon: Icon(fav ? CupertinoIcons.star_fill : CupertinoIcons.star,
@@ -206,6 +267,19 @@ class _ModelListState extends State<ModelList> {
     ]);
   }
 
+  Widget _badge(int? status, Palette pal) {
+    if (status == null) return const SizedBox.shrink();
+    final ok = _ok(status);
+    final color = ok ? iosGreen : (status == 0 ? pal.secondary : iosRed);
+    return Container(
+      margin: const EdgeInsets.only(right: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(8)),
+      child: Text(status == 0 ? 'no reply' : '$status',
+          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: color)),
+    );
+  }
+
   Widget _chip(String label, bool on, VoidCallback tap) {
     final pal = paletteOf(context);
     return Padding(
@@ -215,7 +289,7 @@ class _ModelListState extends State<ModelList> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14),
           alignment: Alignment.center,
-          decoration: BoxDecoration(color: on ? iosBlue : pal.bubble, borderRadius: BorderRadius.circular(18)),
+          decoration: BoxDecoration(color: on ? pal.accent : pal.bubble, borderRadius: BorderRadius.circular(18)),
           child: Text(label, style: TextStyle(fontSize: 14, color: on ? Colors.white : null, fontWeight: FontWeight.w500)),
         ),
       ),

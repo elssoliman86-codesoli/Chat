@@ -67,7 +67,7 @@ class Group extends StatelessWidget {
   }
 }
 
-/// The small colored square icon of iOS settings rows.
+/// The small colored square icon of settings rows. In the emerald theme it is a glass tile.
 class Badge29 extends StatelessWidget {
   const Badge29(this.icon, this.color, {super.key});
 
@@ -75,12 +75,65 @@ class Badge29 extends StatelessWidget {
   final Color color;
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) {
+    final p = paletteOf(context);
+    if (!p.glass) {
+      return Container(
         width: 29,
         height: 29,
         decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(7)),
         child: Icon(icon, size: 18, color: Colors.white),
       );
+    }
+    return GlassTile(size: 31, radius: 9, tint: color, child: Icon(icon, size: 18, color: Colors.white));
+  }
+}
+
+/// A frosted, glossy tile: tinted gradient, bright rim and a soft highlight on top.
+class GlassTile extends StatelessWidget {
+  const GlassTile({super.key, required this.size, required this.radius, required this.tint, required this.child});
+
+  final double size;
+  final double radius;
+  final Color tint;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [tint.withValues(alpha: 0.85), tint.withValues(alpha: 0.30)],
+        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.38), width: 0.8),
+        boxShadow: [BoxShadow(color: tint.withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0, 3))],
+      ),
+      child: Stack(alignment: Alignment.center, children: [
+        Positioned(
+          left: 2,
+          right: 2,
+          top: 2,
+          height: size * 0.42,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(radius - 2), bottom: Radius.circular(radius)),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.white.withValues(alpha: 0.34), Colors.white.withValues(alpha: 0.0)],
+              ),
+            ),
+          ),
+        ),
+        child,
+      ]),
+    );
+  }
 }
 
 class Cell extends StatelessWidget {
@@ -89,7 +142,7 @@ class Cell extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.icon,
-    this.color = iosBlue,
+    this.color,
     this.trailing,
     this.onTap,
     this.chevron = false,
@@ -99,7 +152,7 @@ class Cell extends StatelessWidget {
   final String title;
   final String? subtitle;
   final IconData? icon;
-  final Color color;
+  final Color? color;
   final Widget? trailing;
   final VoidCallback? onTap;
   final bool chevron;
@@ -113,7 +166,7 @@ class Cell extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
         child: Row(children: [
-          if (icon != null) ...[Badge29(icon!, color), const SizedBox(width: 12)],
+          if (icon != null) ...[Badge29(icon!, color ?? p.accent), const SizedBox(width: 12)],
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(title, style: TextStyle(fontSize: 16.5, color: destructive ? iosRed : null)),
@@ -133,12 +186,12 @@ class Cell extends StatelessWidget {
 }
 
 class SwitchCell extends StatelessWidget {
-  const SwitchCell({super.key, required this.title, this.subtitle, this.icon, this.color = iosBlue, required this.value, required this.onChanged});
+  const SwitchCell({super.key, required this.title, this.subtitle, this.icon, this.color, required this.value, required this.onChanged});
 
   final String title;
   final String? subtitle;
   final IconData? icon;
-  final Color color;
+  final Color? color;
   final bool value;
   final ValueChanged<bool> onChanged;
 
@@ -228,7 +281,7 @@ class PillButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = paletteOf(context);
     return Material(
-      color: filled ? iosBlue : p.cell,
+      color: filled ? p.accent : p.cell,
       borderRadius: BorderRadius.circular(22),
       child: InkWell(
         borderRadius: BorderRadius.circular(22),
@@ -236,8 +289,8 @@ class PillButton extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            if (icon != null) ...[Icon(icon, size: 17, color: filled ? Colors.white : iosBlue), const SizedBox(width: 6)],
-            Text(label, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: filled ? Colors.white : iosBlue)),
+            if (icon != null) ...[Icon(icon, size: 17, color: filled ? Colors.white : p.accent), const SizedBox(width: 6)],
+            Text(label, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: filled ? Colors.white : p.accent)),
           ]),
         ),
       ),
