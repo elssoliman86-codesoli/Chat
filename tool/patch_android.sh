@@ -70,3 +70,37 @@ subprojects {
         groovy.write_text(s)
 PY
 grep -n "compileSdk" "$ROOT/android/build.gradle.kts" "$ROOT/android/build.gradle" 2>/dev/null || true
+
+# Match the settings of an APK known to install on this phone: no R8 shrinking, plain application id.
+APP_KTS="$ROOT/android/app/build.gradle.kts"
+APP_GRV="$ROOT/android/app/build.gradle"
+if [ -f "$APP_KTS" ]; then
+  sed -i 's/applicationId = "[^"]*"/applicationId = "com.codesoli.omnichat"/' "$APP_KTS"
+  if ! grep -q 'isMinifyEnabled' "$APP_KTS"; then
+    cat >> "$APP_KTS" <<'KTS'
+
+android {
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+    }
+}
+KTS
+  fi
+elif [ -f "$APP_GRV" ]; then
+  sed -i 's/applicationId "[^"]*"/applicationId "com.codesoli.omnichat"/' "$APP_GRV"
+  cat >> "$APP_GRV" <<'GRV'
+
+android {
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+}
+GRV
+fi
+grep -n "applicationId" "$APP_KTS" "$APP_GRV" 2>/dev/null || true
