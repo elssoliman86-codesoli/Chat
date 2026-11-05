@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
@@ -184,7 +183,7 @@ class BrowserService {
   var f=e.form;if(f){if(f.requestSubmit){f.requestSubmit();}else{f.submit();}}}
  return 'Typed into element '+id;})($id,$t,${submit ? 'true' : 'false'})
 ''');
-        await Future<void>.delayed(const Duration(milliseconds: submit ? 2200 : 500));
+        await Future<void>.delayed(Duration(milliseconds: submit ? 2200 : 500));
         return '$r\n\n${await snapshot()}';
       });
 

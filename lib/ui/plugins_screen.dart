@@ -1,7 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-import '../core/models.dart';
 import '../data/services.dart';
 import 'model_list.dart';
 import '../plugins/installer.dart';
@@ -284,7 +283,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
     final t = token.text.trim();
     url.dispose();
     token.dispose();
-    if (go != true || u.isEmpty) return;
+    if (go != true || u.isEmpty || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(const SnackBar(content: Text('Installing…'), duration: Duration(seconds: 30)));
     final result = await installPluginFrom(engine, u, t, '');
