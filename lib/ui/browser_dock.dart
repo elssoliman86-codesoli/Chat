@@ -21,7 +21,6 @@ class DockLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final b = BrowserService.instance;
     return Stack(children: [
       Positioned.fill(child: _panel(context)),
       Positioned(left: 10, right: 10, top: 8, child: const _AskBanner()),

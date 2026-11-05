@@ -168,7 +168,7 @@ class AttachmentService {
     final name = folder.split('/').where((s) => s.isNotEmpty).last;
     try {
       final (p, summary) = await projects.importFolder(folder, name);
-      return _projectAttachment(p.id, p.name, name, 0, summary);
+      return await _projectAttachment(p.id, p.name, name, 0, summary);
     } catch (e) {
       throw AttachmentException('Could not read that folder. Android may block it: put the files in a ZIP and attach the ZIP instead.');
     }
@@ -200,7 +200,7 @@ class AttachmentService {
       if (size > 400 * 1024 * 1024) throw AttachmentException('$name is larger than 400 MB');
       try {
         final (p, summary) = await projects.importZip(sourcePath, name);
-        return _projectAttachment(p.id, p.name, name, size, summary);
+        return await _projectAttachment(p.id, p.name, name, size, summary);
       } catch (e) {
         throw AttachmentException('Could not open $name as a project');
       }

@@ -2,7 +2,7 @@ import 'package:flutter/services.dart';
 
 /// Keeps the app alive while the assistant works, so a long task (a big project, a browser job)
 /// keeps running when the person switches to another app. Shows a small ongoing notification.
-class KeepAlive {
+class BackgroundWork {
   static const MethodChannel _channel = MethodChannel('omni/keepalive');
 
   static Future<void> start() async {

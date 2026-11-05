@@ -487,7 +487,7 @@ class ChatEngine implements ToolHost {
     _seenCalls.clear();
     _browserEpoch = 0;
     BrowserService.instance.showWhileWorking = store.settings.browserVisible;
-    if (store.settings.keepAlive) await KeepAlive.start();
+    if (store.settings.keepAlive) await BackgroundWork.start();
     store.changed();
     try {
       if (provider == null) {
@@ -576,7 +576,7 @@ class ChatEngine implements ToolHost {
     } catch (e) {
       c.messages.add(ChatMessage(role: 'assistant', error: true, text: e.toString()));
     } finally {
-      await KeepAlive.stop();
+      await BackgroundWork.stop();
       _currentReply = null;
       _running = null;
       _abort = null;
