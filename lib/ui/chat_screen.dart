@@ -11,6 +11,8 @@ import 'message_view.dart';
 import 'model_list.dart';
 import 'model_picker.dart';
 import 'plugins_screen.dart';
+import 'project_screens.dart';
+import 'steps_card.dart';
 import 'providers_screen.dart';
 import 'skill_picker.dart';
 import 'theme.dart';
@@ -57,7 +59,34 @@ class _ChatScreenState extends State<ChatScreen> {
       builder: (context, _) {
         final c = _chat;
         final provider = store.providerById(c.providerId) ?? store.defaultProvider;
-        final shown = c.messages.where((m) => m.role != 'tool').toList().reversed.toList();
+        final results = <String, String>{};
+        for (final m in c.messages) {
+          if (m.role == 'tool') results[m.toolCallId] = m.text;
+        }
+        // Replies that only call tools are folded into one steps card.
+        final items = <Object>[];
+        for (final m in c.messages) {
+          if (m.role == 'tool') continue;
+          final isStep = m.role == 'assistant' &&
+              m.text.trim().isEmpty &&
+              m.toolCalls.isNotEmpty &&
+              m.sources.isEmpty &&
+              m.note.isEmpty &&
+              m.outputs.isEmpty &&
+              !m.error;
+          if (isStep && items.isNotEmpty && items.last is List<ChatMessage>) {
+            (items.last as List<ChatMessage>).add(m);
+          } else if (isStep) {
+            items.add(<ChatMessage>[m]);
+          } else {
+            items.add(m);
+          }
+        }
+        final shown = items.reversed.toList();
+        ChatMessage? lastNonTool;
+        for (final m in c.messages) {
+          if (m.role != 'tool') lastNonTool = m;
+        }
         final running = engine.running == c;
         final lastAssistant = c.messages.lastIndexWhere((m) => m.role == 'assistant' && !m.error && m.text.isNotEmpty);
         return Scaffold(
@@ -138,12 +167,22 @@ class _ChatScreenState extends State<ChatScreen> {
                       padding: const EdgeInsets.only(top: 8, bottom: 8),
                       itemCount: shown.length,
                       itemBuilder: (context, i) {
-                        final m = shown[i];
+                        final item = shown[i];
+                        if (item is List<ChatMessage>) {
+                          return _StepGroup(
+                            key: ValueKey('g${item.first.id}'),
+                            messages: item,
+                            resultOf: (id) => results[id],
+                            live: running && identical(item.last, lastNonTool),
+                          );
+                        }
+                        final m = item as ChatMessage;
                         final isLastAssistant = m.role == 'assistant' && c.messages.indexOf(m) == lastAssistant;
                         final streaming = running && identical(m, c.messages.last);
                         return MessageView(
                           key: ValueKey(m.id),
                           message: m,
+                          resultOf: (id) => results[id],
                           streaming: streaming,
                           onRegenerate: isLastAssistant && !running ? () => engine.regenerate(c) : null,
                           onEditUser: m.role == 'user' && !running ? (t) => engine.editAndResend(c, m.id, t) : null,
@@ -158,6 +197,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       },
                     ),
             ),
+            if (c.projectId.isNotEmpty) ProjectBar(projectId: c.projectId),
             Composer(
               key: _composer,
               onSend: _send,
@@ -179,6 +219,26 @@ class _ChatScreenState extends State<ChatScreen> {
           ]),
         );
       },
+    );
+  }
+}
+
+/// Several tool-only replies shown as one list of steps.
+class _StepGroup extends StatelessWidget {
+  const _StepGroup({super.key, required this.messages, required this.resultOf, required this.live});
+
+  final List<ChatMessage> messages;
+  final String? Function(String id) resultOf;
+  final bool live;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: Listenable.merge(messages),
+      builder: (context, _) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: StepsCard(calls: [for (final m in messages) ...m.toolCalls], resultOf: resultOf, live: live),
+      ),
     );
   }
 }

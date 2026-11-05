@@ -2,11 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 
 import '../core/models.dart';
 import 'browser_dock.dart';
 import 'markdown_view.dart';
+import 'steps_card.dart';
 import 'theme.dart';
 
 void openLink(BuildContext context, String url) {
@@ -21,9 +23,13 @@ class MessageView extends StatefulWidget {
     this.onRegenerate,
     this.onEditUser,
     this.onEditReply,
+    this.resultOf,
   });
 
   final ChatMessage message;
+
+  /// What a tool call returned, by call id, for the steps list.
+  final String? Function(String callId)? resultOf;
   final bool streaming;
   final VoidCallback? onRegenerate;
 
@@ -229,7 +235,9 @@ class _MessageViewState extends State<MessageView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final c in message.toolCalls) _toolChip(context, c),
+          if (message.toolCalls.isNotEmpty)
+            StepsCard(calls: message.toolCalls, resultOf: widget.resultOf ?? (_) => null, live: streaming),
+          for (final o in message.outputs) _OutputCard(entry: o),
           if (message.note.isNotEmpty) _NoteCard(note: message.note),
           if (message.sources.isNotEmpty) _sources(context),
           if (empty && streaming && message.toolCalls.isEmpty)
@@ -310,36 +318,64 @@ class _MessageViewState extends State<MessageView> {
     );
   }
 
-  Widget _toolChip(BuildContext context, ToolCall c) {
-    final pal = paletteOf(context);
-    final detail = c.args.values.map((v) => v.toString()).join(' · ');
-    final icon = switch (c.name) {
-      'web_search' => CupertinoIcons.search,
-      'fetch_page' => CupertinoIcons.globe,
-      'browse_page' => CupertinoIcons.compass,
-      'use_skill' => CupertinoIcons.bolt,
-      'remember' => CupertinoIcons.bookmark,
-      _ when c.name.startsWith('github') => CupertinoIcons.chevron_left_slash_chevron_right,
-      _ => CupertinoIcons.wrench,
-    };
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 15, color: pal.secondary),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(detail.isEmpty ? c.name : detail,
-              maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.5, color: pal.secondary)),
-        ),
-      ]),
-    );
-  }
-
   void _copy(BuildContext context) {
     Clipboard.setData(ClipboardData(text: message.text));
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(content: Text('Copied'), duration: Duration(seconds: 1)));
+  }
+}
+
+/// A file the assistant made (a project ZIP): shows its name and lets the person save it.
+class _OutputCard extends StatelessWidget {
+  const _OutputCard({required this.entry});
+
+  final String entry;
+
+  Future<void> _save(BuildContext context, String name, String path) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final bytes = await File(path).readAsBytes();
+      final saved = await FilePicker.platform.saveFile(dialogTitle: 'Save $name', fileName: name, bytes: Uint8List.fromList(bytes));
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(saved == null ? 'Not saved' : 'Saved $name')));
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('Could not save the file')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = paletteOf(context);
+    final i = entry.indexOf('\t');
+    final name = i < 0 ? entry : entry.substring(0, i);
+    final path = i < 0 ? '' : entry.substring(i + 1);
+    var size = '';
+    try {
+      final n = File(path).lengthSync();
+      size = n < 1048576 ? '${(n / 1024).toStringAsFixed(0)} KB' : '${(n / 1048576).toStringAsFixed(1)} MB';
+    } catch (_) {}
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+      decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(14)),
+      child: Row(children: [
+        Icon(CupertinoIcons.archivebox, size: 22, color: pal.accent),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+            if (size.isNotEmpty) Text(size, style: TextStyle(fontSize: 12.5, color: pal.secondary)),
+          ]),
+        ),
+        FilledButton.icon(
+          onPressed: path.isEmpty ? null : () => _save(context, name, path),
+          icon: const Icon(CupertinoIcons.arrow_down_to_line, size: 16),
+          label: const Text('Save'),
+        ),
+      ]),
+    );
   }
 }
 

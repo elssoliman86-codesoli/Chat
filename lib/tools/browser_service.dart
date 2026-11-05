@@ -10,6 +10,13 @@ const String browserUserAgent = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleW
 
 enum DockMode { hidden, panel, full }
 
+/// A question from the assistant that the person answers on a card above the browser panel.
+class AskRequest {
+  AskRequest(this.question);
+  final String question;
+  final Completer<String> done = Completer<String>();
+}
+
 /// The one browser of the app. The assistant drives it with browser_* tools while the person can watch
 /// it in a panel, take over, or hide it. Sign-ins stay (cookies are kept), so Gmail and Canva stay logged in.
 class BrowserService {
@@ -27,6 +34,34 @@ class BrowserService {
 
   /// Keeps the native view alive when the dock changes size.
   final GlobalKey viewKey = GlobalKey();
+
+  final ValueNotifier<AskRequest?> ask = ValueNotifier<AskRequest?>(null);
+
+  /// Brings the browser up and waits until the person answers, so they can sign in or solve a captcha in the page.
+  Future<String> askInPanel(String question) async {
+    final req = AskRequest(question);
+    if (mode.value == DockMode.hidden) mode.value = DockMode.panel;
+    ask.value = req;
+    try {
+      return await req.done.future;
+    } finally {
+      ask.value = null;
+    }
+  }
+
+  /// When true the panel slides up while the assistant works. Default is the background.
+  bool showWhileWorking = false;
+
+  /// Console messages and failed requests of the current page, for checking a web project.
+  final List<String> logs = <String>[];
+
+  void _log(String line) {
+    if (logs.length < 60) logs.add(line.length > 300 ? '${line.substring(0, 300)}…' : line);
+  }
+
+  void _revealIfWanted() {
+    if (showWhileWorking && mode.value == DockMode.hidden) mode.value = DockMode.panel;
+  }
 
   Completer<void>? _loaded;
   Future<void> _queue = Future<void>.value();
@@ -53,9 +88,21 @@ class BrowserService {
         },
         onWebResourceError: (e) {
           final l = _loaded;
-          if ((e.isForMainFrame ?? true) && l != null && !l.isCompleted) l.completeError(Exception(e.description));
+          if (e.isForMainFrame ?? true) {
+            if (l != null && !l.isCompleted) l.completeError(Exception(e.description));
+          } else {
+            _log('Resource failed: ${e.description}');
+          }
         },
-      ));
+        onHttpError: (e) {
+          _log('HTTP ${e.response?.statusCode}: ${e.request?.uri}');
+        },
+      ))
+      ..setOnConsoleMessage((m) {
+        if (m.level == JavaScriptLogLevel.error || m.level == JavaScriptLogLevel.warning) {
+          _log('console ${m.level.name}: ${m.message}');
+        }
+      });
     final platform = c.platform;
     if (platform is AndroidWebViewController) {
       // Lets the assistant hand a stored image to a page's "upload" button.
@@ -147,7 +194,7 @@ class BrowserService {
   }
 
   Future<String> open(String address) => _serial(() async {
-        mode.value = mode.value == DockMode.hidden ? DockMode.panel : mode.value;
+        _revealIfWanted();
         var a = address.trim();
         if (!a.startsWith('http')) a = 'https://$a';
         await _load(a);
@@ -157,7 +204,7 @@ class BrowserService {
   Future<String> read() => _serial(snapshot);
 
   Future<String> click(int id) => _serial(() async {
-        mode.value = mode.value == DockMode.hidden ? DockMode.panel : mode.value;
+        _revealIfWanted();
         _loaded = Completer<void>();
         final r = await _eval('''
 (function(id){var e=document.querySelector('[data-oid="'+id+'"]');if(!e)return 'Element $id not found. Read the page again.';
@@ -170,7 +217,7 @@ class BrowserService {
       });
 
   Future<String> type(int id, String text, bool submit) => _serial(() async {
-        mode.value = mode.value == DockMode.hidden ? DockMode.panel : mode.value;
+        _revealIfWanted();
         final t = jsonEncode(text);
         final r = await _eval('''
 (function(id,text,submit){var e=document.querySelector('[data-oid="'+id+'"]');if(!e)return 'Element '+id+' not found. Read the page again.';
@@ -198,6 +245,65 @@ class BrowserService {
         await controller.goBack();
         await Future<void>.delayed(const Duration(milliseconds: 1500));
         return snapshot();
+      });
+
+  static const String _checkJs = r'''
+(function(){
+ var w=innerWidth,out={};
+ function nm(e){var c=(typeof e.className==='string'&&e.className)?'.'+e.className.trim().split(/\s+/)[0]:'';return e.tagName.toLowerCase()+(e.id?'#'+e.id:'')+c;}
+ out.title=document.title;
+ out.viewportMeta=!!document.querySelector('meta[name=viewport]');
+ out.width=w;out.scrollWidth=document.documentElement.scrollWidth;out.scrollHeight=document.documentElement.scrollHeight;
+ var over=[];var all=document.querySelectorAll('body *');
+ for(var i=0;i<all.length&&over.length<8;i++){var r=all[i].getBoundingClientRect();if(r.width>0&&r.right>w+2){over.push(nm(all[i])+' right='+Math.round(r.right));}}
+ out.overflowing=over;
+ out.brokenImages=[].slice.call(document.images).filter(function(i){return i.complete&&i.naturalWidth===0;}).map(function(i){return i.getAttribute('src');}).slice(0,8);
+ out.headings=[].slice.call(document.querySelectorAll('h1,h2,h3')).slice(0,14).map(function(h){return h.tagName+': '+(h.innerText||'').trim().slice(0,60);});
+ out.counts={links:document.links.length,buttons:document.querySelectorAll('button').length,inputs:document.querySelectorAll('input,textarea,select').length,images:document.images.length,deadLinks:document.querySelectorAll('a[href="#"],a:not([href])').length};
+ var small=0;for(var j=0;j<all.length;j++){var t=all[j];if(t.children.length===0&&(t.innerText||'').trim()){var fs=parseFloat(getComputedStyle(t).fontSize);if(fs<11)small++;}}
+ out.tinyTextElements=small;
+ var blocks=[];var kids=document.body?document.body.children:[];
+ for(var k=0;k<kids.length&&blocks.length<14;k++){var b=kids[k];if(['SCRIPT','STYLE'].indexOf(b.tagName)>=0)continue;var rr=b.getBoundingClientRect();blocks.push(nm(b)+' h='+Math.round(rr.height)+' "'+(b.innerText||'').trim().replace(/\s+/g,' ').slice(0,50)+'"');}
+ out.layout=blocks;
+ var bg=getComputedStyle(document.body).backgroundColor,fg=getComputedStyle(document.body).color;
+ out.bodyColors='text '+fg+' on '+bg;
+ out.text=(document.body?document.body.innerText:'').replace(/\n{3,}/g,'\n\n').slice(0,1800);
+ return JSON.stringify(out);
+})()
+''';
+
+  /// Opens a page in the background and reports what a person would see and what is broken:
+  /// text, structure, overflow, broken images and any script errors or failed requests.
+  Future<String> check(String address, {int waitMs = 1200}) => _serial(() async {
+        logs.clear();
+        _revealIfWanted();
+        await _load(address);
+        await Future<void>.delayed(Duration(milliseconds: waitMs));
+        final raw = await _eval(_checkJs);
+        final b = StringBuffer();
+        try {
+          final j = jsonDecode(raw as String) as Map<String, dynamic>;
+          b.writeln('Checked $address (viewport ${j['width']}px wide, like a phone)');
+          b.writeln('Title: ${j['title']}');
+          b.writeln('Viewport meta tag: ${j['viewportMeta'] == true ? 'yes' : 'MISSING (page will not be responsive)'}');
+          final sw = j['scrollWidth'] as num? ?? 0;
+          final w = j['width'] as num? ?? 0;
+          b.writeln('Horizontal overflow: ${sw > w + 2 ? 'YES, content is ${sw}px wide in a ${w}px screen' : 'no'}');
+          final over = (j['overflowing'] as List?) ?? <dynamic>[];
+          if (over.isNotEmpty) b.writeln('Elements wider than the screen: ${over.join(', ')}');
+          final broken = (j['brokenImages'] as List?) ?? <dynamic>[];
+          b.writeln('Broken images: ${broken.isEmpty ? 'none' : broken.join(', ')}');
+          b.writeln('Counts: ${j['counts']}; tiny text elements (<11px): ${j['tinyTextElements']}');
+          b.writeln('Colors: ${j['bodyColors']}');
+          b.writeln('Headings:\n${((j['headings'] as List?) ?? <dynamic>[]).join('\n')}');
+          b.writeln('Top-level layout:\n${((j['layout'] as List?) ?? <dynamic>[]).join('\n')}');
+          b.writeln('Visible text:\n${j['text']}');
+        } catch (_) {
+          b.writeln(raw.toString());
+        }
+        b.writeln('\nScript errors / failed requests (${logs.length}):');
+        b.writeln(logs.isEmpty ? 'none' : logs.join('\n'));
+        return b.toString();
       });
 
   /// Runs JavaScript in the page and returns the result as text.

@@ -14,7 +14,13 @@ from pathlib import Path
 p = Path(sys.argv[1])
 s = p.read_text()
 s = re.sub(r'android:label="[^"]*"', 'android:label="Omni Chat"', s, count=1)
-perms = ["android.permission.INTERNET"]
+perms = [
+    "android.permission.INTERNET",
+    "android.permission.FOREGROUND_SERVICE",
+    "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+    "android.permission.POST_NOTIFICATIONS",
+    "android.permission.WAKE_LOCK",
+]
 lines = ""
 for name in perms:
     if f'android:name="{name}"' not in s:
@@ -23,9 +29,13 @@ s = s.replace('<application', lines + '    <application', 1)
 # Allow http:// servers on the local network (Ollama, LM Studio).
 if 'usesCleartextTraffic' not in s:
     s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
+if 'KeepAliveService' not in s:
+    svc = '        <service android:name=".KeepAliveService" android:foregroundServiceType="dataSync" android:exported="false" />\n    '
+    s = s.replace('</application>', svc + '</application>', 1)
 p.write_text(s)
 PY
-grep -nE 'label|uses-permission|Cleartext' "$MANIFEST"
+grep -nE 'label|uses-permission|Cleartext|KeepAlive' "$MANIFEST"
+python3 "$ROOT/tool/keepalive.py" "$ROOT"
 
 # Some plugins are compiled against an older Android API than their own dependencies need.
 # Raise every plugin module to API 36 so the AAR metadata check passes.

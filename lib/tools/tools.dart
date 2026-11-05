@@ -2,6 +2,7 @@ import '../core/models.dart';
 import '../llm/llm.dart';
 import '../plugins/installer.dart';
 import '../plugins/plugin.dart';
+import '../projects/project_tools.dart';
 import 'browser_service.dart';
 import 'github_tools.dart';
 import 'web_tools.dart';
@@ -24,6 +25,15 @@ abstract class ToolHost {
 
   /// Runs a tool that belongs to an installed plugin, or returns null when [name] is not one.
   Future<String?> runPluginTool(String name, Map<String, dynamic> args);
+
+  /// The project (folder of files) of the running chat, or empty.
+  String get projectId;
+
+  /// Makes [id] the project of the running chat.
+  void useProject(String id);
+
+  /// Attaches a file made by a tool to the assistant's reply so the person can save it.
+  void deliver(String name, String path);
 }
 
 Map<String, dynamic> _obj(Map<String, dynamic> props, [List<String> required = const <String>[]]) =>
@@ -483,6 +493,7 @@ final List<ToolDef> builtinTools = <ToolDef>[
     ),
     run: (a, host) => BrowserService.instance.back(),
   ),
+  ...projectToolDefs,
   ToolDef(
     id: 'current_time',
     title: 'Current date and time',

@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/services.dart';
 import 'model_list.dart';
@@ -67,6 +72,22 @@ class _PluginsScreenState extends State<PluginsScreen> {
             color: iosIndigo,
             value: s.pluginBrowser,
             onChanged: (v) => set(() => s.pluginBrowser = v),
+          ),
+          SwitchCell(
+            title: 'Show it while it works',
+            subtitle: 'Off: it works in the background and the chat stays in view',
+            icon: CupertinoIcons.eye,
+            color: iosTeal,
+            value: s.browserVisible,
+            onChanged: (v) => set(() => s.browserVisible = v),
+          ),
+          SwitchCell(
+            title: 'Keep working in the background',
+            subtitle: 'Long tasks continue when you leave the app (shows a notification)',
+            icon: CupertinoIcons.bolt_horizontal,
+            color: iosOrange,
+            value: s.keepAlive,
+            onChanged: (v) => set(() => s.keepAlive = v),
           ),
           Cell(
             title: 'Open browser',
@@ -217,10 +238,16 @@ class _PluginsScreenState extends State<PluginsScreen> {
               ]),
             ),
           Cell(
-            title: 'Add plugin',
+            title: 'Add plugin or skill',
             icon: CupertinoIcons.plus,
             color: iosGreen,
-            onTap: _addPlugin,
+            onTap: _addMenu,
+          ),
+          Cell(
+            title: 'How to add plugins',
+            icon: CupertinoIcons.question_circle,
+            color: iosGray,
+            onTap: _help,
           ),
         ],
       ),
@@ -259,6 +286,102 @@ class _PluginsScreenState extends State<PluginsScreen> {
     if (picked == null) return;
     setState(() => store.settings.helperModel = picked);
     store.saveSettings();
+  }
+
+  Future<void> _addMenu() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheet) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(CupertinoIcons.link), title: const Text('From a link'), subtitle: const Text('MCP server, plugin.json or GitHub repo'), onTap: () => Navigator.pop(sheet, 'link')),
+          ListTile(leading: const Icon(CupertinoIcons.doc_on_clipboard), title: const Text('Paste text'), subtitle: const Text('plugin.json, MCP config or SKILL.md'), onTap: () => Navigator.pop(sheet, 'text')),
+          ListTile(leading: const Icon(CupertinoIcons.doc), title: const Text('Choose a file'), subtitle: const Text('.json, .md or a .zip of skills'), onTap: () => Navigator.pop(sheet, 'file')),
+          ListTile(leading: const Icon(CupertinoIcons.question_circle), title: const Text('How to add plugins'), onTap: () => Navigator.pop(sheet, 'help')),
+        ]),
+      ),
+    );
+    if (choice == 'link') await _addPlugin();
+    if (choice == 'text') await _addText();
+    if (choice == 'file') await _addFile();
+    if (choice == 'help') await _help();
+  }
+
+  Future<void> _report(String label, Future<String> Function() job) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(SnackBar(content: Text(label), duration: const Duration(seconds: 30)));
+    String result;
+    try {
+      result = await job();
+    } catch (e) {
+      result = 'Could not install: $e';
+    }
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(result), duration: const Duration(seconds: 7)));
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _addText() async {
+    final text = TextEditingController();
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Paste plugin or skill'),
+        content: TextField(
+          controller: text,
+          autofocus: true,
+          minLines: 6,
+          maxLines: 12,
+          style: const TextStyle(fontFamily: 'monospace', fontSize: 12.5),
+          decoration: const InputDecoration(hintText: 'plugin.json, {"mcpServers": …} or SKILL.md text'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('Install')),
+        ],
+      ),
+    );
+    final t = text.text;
+    text.dispose();
+    if (go != true || t.trim().isEmpty || !mounted) return;
+    await _report('Installing…', () => installFromText(engine, t, '', ''));
+  }
+
+  Future<void> _addFile() async {
+    final r = await FilePicker.platform.pickFiles(type: FileType.any);
+    final f = r?.files.single;
+    if (f == null || f.path == null || !mounted) return;
+    final name = f.name.toLowerCase();
+    await _report('Installing ${f.name}…', () async {
+      final bytes = await File(f.path!).readAsBytes();
+      if (name.endsWith('.zip')) return installFromZip(engine, bytes);
+      final fallback = f.name.replaceAll(RegExp(r'\.\w+$'), '');
+      return installFromText(engine, utf8.decode(bytes, allowMalformed: true), '', '', fallbackName: fallback);
+    });
+  }
+
+  Future<void> _help() async {
+    await showDialog<void>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('How to add plugins'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(child: SelectableText(pluginHelp, style: const TextStyle(fontSize: 13.5, height: 1.4))),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(const ClipboardData(text: pluginHelp));
+              Navigator.pop(d);
+            },
+            child: const Text('Copy'),
+          ),
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Close')),
+        ],
+      ),
+    );
   }
 
   Future<void> _addPlugin() async {

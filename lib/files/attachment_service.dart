@@ -5,6 +5,7 @@ import 'package:archive/archive.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/models.dart';
+import '../projects/projects.dart';
 
 class AttachmentException implements Exception {
   AttachmentException(this.message);
@@ -151,6 +152,28 @@ class AttachmentService {
     return d;
   }
 
+  Future<Attachment> _projectAttachment(String projectId, String projectName, String name, int size, String summary) async {
+    final files = await projects.list(projectId);
+    final b = StringBuffer('[[project:$projectId]]\n"$name" was unpacked into the project "$projectName" on the phone. $summary '
+        '${files.length} files in total. Work on it with the project_* tools (project_list, project_search, project_read, project_edit, project_write).\n\nFiles:\n');
+    for (final f in files.take(150)) {
+      b.writeln(f.path);
+    }
+    if (files.length > 150) b.writeln('… ${files.length - 150} more. Use project_list with a folder path to see them.');
+    return Attachment(id: newId(), name: name, mime: 'application/zip', kind: AttachmentKind.text, size: size, text: b.toString());
+  }
+
+  /// Copies a whole folder from the phone into a new project.
+  Future<Attachment> ingestFolder(String folder) async {
+    final name = folder.split('/').where((s) => s.isNotEmpty).last;
+    try {
+      final (p, summary) = await projects.importFolder(folder, name);
+      return _projectAttachment(p.id, p.name, name, 0, summary);
+    } catch (e) {
+      throw AttachmentException('Could not read that folder. Android may block it: put the files in a ZIP and attach the ZIP instead.');
+    }
+  }
+
   /// Turns a picked file into an attachment. Throws [AttachmentException] when it cannot be used.
   Future<Attachment> ingest(String sourcePath, String name) async {
     final file = File(sourcePath);
@@ -172,6 +195,15 @@ class AttachmentService {
       final stored = '${folder.path}/${id}_$name';
       await file.copy(stored);
       return Attachment(id: id, name: name, mime: 'application/pdf', kind: AttachmentKind.pdf, path: stored, size: size);
+    }
+    if (ext == 'zip') {
+      if (size > 400 * 1024 * 1024) throw AttachmentException('$name is larger than 400 MB');
+      try {
+        final (p, summary) = await projects.importZip(sourcePath, name);
+        return _projectAttachment(p.id, p.name, name, size, summary);
+      } catch (e) {
+        throw AttachmentException('Could not open $name as a project');
+      }
     }
     if (size > 60 * 1024 * 1024) throw AttachmentException('$name is larger than 60 MB');
     String text;

@@ -268,8 +268,10 @@ class ChatMessage extends ChangeNotifier {
     this.model = '',
     List<String>? sources,
     this.note = '',
+    List<String>? outputs,
   })  : id = id ?? newId(),
         sources = sources ?? <String>[],
+        outputs = outputs ?? <String>[],
         attachments = attachments ?? <Attachment>[],
         toolCalls = toolCalls ?? <ToolCall>[],
         at = at ?? DateTime.now().millisecondsSinceEpoch;
@@ -296,6 +298,9 @@ class ChatMessage extends ChangeNotifier {
   /// Shown above the reply but never sent to the model, for example the text read from an image.
   String note;
 
+  /// Files the assistant made for the person (a project ZIP, say), each as "name<TAB>path".
+  final List<String> outputs;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'role': role,
@@ -309,6 +314,7 @@ class ChatMessage extends ChangeNotifier {
         'model': model,
         'sources': sources,
         'note': note,
+        'outputs': outputs,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
@@ -330,6 +336,7 @@ class ChatMessage extends ChangeNotifier {
         model: j['model'] as String? ?? '',
         sources: (j['sources'] as List?)?.whereType<String>().toList(),
         note: j['note'] as String? ?? '',
+        outputs: (j['outputs'] as List?)?.whereType<String>().toList(),
       );
 }
 
@@ -345,6 +352,7 @@ class Conversation {
     List<String>? activeSkillIds,
     this.temporary = false,
     this.web = true,
+    this.projectId = '',
   })  : createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         messages = messages ?? <ChatMessage>[],
@@ -365,6 +373,9 @@ class Conversation {
   /// Search the web before answering.
   bool web;
 
+  /// The project (folder of files) this chat works on, or empty.
+  String projectId;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'title': title,
@@ -376,6 +387,7 @@ class Conversation {
         'activeSkillIds': activeSkillIds,
         'temporary': temporary,
         'web': web,
+        'projectId': projectId,
       };
 
   factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
@@ -392,6 +404,7 @@ class Conversation {
         activeSkillIds: (j['activeSkillIds'] as List?)?.whereType<String>().toList(),
         temporary: j['temporary'] as bool? ?? false,
         web: j['web'] as bool? ?? true,
+        projectId: j['projectId'] as String? ?? '',
       );
 }
 
@@ -461,7 +474,7 @@ class AppSettings {
     this.webTools = true,
     this.memoryEnabled = true,
     this.maxAttachments = 20,
-    this.maxToolSteps = 20,
+    this.maxToolSteps = 30,
     this.defaultProviderId = '',
     this.webAlways = true,
     this.pluginGithub = true,
@@ -473,6 +486,8 @@ class AppSettings {
     this.imageReader = 'helper',
     this.helperProviderId = '',
     this.helperModel = '',
+    this.browserVisible = false,
+    this.keepAlive = true,
     List<String>? favorites,
   }) : favorites = favorites ?? <String>[];
 
@@ -504,6 +519,12 @@ class AppSettings {
   String helperProviderId;
   String helperModel;
 
+  /// Show the browser panel while the assistant works in it. Off: it works in the background.
+  bool browserVisible;
+
+  /// Keep long tasks running when the app is in the background.
+  bool keepAlive;
+
   /// Favorite models, each as "providerId|model".
   List<String> favorites;
 
@@ -526,6 +547,8 @@ class AppSettings {
         'imageReader': imageReader,
         'helperProviderId': helperProviderId,
         'helperModel': helperModel,
+        'browserVisible': browserVisible,
+        'keepAlive': keepAlive,
         'favorites': favorites,
       };
 
@@ -548,11 +571,13 @@ class AppSettings {
         imageReader: j['imageReader'] as String? ?? 'helper',
         helperProviderId: j['helperProviderId'] as String? ?? '',
         helperModel: j['helperModel'] as String? ?? '',
+        browserVisible: j['browserVisible'] as bool? ?? false,
+        keepAlive: j['keepAlive'] as bool? ?? true,
         favorites: (j['favorites'] as List?)?.whereType<String>().toList(),
       );
 }
 
-/// The old default of 8 steps is too small for agent tasks, so it becomes 20.
-int _steps(int? saved) => (saved == null || saved == 8) ? 20 : saved;
+/// The old defaults of 8 and 20 steps are too small for agent and project tasks, so they become 30.
+int _steps(int? saved) => (saved == null || saved == 8 || saved == 20) ? 30 : saved;
 
 String prettyJson(Object? value) => const JsonEncoder.withIndent('  ').convert(value);

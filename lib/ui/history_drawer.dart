@@ -6,6 +6,7 @@ import '../data/services.dart';
 import '../tools/browser_service.dart';
 import 'memory_screen.dart';
 import 'plugins_screen.dart';
+import 'project_screens.dart';
 import 'providers_screen.dart';
 import 'settings_screen.dart';
 import 'skills_screen.dart';
@@ -103,6 +104,7 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
             widget.onNewChat();
           }),
           _nav(CupertinoIcons.bolt, 'Skills', () => _open(const SkillsScreen())),
+          _nav(CupertinoIcons.folder, 'Projects', () => _open(const ProjectsScreen())),
           _nav(CupertinoIcons.square_grid_2x2, 'Plugins', () => _open(const PluginsScreen())),
           _nav(CupertinoIcons.compass, 'Browser', () {
             Navigator.pop(context);

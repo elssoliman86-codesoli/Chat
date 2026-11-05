@@ -203,6 +203,24 @@ class ComposerState extends State<Composer> {
     }
   }
 
+  Future<void> _folder() async {
+    try {
+      final dir = await FilePicker.platform.getDirectoryPath();
+      if (dir == null) return;
+      setState(() => _loading++);
+      try {
+        final a = await attachments.ingestFolder(dir);
+        if (mounted) setState(() => _files.add(a));
+      } on AttachmentException catch (e) {
+        _toast(e.toString());
+      } finally {
+        if (mounted) setState(() => _loading--);
+      }
+    } catch (e) {
+      _toast('Could not open the folder. Attach a ZIP of it instead.');
+    }
+  }
+
   void _attachMenu() {
     showModalBottomSheet<void>(
       context: context,
@@ -211,7 +229,8 @@ class ComposerState extends State<Composer> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           _sheetRow(sheet, CupertinoIcons.camera, 'Camera', _camera),
           _sheetRow(sheet, CupertinoIcons.photo, 'Photos', _photos),
-          _sheetRow(sheet, CupertinoIcons.doc, 'Files', _pickFiles),
+          _sheetRow(sheet, CupertinoIcons.doc, 'Files and ZIP projects', _pickFiles),
+          _sheetRow(sheet, CupertinoIcons.folder, 'Folder', _folder),
           _sheetRow(sheet, CupertinoIcons.compass, 'Browser', openBrowser),
           const SizedBox(height: 8),
         ]),

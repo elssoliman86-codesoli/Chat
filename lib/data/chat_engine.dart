@@ -1,14 +1,17 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
 import '../core/models.dart';
 import '../llm/llm.dart';
 import '../plugins/plugin.dart';
+import '../tools/browser_service.dart';
 import '../tools/image_reader.dart';
 import '../tools/tools.dart';
 import '../tools/web_tools.dart';
 import 'app_store.dart';
+import 'keep_alive.dart';
 import 'services.dart' show navigatorKey;
 
 /// Runs a conversation turn: builds the prompt, streams the answer, runs tools and repeats.
@@ -78,6 +81,9 @@ class ChatEngine implements ToolHost {
 
   @override
   Future<String> askUser(String question) async {
+    if (BrowserService.instance.needed.value && BrowserService.instance.url.value.isNotEmpty) {
+      return BrowserService.instance.askInPanel(question);
+    }
     final ctx = navigatorKey.currentContext;
     if (ctx == null) return 'The person is not available.';
     final controller = TextEditingController();
@@ -132,9 +138,25 @@ class ChatEngine implements ToolHost {
   }
 
   @override
+  String get projectId => _running?.projectId ?? '';
+
+  @override
+  void useProject(String id) {
+    _running?.projectId = id;
+    store.changed();
+  }
+
+  @override
+  void deliver(String name, String path) {
+    _currentReply?.outputs.add('$name\t$path');
+    _currentReply?.touch();
+  }
+
+  @override
   bool get memoryAllowed => store.settings.memoryEnabled && !(_running?.temporary ?? false);
 
   ChatMessage? _streaming;
+  ChatMessage? _currentReply;
 
   /// Redraws only the message that is being written, at most ten times a second.
   void _notifySoon(ChatMessage m) {
@@ -192,9 +214,9 @@ class ChatEngine implements ToolHost {
     }
     if (st.pluginBrowser) {
       b.writeln('\nBrowser: for tasks on websites use browser_open, then browser_read, browser_click and browser_type, and keep '
-          'going until the whole task is done without asking the person to do steps you can do. The browser is visible to '
-          'them in a panel. When you need a login, a captcha, a payment, a permission or a decision, call ask_user and '
-          'wait: the page stays open so they can act, then continue. Never type passwords or card numbers yourself. '
+          'going until the whole task is done without asking the person to do steps you can do. The browser works in the background and '
+          'does not cover the chat. When you need a login, a captcha, a payment, a permission or a decision, call ask_user: the browser '
+          'comes up so they can act, then continue. Never type passwords or card numbers yourself. '
           'Ask for confirmation before irreversible actions (sending, buying, deleting, publishing).');
     }
     if (st.pluginGmail && st.pluginBrowser) {
@@ -208,6 +230,17 @@ class ChatEngine implements ToolHost {
           'text, and use Share or Download only after the person approves. If Canva shows a sign-in page, call ask_user '
           'so they sign in in the panel.');
     }
+    b.writeln('\nProjects: you have a workspace of real files on the phone. For anything bigger than one small file (websites, apps, '
+        'scripts, multi-file code) do NOT paste code in the chat: call project_create, then project_write with SEVERAL complete files per call '
+        '(no placeholders), linked by real relative paths (index.html uses css/style.css and js/app.js, and so on). Create every file the project needs '
+        'plus a README. Work in the background and keep going until the project is complete. For a web project, call project_check after writing: it '
+        'runs the project on the local server in a hidden phone-sized browser and reports the text, layout, overflow, broken images and script errors. '
+        'Read the report, judge whether the page is right (is the content there, is it readable, does it fit the screen, any errors), fix problems '
+        'with project_edit or project_write and check again (at most 3 rounds) before saying it works. When finished call project_export so the person '
+        'gets a ZIP. If the person attached a ZIP it is already unpacked into the current project: use project_list, project_search and project_read '
+        'to analyze it (big projects: one folder at a time) and project_edit or project_write to change it. For a GitHub link call project_import_github, '
+        'work on the files, and push the result with project_push_github when asked. The person can preview the whole project from the bar above the '
+        'message box. Never repeat a tool call with the same arguments when nothing changed: use the result you already have, change approach, or answer.');
     b.writeln('\nTo add skills or plugins to this app when the person gives you a link or text, use install_skills, '
         'install_plugin or create_skill. When you need permission, a login, a captcha or a decision from the person, '
         'call ask_user instead of guessing.');
@@ -230,6 +263,7 @@ class ChatEngine implements ToolHost {
         'browser' => st.pluginBrowser,
         'github' => st.pluginGithub,
         'github_write' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
+        'project_push' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
         _ => true,
       };
       if (on) ids.add(t.id);
@@ -257,6 +291,10 @@ class ChatEngine implements ToolHost {
     if (busy) return;
     final clean = text.trim();
     if (clean.isEmpty && attachments.isEmpty) return;
+    for (final a in attachments) {
+      final m = RegExp(r'^\[\[project:([^\]]+)\]\]').firstMatch(a.text);
+      if (m != null) c.projectId = m.group(1)!;
+    }
     c.messages.add(ChatMessage(role: 'user', text: clean, attachments: List<Attachment>.of(attachments)));
     if (c.title == 'New chat') {
       final basis = clean.isNotEmpty ? clean : attachments.first.name;
@@ -411,10 +449,45 @@ class ChatEngine implements ToolHost {
         t.contains('modalit');
   }
 
+  final Map<String, int> _seenCalls = <String, int>{};
+  int _browserEpoch = 0;
+
+  /// Runs a tool call, but stops the model from repeating the same call when nothing changed.
+  Future<String> _runOnce(ToolCall call) async {
+    final name = call.name;
+    final changesPage = name == 'browser_open' ||
+        name == 'browser_click' ||
+        name == 'browser_type' ||
+        name == 'browser_scroll' ||
+        name == 'browser_back';
+    final repeatable = name == 'ask_user' || name == 'current_time' || name == 'browser_scroll' || name.startsWith('project_write') || name == 'project_edit';
+    if (!repeatable) {
+      final sig = '$name|${jsonEncode(call.args)}|$_browserEpoch';
+      final n = (_seenCalls[sig] ?? 0) + 1;
+      _seenCalls[sig] = n;
+      if (n >= 2) {
+        return 'You already made this exact call and nothing changed since. Do not repeat it. Use the earlier result, '
+            'try a different approach, or finish and answer the person.';
+      }
+    }
+    if (name == 'browser_back') {
+      final backs = (_seenCalls['#back'] ?? 0) + 1;
+      _seenCalls['#back'] = backs;
+      if (backs > 3) return 'You went back several times already. Stop going back: open the address you need directly with browser_open, or answer.';
+    }
+    final out = await runTool(call, this);
+    if (changesPage) _browserEpoch++;
+    return out;
+  }
+
   Future<void> _run(Conversation c) async {
     final provider = store.providerById(c.providerId) ?? store.defaultProvider;
     _running = c;
     _loadedSkills.clear();
+    _seenCalls.clear();
+    _browserEpoch = 0;
+    BrowserService.instance.showWhileWorking = store.settings.browserVisible;
+    if (store.settings.keepAlive) await KeepAlive.start();
     store.changed();
     try {
       if (provider == null) {
@@ -423,12 +496,13 @@ class ChatEngine implements ToolHost {
       if (c.model.isEmpty) c.model = provider.model;
       if (c.model.isEmpty) throw LlmException('Pick a model for ${provider.name}.');
       final client = createClient(provider);
-      final maxSteps = store.settings.maxToolSteps.clamp(1, 40);
+      final maxSteps = store.settings.maxToolSteps.clamp(1, 100);
       String? context;
       var contextDone = false;
       var step = 0;
       while (step < maxSteps) {
         final reply = ChatMessage(role: 'assistant', model: c.model);
+        _currentReply = reply;
         final history = List<ChatMessage>.of(c.messages);
         c.messages.add(reply);
         store.changed();
@@ -487,7 +561,7 @@ class ChatEngine implements ToolHost {
           break;
         }
         for (final call in reply.toolCalls) {
-          final result = await runTool(call, this);
+          final result = await _runOnce(call);
           c.messages.add(ChatMessage(role: 'tool', text: result, toolCallId: call.id, toolName: call.name));
           store.changed();
           if (_abort?.aborted ?? false) break;
@@ -502,6 +576,8 @@ class ChatEngine implements ToolHost {
     } catch (e) {
       c.messages.add(ChatMessage(role: 'assistant', error: true, text: e.toString()));
     } finally {
+      await KeepAlive.stop();
+      _currentReply = null;
       _running = null;
       _abort = null;
       _notifyTimer?.cancel();

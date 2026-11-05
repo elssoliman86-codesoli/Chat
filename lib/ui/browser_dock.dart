@@ -22,6 +22,14 @@ class DockLayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final b = BrowserService.instance;
+    return Stack(children: [
+      Positioned.fill(child: _panel(context)),
+      Positioned(left: 10, right: 10, top: 8, child: const _AskBanner()),
+    ]);
+  }
+
+  Widget _panel(BuildContext context) {
+    final b = BrowserService.instance;
     return LayoutBuilder(builder: (context, box) {
       return ValueListenableBuilder<bool>(
         valueListenable: b.needed,
@@ -33,8 +41,9 @@ class DockLayer extends StatelessWidget {
               final view = WebViewWidget(key: b.viewKey, controller: b.controller);
               switch (mode) {
                 case DockMode.hidden:
+                  // Phone-sized and far off screen: pages lay out like on a phone, but nothing shows over the chat.
                   return Stack(children: [
-                    Positioned(left: 0, bottom: 0, width: 1, height: 1, child: IgnorePointer(child: Opacity(opacity: 0.01, child: view))),
+                    Positioned(left: -5000, top: 0, width: 390, height: 780, child: ExcludeSemantics(child: IgnorePointer(child: view))),
                   ]);
                 case DockMode.panel:
                   return Stack(children: [
@@ -56,6 +65,75 @@ class DockLayer extends StatelessWidget {
         },
       );
     });
+  }
+}
+
+/// The assistant's question while the browser is open: answer or press Done after acting in the page.
+class _AskBanner extends StatefulWidget {
+  const _AskBanner();
+
+  @override
+  State<_AskBanner> createState() => _AskBannerState();
+}
+
+class _AskBannerState extends State<_AskBanner> {
+  final TextEditingController _text = TextEditingController();
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  void _finish(AskRequest r, String answer) {
+    if (!r.done.isCompleted) r.done.complete(answer);
+    _text.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = BrowserService.instance;
+    final pal = paletteOf(context);
+    return ValueListenableBuilder<AskRequest?>(
+      valueListenable: b.ask,
+      builder: (context, r, _) {
+        if (r == null) return const SizedBox.shrink();
+        return Material(
+          elevation: 10,
+          borderRadius: BorderRadius.circular(16),
+          color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF242426) : Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 8),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(CupertinoIcons.hand_raised, size: 18, color: pal.accent),
+                const SizedBox(width: 8),
+                const Text('Needs you', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              ]),
+              const SizedBox(height: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 120),
+                child: SingleChildScrollView(child: Text(r.question, style: const TextStyle(fontSize: 14.5, height: 1.35))),
+              ),
+              TextField(
+                controller: _text,
+                minLines: 1,
+                maxLines: 3,
+                style: const TextStyle(fontSize: 15),
+                decoration: const InputDecoration(hintText: 'Answer (optional)', isDense: true, border: InputBorder.none, filled: false),
+              ),
+              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                TextButton(onPressed: () => _finish(r, 'The person cancelled. Stop the task.'), child: const Text('Cancel task')),
+                FilledButton(
+                  onPressed: () => _finish(r, _text.text.trim().isEmpty ? 'Done.' : _text.text.trim()),
+                  child: const Text('Done'),
+                ),
+              ]),
+            ]),
+          ),
+        );
+      },
+    );
   }
 }
 

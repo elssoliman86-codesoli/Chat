@@ -48,6 +48,10 @@ class _MarkdownTextState extends State<MarkdownText> {
           code: TextStyle(fontFamily: 'monospace', fontSize: 14.5, backgroundColor: pal.bubble),
           blockquoteDecoration: BoxDecoration(border: Border(left: BorderSide(color: pal.separator, width: 3))),
           tableBorder: TableBorder.all(color: pal.separator, width: 0.5),
+          tableColumnWidth: const MaxColumnWidth(IntrinsicColumnWidth(), FixedColumnWidth(260)),
+          tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          tableHead: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+          tableBody: const TextStyle(fontSize: 15, height: 1.35),
         ),
       );
     }

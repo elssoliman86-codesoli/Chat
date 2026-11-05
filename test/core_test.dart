@@ -1,5 +1,6 @@
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:omni_chat/projects/project_store.dart';
 import 'package:omni_chat/core/models.dart';
 import 'package:omni_chat/core/skill_import.dart';
 import 'package:omni_chat/files/attachment_service.dart';
@@ -98,5 +99,21 @@ void main() {
     final back = AppSettings.fromJson(s.toJson());
     expect(back.githubToken, 't');
     expect(back.favorites, ['a|b']);
+  });
+
+  test('project paths are cleaned and escapes refused', () {
+    expect(safeRel('a/b/../c'), isNull);
+    expect(safeRel('/css//style.css'), 'css/style.css');
+    expect(safeRel('./index.html'), 'index.html');
+    expect(safeRel(''), isNull);
+  });
+
+  test('conversation keeps its project and message its outputs', () {
+    final c = Conversation(id: 'x', projectId: 'p1');
+    c.messages.add(ChatMessage(role: 'assistant', outputs: ['a.zip\t/tmp/a.zip']));
+    final back = Conversation.fromJson(c.toJson());
+    expect(back.projectId, 'p1');
+    expect(back.messages.first.outputs, ['a.zip\t/tmp/a.zip']);
+    expect(AppSettings.fromJson(<String, dynamic>{}).browserVisible, false);
   });
 }
