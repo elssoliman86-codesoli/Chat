@@ -418,6 +418,7 @@ class Skill {
     List<String>? tools,
     this.autoUse = true,
     this.enabled = true,
+    this.alwaysOn = false,
   }) : tools = tools ?? <String>[];
 
   final String id;
@@ -432,6 +433,9 @@ class Skill {
   bool autoUse;
   bool enabled;
 
+  /// When true, this skill is injected into every conversation's system prompt.
+  bool alwaysOn;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'name': name,
@@ -440,6 +444,7 @@ class Skill {
         'tools': tools,
         'autoUse': autoUse,
         'enabled': enabled,
+        'alwaysOn': alwaysOn,
       };
 
   factory Skill.fromJson(Map<String, dynamic> j) => Skill(
@@ -450,6 +455,7 @@ class Skill {
         tools: (j['tools'] as List?)?.whereType<String>().toList(),
         autoUse: j['autoUse'] as bool? ?? true,
         enabled: j['enabled'] as bool? ?? true,
+        alwaysOn: j['alwaysOn'] as bool? ?? false,
       );
 }
 
