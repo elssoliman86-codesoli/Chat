@@ -95,7 +95,7 @@ class SkillsScreen extends StatelessWidget {
             for (final s in store.skills)
               Cell(
                 title: s.name,
-                subtitle: '${s.description}${s.tools.isEmpty ? '' : '\nTools: ${s.tools.join(', ')}'}',
+                subtitle: '${s.alwaysOn ? 'Always active in every conversation · ' : (s.autoUse ? 'Available for automatic activation · ' : '')}${s.description}${s.tools.isEmpty ? '' : '\nTools: ${s.tools.join(', ')}'}',
                 onTap: () => _edit(context, s),
                 trailing: Switch(
                   value: s.enabled,
