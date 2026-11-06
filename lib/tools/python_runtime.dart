@@ -128,8 +128,29 @@ async function runPy(id, code) {
     try {
       result = await py.runPythonAsync(code);
     } catch (e) {
-      PyBridge.postMessage(JSON.stringify({ id: id, ok: false, out: buf.out, err: buf.err, error: String(e) }));
-      return;
+      // If it's a ModuleNotFoundError, try to install the package automatically
+      const errStr = String(e);
+      if (errStr.includes('ModuleNotFoundError') || errStr.includes('No module named')) {
+        const match = errStr.match(/No module named ['"]([^'"]+)['"]/);
+        const modName = match ? match[1] : null;
+        if (modName) {
+          buf.out += `Installing missing package: ${modName}...\n`;
+          try {
+            await py.runPythonAsync(`import micropip; await micropip.install('${modName}')`);
+            // Retry the original code after installation
+            result = await py.runPythonAsync(code);
+          } catch (installErr) {
+            PyBridge.postMessage(JSON.stringify({ id: id, ok: false, out: buf.out, err: buf.err, error: 'Failed to install ' + modName + ': ' + String(installErr) }));
+            return;
+          }
+        } else {
+          PyBridge.postMessage(JSON.stringify({ id: id, ok: false, out: buf.out, err: buf.err, error: String(e) }));
+          return;
+        }
+      } else {
+        PyBridge.postMessage(JSON.stringify({ id: id, ok: false, out: buf.out, err: buf.err, error: String(e) }));
+        return;
+      }
     }
     let rs = (result === undefined || result === null) ? "None" : String(result);
     PyBridge.postMessage(JSON.stringify({ id: id, ok: true, out: buf.out, err: buf.err, result: rs }));
@@ -143,8 +164,7 @@ async function resetPy(id) {
   PyBridge.postMessage(JSON.stringify({ id: id, ok: true, out: "", err: "", result: "" }));
 }
 </script>
-</body></html>
-''';
+</body></html>''';
 
 /// Mounts the hidden Python web view, far off screen, only once something has asked to run Python.
 /// Put this inside the same Stack as the chat, alongside DockLayer.

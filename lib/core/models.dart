@@ -408,7 +408,8 @@ class Conversation {
       );
 }
 
-/// A reusable capability: instructions the assistant follows, plus the tools it may use.
+/// A skill is a set of instructions plus the tools it may use.
+/// Switch one on inside a chat (the bolt), or let the assistant load it by itself when it fits.
 class Skill {
   Skill({
     required this.id,
@@ -416,21 +417,17 @@ class Skill {
     this.description = '',
     this.instructions = '',
     List<String>? tools,
-    this.autoUse = true,
     this.enabled = true,
+    this.autoUse = false,
   }) : tools = tools ?? <String>[];
 
   final String id;
   String name;
   String description;
   String instructions;
-
-  /// Tool ids from the built-in tool list.
   List<String> tools;
-
-  /// Let the assistant load it by itself when it fits the request.
-  bool autoUse;
   bool enabled;
+  bool autoUse;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
@@ -438,146 +435,82 @@ class Skill {
         'description': description,
         'instructions': instructions,
         'tools': tools,
-        'autoUse': autoUse,
         'enabled': enabled,
+        'autoUse': autoUse,
       };
 
   factory Skill.fromJson(Map<String, dynamic> j) => Skill(
         id: j['id'] as String? ?? newId(),
-        name: j['name'] as String? ?? 'Skill',
+        name: j['name'] as String? ?? '',
         description: j['description'] as String? ?? '',
         instructions: j['instructions'] as String? ?? '',
-        tools: (j['tools'] as List?)?.whereType<String>().toList(),
-        autoUse: j['autoUse'] as bool? ?? true,
+        tools: (j['tools'] as List?)?.whereType<String>().toList() ?? <String>[],
         enabled: j['enabled'] as bool? ?? true,
+        autoUse: j['autoUse'] as bool? ?? false,
       );
 }
 
 class MemoryFact {
   MemoryFact({required this.id, required this.text});
-
   final String id;
-  final String text;
-
+  String text;
   Map<String, dynamic> toJson() => <String, dynamic>{'id': id, 'text': text};
-
   factory MemoryFact.fromJson(Map<String, dynamic> j) =>
       MemoryFact(id: j['id'] as String? ?? newId(), text: j['text'] as String? ?? '');
 }
 
-/// App-wide preferences.
 class AppSettings {
   AppSettings({
-    this.themeMode = 'dark',
     this.customInstructions = '',
-    this.temperature,
-    this.webTools = true,
     this.memoryEnabled = true,
-    this.maxAttachments = 20,
-    this.maxToolSteps = 30,
-    this.defaultProviderId = '',
     this.webAlways = true,
-    this.pluginGithub = true,
-    this.pluginBrowser = true,
-    this.githubWrite = true,
+    this.themeMode = 'dark',
+    this.defaultProviderId = '',
     this.githubToken = '',
+    this.githubWrite = false,
+    this.pluginGithub = false,
+    this.pluginBrowser = false,
     this.pluginGmail = false,
     this.pluginCanva = false,
-    this.imageReader = 'helper',
-    this.helperProviderId = '',
-    this.helperModel = '',
-    this.browserVisible = false,
-    this.keepAlive = true,
-    List<String>? favorites,
-  }) : favorites = favorites ?? <String>[];
+  });
 
-  /// system, dark or light.
-  String themeMode;
   String customInstructions;
-
-  /// null leaves the provider default.
-  double? temperature;
-  bool webTools;
   bool memoryEnabled;
-  int maxAttachments;
-  int maxToolSteps;
-  String defaultProviderId;
-
-  /// New chats search the web before answering.
   bool webAlways;
+  String themeMode;
+  String defaultProviderId;
+  String githubToken;
+  bool githubWrite;
   bool pluginGithub;
   bool pluginBrowser;
-
-  /// Let the assistant commit, open pull requests and issues with the token.
-  bool githubWrite;
-  String githubToken;
   bool pluginGmail;
   bool pluginCanva;
 
-  /// How images are read for models that cannot see: off, helper (another model) or lens (Google Lens in the browser).
-  String imageReader;
-  String helperProviderId;
-  String helperModel;
-
-  /// Show the browser panel while the assistant works in it. Off: it works in the background.
-  bool browserVisible;
-
-  /// Keep long tasks running when the app is in the background.
-  bool keepAlive;
-
-  /// Favorite models, each as "providerId|model".
-  List<String> favorites;
-
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'themeMode': themeMode,
         'customInstructions': customInstructions,
-        'temperature': temperature,
-        'webTools': webTools,
         'memoryEnabled': memoryEnabled,
-        'maxAttachments': maxAttachments,
-        'maxToolSteps': maxToolSteps,
-        'defaultProviderId': defaultProviderId,
         'webAlways': webAlways,
+        'themeMode': themeMode,
+        'defaultProviderId': defaultProviderId,
+        'githubToken': githubToken,
+        'githubWrite': githubWrite,
         'pluginGithub': pluginGithub,
         'pluginBrowser': pluginBrowser,
-        'githubWrite': githubWrite,
-        'githubToken': githubToken,
         'pluginGmail': pluginGmail,
         'pluginCanva': pluginCanva,
-        'imageReader': imageReader,
-        'helperProviderId': helperProviderId,
-        'helperModel': helperModel,
-        'browserVisible': browserVisible,
-        'keepAlive': keepAlive,
-        'favorites': favorites,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
-        themeMode: j['themeMode'] as String? ?? 'dark',
         customInstructions: j['customInstructions'] as String? ?? '',
-        temperature: (j['temperature'] as num?)?.toDouble(),
-        webTools: j['webTools'] as bool? ?? true,
         memoryEnabled: j['memoryEnabled'] as bool? ?? true,
-        maxAttachments: (j['maxAttachments'] as num?)?.toInt() ?? 20,
-        maxToolSteps: _steps((j['maxToolSteps'] as num?)?.toInt()),
-        defaultProviderId: j['defaultProviderId'] as String? ?? '',
         webAlways: j['webAlways'] as bool? ?? true,
-        pluginGithub: j['pluginGithub'] as bool? ?? true,
-        pluginBrowser: j['pluginBrowser'] as bool? ?? true,
-        githubWrite: j['githubWrite'] as bool? ?? true,
+        themeMode: j['themeMode'] as String? ?? 'dark',
+        defaultProviderId: j['defaultProviderId'] as String? ?? '',
         githubToken: j['githubToken'] as String? ?? '',
+        githubWrite: j['githubWrite'] as bool? ?? false,
+        pluginGithub: j['pluginGithub'] as bool? ?? false,
+        pluginBrowser: j['pluginBrowser'] as bool? ?? false,
         pluginGmail: j['pluginGmail'] as bool? ?? false,
         pluginCanva: j['pluginCanva'] as bool? ?? false,
-        imageReader: j['imageReader'] as String? ?? 'helper',
-        helperProviderId: j['helperProviderId'] as String? ?? '',
-        helperModel: j['helperModel'] as String? ?? '',
-        browserVisible: j['browserVisible'] as bool? ?? false,
-        keepAlive: j['keepAlive'] as bool? ?? true,
-        favorites: (j['favorites'] as List?)?.whereType<String>().toList(),
       );
 }
-
-/// The old defaults of 8 and 20 steps are too small for agent and project tasks, so they become 30.
-int _steps(int? saved) => (saved == null || saved == 8 || saved == 20) ? 30 : saved;
-
-String prettyJson(Object? value) => const JsonEncoder.withIndent('  ').convert(value);
