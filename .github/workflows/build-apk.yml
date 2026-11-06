@@ -28,14 +28,16 @@ jobs:
 
       - name: Set up the release signing key
         # So every build is signed the same way and installs over the last one as an update, instead of
-        # needing an uninstall every time. Only runs once the ANDROID_KEYSTORE_BASE64 secret is set
-        # (tool/set_signing_secret.sh); until then the build falls back to debug signing.
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        # needing an uninstall every time. Only acts once the ANDROID_KEYSTORE_BASE64 secret is set;
+        # until then the build falls back to debug signing. (GitHub Actions does not allow the `secrets`
+        # context inside an `if:` condition, so the check happens inside the script instead.)
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-          echo "RELEASE_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "RELEASE_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+          fi
 
       - name: Generate Android project
         run: |
