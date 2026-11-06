@@ -111,7 +111,7 @@ String previewDocument(String language, String code) {
         '(async()=>{const out=document.getElementById("out"),status=document.getElementById("status");'
         'try{const py=await loadPyodide();py.setStdout({batched:s=>out.textContent+=s+"\\n"});'
         'py.setStderr({batched:s=>out.textContent+=s+"\\n"});status.textContent="Running…";'
-        'await runCell(${jsonEncode(code)});status.textContent="Done.";'
+        'await runCell(py, ${jsonEncode(code)});status.textContent="Done.";'
         '}catch(e){out.textContent+="\\n"+String(e);status.textContent="Execution failed.";}})();'
         '</script></body></html>';
   }
