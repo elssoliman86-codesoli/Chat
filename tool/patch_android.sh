@@ -82,6 +82,12 @@ PY
 grep -n "compileSdk" "$ROOT/android/build.gradle.kts" "$ROOT/android/build.gradle" 2>/dev/null || true
 
 # Match the settings of an APK known to install on this phone: no R8 shrinking, plain application id.
+# Release signing: Android refuses to install an update over an existing copy of the app unless both
+# are signed with the same key, so CI must reuse the same key every run instead of an auto-generated
+# debug one. The keystore and its passwords are never committed; they come from a CI secret (set with
+# tool/set_signing_secret.sh) decoded to RELEASE_KEYSTORE_PATH by the workflow, with the passwords read
+# from the environment at build time. Without that secret, the release build falls back to the debug
+# signing Flutter sets up by default, which is fine for trying the app but won't update in place.
 APP_KTS="$ROOT/android/app/build.gradle.kts"
 APP_GRV="$ROOT/android/app/build.gradle"
 if [ -f "$APP_KTS" ]; then
@@ -90,10 +96,22 @@ if [ -f "$APP_KTS" ]; then
     cat >> "$APP_KTS" <<'KTS'
 
 android {
+    val releaseKeystorePath = System.getenv("RELEASE_KEYSTORE_PATH")
+    if (!releaseKeystorePath.isNullOrBlank()) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
             isShrinkResources = false
+            signingConfig = if (!releaseKeystorePath.isNullOrBlank()) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }
     }
 }
@@ -104,10 +122,22 @@ elif [ -f "$APP_GRV" ]; then
   cat >> "$APP_GRV" <<'GRV'
 
 android {
+    def releaseKeystorePath = System.getenv("RELEASE_KEYSTORE_PATH")
+    if (releaseKeystorePath) {
+        signingConfigs {
+            release {
+                storeFile file(releaseKeystorePath)
+                storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             shrinkResources false
+            signingConfig releaseKeystorePath ? signingConfigs.release : signingConfigs.debug
         }
     }
 }
