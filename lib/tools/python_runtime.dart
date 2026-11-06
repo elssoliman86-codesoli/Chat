@@ -120,13 +120,31 @@ function boot() {
   });
 }
 boot();
+// Install importable packages on demand, then retry the original cell once.
+const packageAliases = { PIL: "Pillow", cv2: "opencv-python", yaml: "PyYAML", bs4: "beautifulsoup4", sklearn: "scikit-learn" };
+async function runWithMissingPackages(py, code) {
+  try { return await py.runPythonAsync(code); }
+  catch (first) {
+    const match = String(first).match(/No module named ['"]([^'"]+)['"]/);
+    if (!match) throw first;
+    const moduleName = match[1].split(".")[0];
+    const packageName = packageAliases[moduleName] || moduleName;
+    try { await py.loadPackage(packageName); }
+    catch (_) {
+      await py.loadPackage("micropip");
+      const micropip = py.pyimport("micropip");
+      try { await micropip.install(packageName); } finally { micropip.destroy(); }
+    }
+    return await py.runPythonAsync(code);
+  }
+}
 async function runPy(id, code) {
   buf = { out: "", err: "" };
   try {
     const py = await pyReady;
     let result;
     try {
-      result = await py.runPythonAsync(code);
+      result = await runWithMissingPackages(py, code);
     } catch (e) {
       PyBridge.postMessage(JSON.stringify({ id: id, ok: false, out: buf.out, err: buf.err, error: String(e) }));
       return;
