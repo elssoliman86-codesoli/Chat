@@ -73,7 +73,11 @@ class ChatEngine implements ToolHost {
   void addMemory(String text) => store.addMemory(text);
 
   @override
-  void loadSkill(Skill skill) => _loadedSkills.add(skill.id);
+  void loadSkill(Skill skill) {
+    skill.alwaysOn = true;
+    unawaited(store.saveSkills());
+    store.changed();
+  }
 
   @override
   String get githubToken => store.settings.githubToken;
@@ -271,7 +275,7 @@ class ChatEngine implements ToolHost {
     b.writeln('\nProjects: you have a workspace of real files on the phone. For anything bigger than one small file (websites, apps, '
         'scripts, multi-file code) do NOT paste code in the chat: call project_create, then project_write with SEVERAL complete files per call '
         '(no placeholders), linked by real relative paths (index.html uses css/style.css and js/app.js, and so on). Create every file the project needs '
-        'plus a README. Work in the background and keep going until the project is complete. For a web project, call project_check after writing: it '
+        'plus a README. Before project work, inspect the available auto-use skill descriptions and call use_skill for every skill that materially applies; do not wait for the user to activate project skills manually. Work in the background and keep going until the project is complete. For a web project, call project_check after writing: it '
         'runs the project on the local server in a hidden phone-sized browser and reports the text, layout, overflow, broken images and script errors. '
         'Read the report, judge whether the page is right (is the content there, is it readable, does it fit the screen, any errors), fix problems '
         'with project_edit or project_write and check again (at most 3 rounds) before saying it works. When finished call project_export so the person '
@@ -295,7 +299,7 @@ class ChatEngine implements ToolHost {
   }
 
   List<Skill> _activeSkills(Conversation c) =>
-      store.skills.where((k) => k.enabled && (c.activeSkillIds.contains(k.id) || _loadedSkills.contains(k.id))).toList();
+      store.skills.where((k) => k.enabled && (k.alwaysOn || c.activeSkillIds.contains(k.id))).toList();
 
   List<ToolSpec> buildTools(Conversation c, ProviderConfig provider) {
     if (!provider.supportsTools) return const <ToolSpec>[];
