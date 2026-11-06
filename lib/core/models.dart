@@ -480,7 +480,7 @@ class AppSettings {
     this.webTools = true,
     this.memoryEnabled = true,
     this.maxAttachments = 20,
-    this.maxToolSteps = 30,
+    this.maxToolSteps = 100,
     this.defaultProviderId = '',
     this.webAlways = true,
     this.pluginGithub = true,
@@ -584,6 +584,6 @@ class AppSettings {
 }
 
 /// The old defaults of 8 and 20 steps are too small for agent and project tasks, so they become 30.
-int _steps(int? saved) => (saved == null || saved == 8 || saved == 20) ? 30 : saved;
+int _steps(int? saved) => (saved == null || saved == 8 || saved == 20 || saved == 30) ? 100 : saved;
 
 String prettyJson(Object? value) => const JsonEncoder.withIndent('  ').convert(value);
