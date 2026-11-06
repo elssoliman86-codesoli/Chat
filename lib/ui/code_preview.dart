@@ -12,7 +12,8 @@ void openPreview(BuildContext context, String language, String code) {
   );
 }
 
-/// Runs HTML or SVG from a code block in an isolated web view.
+/// Shows a code block in an isolated web view: HTML/SVG run as-is, Markdown/JSON/CSV are rendered,
+/// and CSS/JavaScript run against a small demo page.
 class CodePreviewPage extends StatefulWidget {
   const CodePreviewPage({super.key, required this.language, required this.code});
 

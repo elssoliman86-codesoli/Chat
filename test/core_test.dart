@@ -4,6 +4,7 @@ import 'package:omni_chat/projects/project_store.dart';
 import 'package:omni_chat/core/models.dart';
 import 'package:omni_chat/core/skill_import.dart';
 import 'package:omni_chat/files/attachment_service.dart';
+import 'package:omni_chat/files/code_export.dart';
 import 'package:omni_chat/llm/llm.dart';
 
 List<int> _zip(Map<String, String> files) {
@@ -115,5 +116,17 @@ void main() {
     expect(back.projectId, 'p1');
     expect(back.messages.first.outputs, ['a.zip\t/tmp/a.zip']);
     expect(AppSettings.fromJson(<String, dynamic>{}).browserVisible, false);
+  });
+
+  test('preview covers the web-renderable languages and runs them', () {
+    expect(isPreviewable('markdown', '# Hi'), true);
+    expect(isPreviewable('json', '{}'), true);
+    expect(isPreviewable('csv', 'a,b'), true);
+    expect(isPreviewable('css', 'body{}'), true);
+    expect(isPreviewable('javascript', 'console.log(1)'), true);
+    expect(isPreviewable('python', 'print(1)'), false);
+    expect(previewDocument('markdown', '# Hi\n\n| a | b |\n|---|---|\n| 1 | 2 |'), contains('<table>'));
+    expect(previewDocument('json', '{"a":1}'), contains('"a": 1'));
+    expect(previewDocument('css', 'body{color:red}'), contains('<style>body{color:red}</style>'));
   });
 }

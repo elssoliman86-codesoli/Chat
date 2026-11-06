@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:markdown/markdown.dart' as md;
 
 const Map<String, String> _extensions = {
   'dart': 'dart', 'python': 'py', 'py': 'py', 'javascript': 'js', 'js': 'js', 'typescript': 'ts', 'ts': 'ts',
@@ -15,15 +16,27 @@ const Map<String, String> _extensions = {
 
 String extensionForLanguage(String language) => _extensions[language.toLowerCase()] ?? 'txt';
 
-/// HTML and SVG can be shown in the preview page.
+const Set<String> _previewLangs = {'html', 'htm', 'svg', 'markdown', 'md', 'json', 'csv', 'css', 'javascript', 'js'};
+
+/// Which languages the Preview button can show: the ones a WebView can actually render or run.
+/// Most languages (Python, Java, C, and so on) have no interpreter on the phone, so they are not offered.
 bool isPreviewable(String language, String code) {
   final l = language.toLowerCase();
-  if (l == 'html' || l == 'htm' || l == 'svg') return true;
+  if (_previewLangs.contains(l)) return true;
   final head = code.trimLeft().toLowerCase();
   return l.isEmpty && (head.startsWith('<!doctype html') || head.startsWith('<html') || head.startsWith('<svg'));
 }
 
-/// Wraps a snippet so a WebView can show it.
+const String _pageHead = '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+    '<style>body{margin:16px;font:16px -apple-system,Roboto,sans-serif;color:#111;background:#fff}'
+    'table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px;text-align:left}'
+    'pre{background:#f4f4f5;padding:12px;border-radius:8px;overflow:auto;white-space:pre-wrap;word-break:break-word}'
+    'code{font-family:monospace}img{max-width:100%}</style>';
+
+String _esc(String s) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+
+/// Wraps a snippet so a WebView can show it: HTML and SVG run as-is, Markdown and JSON are rendered,
+/// CSS and JavaScript run against a small demo page so the person can see the result.
 String previewDocument(String language, String code) {
   final l = language.toLowerCase();
   final trimmed = code.trimLeft().toLowerCase();
@@ -33,6 +46,50 @@ String previewDocument(String language, String code) {
         'svg{max-width:100%;height:auto}</style></head><body>$code</body></html>';
   }
   if (trimmed.startsWith('<!doctype') || trimmed.startsWith('<html')) return code;
+  if (l == 'markdown' || l == 'md') {
+    final html = md.markdownToHtml(code, extensionSet: md.ExtensionSet.gitHubWeb);
+    return '<!doctype html><html><head>$_pageHead</head><body>$html</body></html>';
+  }
+  if (l == 'json') {
+    String pretty;
+    try {
+      pretty = const JsonEncoder.withIndent('  ').convert(jsonDecode(code));
+    } catch (e) {
+      pretty = '$code\n\n(Not valid JSON: $e)';
+    }
+    return '<!doctype html><html><head>$_pageHead</head><body><pre><code>${_esc(pretty)}</code></pre></body></html>';
+  }
+  if (l == 'csv') {
+    final rows = const LineSplitter().convert(code).where((r) => r.trim().isNotEmpty).map((r) => r.split(',')).toList();
+    final b = StringBuffer('<table>');
+    for (var i = 0; i < rows.length; i++) {
+      b.write('<tr>');
+      for (final cell in rows[i]) {
+        b.write(i == 0 ? '<th>${_esc(cell.trim())}</th>' : '<td>${_esc(cell.trim())}</td>');
+      }
+      b.write('</tr>');
+    }
+    b.write('</table>');
+    return '<!doctype html><html><head>$_pageHead</head><body>$b</body></html>';
+  }
+  if (l == 'css') {
+    return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<style>$code</style></head><body>'
+        '<h1>Heading</h1><p>A paragraph of body text, so you can see how it looks with this style sheet applied.</p>'
+        '<button>Button</button> <a href="#">A link</a>'
+        '<div class="card" style="border:1px solid #ddd;padding:12px;margin-top:12px;border-radius:8px">A card</div>'
+        '</body></html>';
+  }
+  if (l == 'javascript' || l == 'js') {
+    return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<style>body{margin:16px;font:14px/1.5 -apple-system,Roboto,sans-serif}#out{white-space:pre-wrap;font-family:monospace;'
+        'background:#f4f4f5;padding:10px;border-radius:8px;margin-top:10px;min-height:20px}</style></head>'
+        '<body><div id="app"></div><div id="out"></div><script>'
+        'const out=document.getElementById("out");const log=(...a)=>{out.textContent+=a.map(x=>typeof x==="object"?JSON.stringify(x):String(x)).join(" ")+"\\n";};'
+        'console.log=log;console.error=log;console.warn=log;'
+        'try{\n${code}\n}catch(e){log("Error: "+e.message);}'
+        '</script></body></html>';
+  }
   return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
       '</head><body>$code</body></html>';
 }

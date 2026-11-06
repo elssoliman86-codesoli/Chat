@@ -36,6 +36,7 @@ class _MarkdownTextState extends State<MarkdownText> {
       _built = MarkdownBody(
         data: widget.text,
         builders: {'pre': CodeBlockBuilder()},
+        imageBuilder: (uri, title, alt) => _MarkdownImage(uri: uri, alt: alt),
         onTapLink: (text, href, title) {
           if (href != null && href.startsWith('http')) widget.onLink(href);
         },
@@ -59,7 +60,57 @@ class _MarkdownTextState extends State<MarkdownText> {
   }
 }
 
-/// Fenced code blocks with a header: language, Preview (HTML / SVG), Copy and Download.
+/// An image inside a reply. Kept to a bounded size so a missing or slow image never grows into
+/// a large empty box: while it loads, and if it fails, it stays a small fixed tile.
+class _MarkdownImage extends StatelessWidget {
+  const _MarkdownImage({required this.uri, this.alt});
+
+  final Uri uri;
+  final String? alt;
+
+  @override
+  Widget build(BuildContext context) {
+    if (uri.scheme != 'http' && uri.scheme != 'https') return _tile(context, CupertinoIcons.photo, alt ?? uri.toString());
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 320),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.network(
+          uri.toString(),
+          fit: BoxFit.contain,
+          alignment: Alignment.centerLeft,
+          loadingBuilder: (context, child, progress) => progress == null ? child : _tile(context, null, null, progress: progress),
+          errorBuilder: (context, error, stack) => _tile(context, CupertinoIcons.exclamationmark_triangle, alt?.isNotEmpty == true ? alt : 'Image could not load'),
+        ),
+      ),
+    );
+  }
+
+  Widget _tile(BuildContext context, IconData? icon, String? label, {ImageChunkEvent? progress}) {
+    final pal = paletteOf(context);
+    return Container(
+      width: 180,
+      height: 120,
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      decoration: BoxDecoration(color: pal.field, borderRadius: BorderRadius.circular(12)),
+      alignment: Alignment.center,
+      child: progress != null
+          ? const SizedBox(width: 20, height: 20, child: CupertinoActivityIndicator())
+          : Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon, size: 22, color: pal.secondary),
+              if (label != null && label.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, color: pal.secondary)),
+                ),
+              ],
+            ]),
+    );
+  }
+}
+
+/// Fenced code blocks with a header: language, Preview when the language can be shown or run, Copy and Download.
 class CodeBlockBuilder extends MarkdownElementBuilder {
   @override
   bool isBlockElement() => true;
