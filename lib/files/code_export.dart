@@ -109,10 +109,10 @@ String previewDocument(String language, String code) {
         'try{await py.loadPackage(pkg)}catch(_){await py.loadPackage("micropip");const mp=py.pyimport("micropip");'
         'try{await mp.install(pkg)}finally{mp.destroy()}}return await py.runPythonAsync(code)}}'
         '(async()=>{const out=document.getElementById("out"),status=document.getElementById("status");'
-        'try{const py=await loadPyodide();py.setStdout({batched:s=>out.textContent+=s+"\\\\n"});'
-        'py.setStderr({batched:s=>out.textContent+=s+"\\\\n"});status.textContent="Running…";'
-        'await runCell(${JSON.stringify(code)},);status.textContent="Done.";'
-        '}catch(e){out.textContent+="\\\\n"+String(e);status.textContent="Execution failed.";}})();'
+        'try{const py=await loadPyodide();py.setStdout({batched:s=>out.textContent+=s+"\\n"});'
+        'py.setStderr({batched:s=>out.textContent+=s+"\\n"});status.textContent="Running…";'
+        'await runCell(${jsonEncode(code)});status.textContent="Done.";'
+        '}catch(e){out.textContent+="\\n"+String(e);status.textContent="Execution failed.";}})();'
         '</script></body></html>';
   }
   if (l == 'javascript' || l == 'js') {
