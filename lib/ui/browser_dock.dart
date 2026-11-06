@@ -40,9 +40,21 @@ class DockLayer extends StatelessWidget {
               final view = WebViewWidget(key: b.viewKey, controller: b.controller);
               switch (mode) {
                 case DockMode.hidden:
-                  // Phone-sized and far off screen: pages lay out like on a phone, but nothing shows over the chat.
+                  // Phone-sized so pages lay out like on a phone (needed for project_check), but invisible and
+                  // untouchable: a platform view (the WebView) is not reliably clipped by a Positioned offset
+                  // on every Android build, so near-zero opacity (not a huge offset) is what actually keeps it
+                  // from covering the chat. Opacity stays just above 0 rather than exactly 0 so Android keeps
+                  // rendering it as a normal, visible-to-the-system view and does not pause its JavaScript.
                   return Stack(children: [
-                    Positioned(left: -5000, top: 0, width: 390, height: 780, child: ExcludeSemantics(child: IgnorePointer(child: view))),
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      width: 390,
+                      height: 780,
+                      child: ExcludeSemantics(
+                        child: IgnorePointer(child: Opacity(opacity: 0.01, child: view)),
+                      ),
+                    ),
                   ]);
                 case DockMode.panel:
                   return Stack(children: [

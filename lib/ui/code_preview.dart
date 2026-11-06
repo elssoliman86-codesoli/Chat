@@ -13,7 +13,8 @@ void openPreview(BuildContext context, String language, String code) {
 }
 
 /// Shows a code block in an isolated web view: HTML/SVG run as-is, Markdown/JSON/CSV are rendered,
-/// and CSS/JavaScript run against a small demo page.
+/// CSS/JavaScript run against a small demo page, React/JSX renders an App component, and Python runs
+/// in an in-browser interpreter (first run needs the internet to download it).
 class CodePreviewPage extends StatefulWidget {
   const CodePreviewPage({super.key, required this.language, required this.code});
 

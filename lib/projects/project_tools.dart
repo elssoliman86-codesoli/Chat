@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 
 import '../llm/llm.dart';
 import '../tools/browser_service.dart';
+import '../tools/python_runtime.dart';
 import '../tools/github_tools.dart';
 import '../tools/tools.dart';
 import 'project_store.dart';
@@ -349,6 +350,29 @@ final List<ToolDef> projectToolDefs = <ToolDef>[
       final name = path.split('/').last;
       host.deliver(name, path);
       return 'ZIP ready: $name with ${files.length} files. It is attached to this reply and the person can save it from the chat.';
+    },
+  ),
+  ToolDef(
+    id: 'python_run',
+    title: 'Run Python',
+    group: 'project',
+    spec: ToolSpec(
+      name: 'python_run',
+      description: 'Runs a Python snippet in a sandbox on the phone (no shell, no access to the device\'s files or apps; the '
+          'project\'s files are not visible to it either). Variables and imports from earlier calls stay available, like a notebook, '
+          'until reset is used. Use it to work out logic, test a function, process some text or numbers, or try an algorithm '
+          'before writing the finished script to the project with project_write. Print what you want to see; the value of the '
+          'last expression is also shown. The first call downloads the Python runtime and takes longer.',
+      parameters: _obj(<String, dynamic>{
+        'code': _str('Python code to run'),
+        'reset': <String, dynamic>{'type': 'boolean', 'description': 'Clear earlier variables and imports first'},
+      }, <String>['code']),
+    ),
+    run: (a, host) async {
+      if (a['reset'] == true) await PythonRuntime.instance.reset();
+      final code = _s(a, 'code');
+      if (code.trim().isEmpty) return 'No code was given.';
+      return PythonRuntime.instance.run(code);
     },
   ),
   ToolDef(

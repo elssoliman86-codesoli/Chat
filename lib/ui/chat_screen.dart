@@ -10,6 +10,7 @@ import 'history_drawer.dart';
 import 'message_view.dart';
 import 'model_list.dart';
 import 'model_picker.dart';
+import '../tools/python_runtime.dart';
 import 'plugins_screen.dart';
 import 'project_screens.dart';
 import 'steps_card.dart';
@@ -216,6 +217,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             ]),
             Positioned.fill(child: DockLayer(onAttach: (page) => _composer.currentState?.addPage(page))),
+            const PythonRuntimeMount(),
           ]),
         );
       },

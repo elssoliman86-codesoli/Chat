@@ -67,6 +67,9 @@ import 'theme.dart';
       return (title: 'Packed the project into a ZIP', detail: '');
     case 'project_push_github':
       return (title: 'Pushed the project to GitHub', detail: '${arg('repo')} ${arg('branch')}');
+    case 'python_run':
+      final code = arg('code');
+      return (title: 'Ran Python', detail: code.length > 80 ? '${code.substring(0, 80)}…' : code);
     default:
       if (c.name.startsWith('github_')) {
         return (title: c.name.substring(7).replaceAll('_', ' '), detail: arg('repo'));
@@ -76,6 +79,7 @@ import 'theme.dart';
 }
 
 IconData _iconFor(String name) {
+  if (name == 'python_run') return CupertinoIcons.chevron_left_slash_chevron_right;
   if (name.startsWith('project_')) return CupertinoIcons.folder;
   if (name.startsWith('browser') || name == 'browse_page') return CupertinoIcons.compass;
   if (name == 'web_search') return CupertinoIcons.search;

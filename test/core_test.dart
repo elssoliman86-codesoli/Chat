@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:omni_chat/projects/project_store.dart';
 import 'package:omni_chat/core/models.dart';
 import 'package:omni_chat/core/skill_import.dart';
+import 'package:omni_chat/data/app_store.dart';
+import 'package:omni_chat/data/chat_engine.dart';
 import 'package:omni_chat/files/attachment_service.dart';
 import 'package:omni_chat/files/code_export.dart';
 import 'package:omni_chat/llm/llm.dart';
@@ -124,9 +126,24 @@ void main() {
     expect(isPreviewable('csv', 'a,b'), true);
     expect(isPreviewable('css', 'body{}'), true);
     expect(isPreviewable('javascript', 'console.log(1)'), true);
-    expect(isPreviewable('python', 'print(1)'), false);
+    expect(isPreviewable('python', 'print(1)'), true);
+    expect(isPreviewable('jsx', 'function App(){return null}'), true);
+    expect(isPreviewable('go', 'func main(){}'), false);
     expect(previewDocument('markdown', '# Hi\n\n| a | b |\n|---|---|\n| 1 | 2 |'), contains('<table>'));
     expect(previewDocument('json', '{"a":1}'), contains('"a": 1'));
     expect(previewDocument('css', 'body{color:red}'), contains('<style>body{color:red}</style>'));
+  });
+
+  test('messages typed while busy are held in order and are not lost on a stop', () {
+    final engine = ChatEngine(AppStore());
+    final c = Conversation(id: 'c1');
+    expect(engine.queued(c), isEmpty);
+    engine.enqueue(c, 'first', <Attachment>[]);
+    engine.enqueue(c, 'second', <Attachment>[]);
+    expect(engine.queued(c).map((q) => q.text), ['first', 'second']);
+    engine.removeQueued(c, 0);
+    expect(engine.queued(c).map((q) => q.text), ['second']);
+    engine.enqueue(c, '  ', <Attachment>[]);
+    expect(engine.queued(c).map((q) => q.text), ['second']);
   });
 }

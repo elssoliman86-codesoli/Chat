@@ -16,10 +16,13 @@ const Map<String, String> _extensions = {
 
 String extensionForLanguage(String language) => _extensions[language.toLowerCase()] ?? 'txt';
 
-const Set<String> _previewLangs = {'html', 'htm', 'svg', 'markdown', 'md', 'json', 'csv', 'css', 'javascript', 'js'};
+const Set<String> _previewLangs = {
+  'html', 'htm', 'svg', 'markdown', 'md', 'json', 'csv', 'css', 'javascript', 'js', 'jsx', 'tsx', 'react', 'python', 'py',
+};
 
-/// Which languages the Preview button can show: the ones a WebView can actually render or run.
-/// Most languages (Python, Java, C, and so on) have no interpreter on the phone, so they are not offered.
+/// Which languages the Preview button can show: the ones a web view can render, a JavaScript engine
+/// can run, or (JavaScript, React/JSX, Python) that have an interpreter available in the app. Compiled
+/// languages (Go, Java, C, Swift, and so on) have no such runtime on the phone, so they are not offered.
 bool isPreviewable(String language, String code) {
   final l = language.toLowerCase();
   if (_previewLangs.contains(l)) return true;
@@ -79,6 +82,38 @@ String previewDocument(String language, String code) {
         '<button>Button</button> <a href="#">A link</a>'
         '<div class="card" style="border:1px solid #ddd;padding:12px;margin-top:12px;border-radius:8px">A card</div>'
         '</body></html>';
+  }
+  if (l == 'jsx' || l == 'tsx' || l == 'react') {
+    return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<style>body{margin:16px;font:14px/1.5 -apple-system,Roboto,sans-serif}#err{white-space:pre-wrap;font-family:monospace;'
+        'color:#b00020;background:#fdecea;padding:10px;border-radius:8px;margin-top:10px}</style>'
+        '<script src="https://unpkg.com/react@18/umd/react.development.js"></script>'
+        '<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>'
+        '<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>'
+        '</head><body><div id="root"></div><div id="err"></div>'
+        '<script type="text/babel" data-presets="react,typescript" data-type="module">'
+        'try{\n${code}\nif(typeof App!=="undefined"){ReactDOM.createRoot(document.getElementById("root")).render(<App/>);}'
+        '}catch(e){document.getElementById("err").textContent="Error: "+e.message;}'
+        '</script></body></html>';
+  }
+  if (l == 'python' || l == 'py') {
+    return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<style>body{margin:16px;font:14px/1.5 -apple-system,Roboto,sans-serif}#out{white-space:pre-wrap;font-family:monospace;'
+        'background:#f4f4f5;padding:10px;border-radius:8px;margin-top:10px;min-height:20px}#status{color:#888}</style></head>'
+        '<body><div id="status">Starting Python… (first time only, needs the internet)</div><div id="out"></div>'
+        '<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script><script>'
+        '(async () => {'
+        'const out=document.getElementById("out");const status=document.getElementById("status");'
+        'try {'
+        'const py=await loadPyodide();'
+        'py.setStdout({batched:(s)=>{out.textContent+=s+"\\n";}});'
+        'py.setStderr({batched:(s)=>{out.textContent+=s+"\\n";}});'
+        'status.textContent="Running…";'
+        'try{ await py.runPythonAsync(${jsonEncode(code)}); status.textContent="Done."; }'
+        'catch(e){ out.textContent+="\\n"+String(e); status.textContent="Error."; }'
+        '} catch(e){ status.textContent="Could not start Python: "+String(e); }'
+        '})();'
+        '</script></body></html>';
   }
   if (l == 'javascript' || l == 'js') {
     return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'

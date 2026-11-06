@@ -250,7 +250,7 @@ class ComposerState extends State<Composer> {
   }
 
   Future<void> _send() async {
-    if (widget.busy || _loading > 0) return;
+    if (_loading > 0) return;
     var text = _text.text;
     final slash = RegExp(r'^/(\S+)\s+([\s\S]*)$').firstMatch(text);
     if (slash != null) {
@@ -269,6 +269,12 @@ class ComposerState extends State<Composer> {
       _text.clear();
       _files.clear();
     });
+    // Busy: hold the message instead of sending it now. It goes out by itself once the
+    // assistant finishes, in order, so the person does not have to wait and resend.
+    if (widget.busy) {
+      engine.enqueue(widget.chat, text, files);
+      return;
+    }
     await widget.onSend(text, files);
   }
 
@@ -276,8 +282,8 @@ class ComposerState extends State<Composer> {
   Widget build(BuildContext context) {
     final pal = paletteOf(context);
     final theme = Theme.of(context);
-    final canSend = !widget.busy;
     final slashItems = _slashItems();
+    final queue = engine.queued(widget.chat);
     return SafeArea(
       top: false,
       child: Padding(
@@ -301,6 +307,34 @@ class ComposerState extends State<Composer> {
                       Expanded(child: Text(it.hint, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: pal.secondary))),
                     ]),
                   ),
+                ),
+            ]),
+          ),
+        if (queue.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            decoration: BoxDecoration(color: pal.field, borderRadius: BorderRadius.circular(16)),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              for (var i = 0; i < queue.length; i++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Row(children: [
+                    Icon(CupertinoIcons.clock, size: 15, color: pal.secondary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        queue[i].text.isEmpty ? '${queue[i].attachments.length} attachment(s)' : queue[i].text,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => engine.removeQueued(widget.chat, i),
+                      child: Icon(CupertinoIcons.xmark_circle_fill, size: 18, color: pal.secondary),
+                    ),
+                  ]),
                 ),
             ]),
           ),
@@ -367,9 +401,13 @@ class ComposerState extends State<Composer> {
                 ),
               ),
               const Spacer(),
+              if (widget.busy) ...[
+                _round(CupertinoIcons.stop_fill, widget.onStop, pal.bubble, theme.colorScheme.onSurface, small: true),
+                const SizedBox(width: 8),
+              ],
               _round(
-                widget.busy ? CupertinoIcons.stop_fill : CupertinoIcons.arrow_up,
-                canSend ? _send : widget.onStop,
+                CupertinoIcons.arrow_up,
+                _send,
                 theme.colorScheme.onSurface,
                 theme.colorScheme.surface,
               ),
@@ -381,14 +419,15 @@ class ComposerState extends State<Composer> {
     );
   }
 
-  Widget _round(IconData icon, VoidCallback onTap, Color bg, Color fg) {
+  Widget _round(IconData icon, VoidCallback onTap, Color bg, Color fg, {bool small = false}) {
+    final size = small ? 30.0 : 36.0;
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 36,
-        height: 36,
+        width: size,
+        height: size,
         decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-        child: Icon(icon, size: 19, color: fg),
+        child: Icon(icon, size: small ? 15 : 19, color: fg),
       ),
     );
   }

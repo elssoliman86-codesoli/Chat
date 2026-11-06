@@ -14,6 +14,13 @@ import 'app_store.dart';
 import 'keep_alive.dart';
 import 'services.dart' show navigatorKey;
 
+/// A message typed while the assistant was busy, waiting to be sent to the same chat.
+class QueuedMessage {
+  QueuedMessage(this.text, this.attachments);
+  final String text;
+  final List<Attachment> attachments;
+}
+
 /// Runs a conversation turn: builds the prompt, streams the answer, runs tools and repeats.
 class ChatEngine implements ToolHost {
   ChatEngine(this.store);
@@ -23,9 +30,40 @@ class ChatEngine implements ToolHost {
   Timer? _notifyTimer;
   Conversation? _running;
   final Set<String> _loadedSkills = <String>{};
+  final Map<String, List<QueuedMessage>> _queues = <String, List<QueuedMessage>>{};
 
   bool get busy => _running != null;
   Conversation? get running => _running;
+
+  /// Messages typed for [c] while the assistant was busy, waiting their turn.
+  List<QueuedMessage> queued(Conversation c) => _queues[c.id] ?? const <QueuedMessage>[];
+
+  /// Holds a message for [c] instead of sending it now; it is sent by itself, in order,
+  /// once the conversation is free.
+  void enqueue(Conversation c, String text, List<Attachment> attachments) {
+    final clean = text.trim();
+    if (clean.isEmpty && attachments.isEmpty) return;
+    (_queues[c.id] ??= <QueuedMessage>[]).add(QueuedMessage(clean, List<Attachment>.of(attachments)));
+    store.changed();
+  }
+
+  /// Removes a held message without sending it.
+  void removeQueued(Conversation c, int index) {
+    final q = _queues[c.id];
+    if (q == null || index < 0 || index >= q.length) return;
+    q.removeAt(index);
+    store.changed();
+  }
+
+  /// Sends the next held message for [c], if there is one and the engine is free.
+  Future<void> _drainQueue(Conversation c) async {
+    if (busy) return;
+    final q = _queues[c.id];
+    if (q == null || q.isEmpty) return;
+    final next = q.removeAt(0);
+    store.changed();
+    await send(c, next.text, next.attachments);
+  }
 
   // ToolHost
   @override
@@ -241,6 +279,12 @@ class ChatEngine implements ToolHost {
         'to analyze it (big projects: one folder at a time) and project_edit or project_write to change it. For a GitHub link call project_import_github, '
         'work on the files, and push the result with project_push_github when asked. The person can preview the whole project from the bar above the '
         'message box. Never repeat a tool call with the same arguments when nothing changed: use the result you already have, change approach, or answer.');
+    b.writeln('\nPython: python_run runs Python in a sandbox on the phone (no shell, no file or app access) so you can work out logic, '
+        'test a function or try an algorithm before writing the finished script to the project. Variables stay between calls like a notebook; '
+        'use reset to start clean. It cannot control the device, install packages that need a compiler, or automate anything outside itself. '
+        'A ```python code block in a reply also gets a Preview button that runs it the same way. A ```jsx or ```tsx code block with a component '
+        'named App gets a Preview that renders it with React. There is no runtime for compiled languages (Go, Java, Swift, C, and so on): say so '
+        'and offer the source file instead when one of those is asked for.');
     b.writeln('\nTo add skills or plugins to this app when the person gives you a link or text, use install_skills, '
         'install_plugin or create_skill. When you need permission, a login, a captcha or a decision from the person, '
         'call ask_user instead of guessing.');
@@ -585,6 +629,7 @@ class ChatEngine implements ToolHost {
       _streaming = null;
       store.scheduleSave(c);
       store.changed();
+      unawaited(_drainQueue(c));
     }
   }
 }
