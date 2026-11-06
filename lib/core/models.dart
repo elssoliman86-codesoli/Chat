@@ -418,6 +418,7 @@ class Skill {
     List<String>? tools,
     this.autoUse = true,
     this.enabled = true,
+    this.alwaysOn = true,
   }) : tools = tools ?? <String>[];
 
   final String id;
@@ -428,9 +429,14 @@ class Skill {
   /// Tool ids from the built-in tool list.
   List<String> tools;
 
-  /// Let the assistant load it by itself when it fits the request.
+  /// When alwaysOn is off, let the assistant load it by itself (with the use_skill tool) when it fits.
   bool autoUse;
   bool enabled;
+
+  /// Always put the full instructions in the prompt, every message, instead of waiting for the
+  /// assistant to decide to load it. This is what makes an installed skill feel like a fixed part of
+  /// how the assistant behaves rather than something that only kicks in when asked for by name.
+  bool alwaysOn;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
@@ -440,6 +446,7 @@ class Skill {
         'tools': tools,
         'autoUse': autoUse,
         'enabled': enabled,
+        'alwaysOn': alwaysOn,
       };
 
   factory Skill.fromJson(Map<String, dynamic> j) => Skill(
@@ -450,6 +457,7 @@ class Skill {
         tools: (j['tools'] as List?)?.whereType<String>().toList(),
         autoUse: j['autoUse'] as bool? ?? true,
         enabled: j['enabled'] as bool? ?? true,
+        alwaysOn: j['alwaysOn'] as bool? ?? true,
       );
 }
 

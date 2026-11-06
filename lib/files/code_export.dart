@@ -84,15 +84,31 @@ String previewDocument(String language, String code) {
         '</body></html>';
   }
   if (l == 'jsx' || l == 'tsx' || l == 'react') {
+    // Plain classic script, not data-type="module": some Android WebView versions silently refuse to
+    // run the blob-URL ES-module script that Babel's auto-transform produces for type="module" sources,
+    // which left the page blank with no error at all. A classic script does not have that problem.
     return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
         '<style>body{margin:16px;font:14px/1.5 -apple-system,Roboto,sans-serif}#err{white-space:pre-wrap;font-family:monospace;'
-        'color:#b00020;background:#fdecea;padding:10px;border-radius:8px;margin-top:10px}</style>'
+        'color:#b00020;background:#fdecea;padding:10px;border-radius:8px;margin-top:10px}#loading{color:#888}</style>'
         '<script src="https://unpkg.com/react@18/umd/react.development.js"></script>'
         '<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>'
         '<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>'
-        '</head><body><div id="root"></div><div id="err"></div>'
-        '<script type="text/babel" data-presets="react,typescript" data-type="module">'
+        '</head><body><div id="loading">Loading React…</div><div id="root"></div><div id="err"></div>'
+        '<script>'
+        'window.addEventListener("error",function(e){'
+        'document.getElementById("loading").remove();'
+        'document.getElementById("err").textContent="Error: "+(e.error&&e.error.message||e.message);'
+        '});'
+        'var _t=setTimeout(function(){'
+        'var l=document.getElementById("loading");'
+        'if(l) l.textContent="Still loading React/Babel from the network — check the internet connection.";'
+        '},8000);'
+        '</script>'
+        '<script type="text/babel" data-presets="react,typescript">'
+        'clearTimeout(_t);'
+        'var _loading=document.getElementById("loading");if(_loading) _loading.remove();'
         'try{\n${code}\nif(typeof App!=="undefined"){ReactDOM.createRoot(document.getElementById("root")).render(<App/>);}'
+        'else{document.getElementById("err").textContent="No App component found. Define: function App(){ ... }";}'
         '}catch(e){document.getElementById("err").textContent="Error: "+e.message;}'
         '</script></body></html>';
   }
@@ -104,14 +120,17 @@ String previewDocument(String language, String code) {
         '<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script><script>'
         '(async () => {'
         'const out=document.getElementById("out");const status=document.getElementById("status");'
+        'window.addEventListener("error",function(e){status.textContent="Could not load Python: "+(e.error&&e.error.message||e.message);});'
+        'const slow=setTimeout(function(){status.textContent="Still downloading Python (it is a few MB) — check the internet connection if this does not finish soon.";},10000);'
         'try {'
         'const py=await loadPyodide();'
+        'clearTimeout(slow);'
         'py.setStdout({batched:(s)=>{out.textContent+=s+"\\n";}});'
         'py.setStderr({batched:(s)=>{out.textContent+=s+"\\n";}});'
         'status.textContent="Running…";'
         'try{ await py.runPythonAsync(${jsonEncode(code)}); status.textContent="Done."; }'
         'catch(e){ out.textContent+="\\n"+String(e); status.textContent="Error."; }'
-        '} catch(e){ status.textContent="Could not start Python: "+String(e); }'
+        '} catch(e){ clearTimeout(slow); status.textContent="Could not start Python: "+String(e); }'
         '})();'
         '</script></body></html>';
   }

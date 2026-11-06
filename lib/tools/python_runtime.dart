@@ -25,6 +25,7 @@ class PythonRuntime {
 
   final Completer<void> _pageReady = Completer<void>();
   bool _started = false;
+  bool _pyodideReady = false;
   int _nextId = 1;
   final Map<int, Completer<Map<String, dynamic>>> _pending = <int, Completer<Map<String, dynamic>>>{};
   Future<void> _queue = Future<void>.value();
@@ -68,13 +69,23 @@ class PythonRuntime {
     final completer = Completer<Map<String, dynamic>>();
     _pending[id] = completer;
     await controller.runJavaScript('runPy($id, ${jsonEncode(code)});');
+    // The very first call also has to download Pyodide itself (several MB) before any code runs, which
+    // can take much longer than a normal run on a slow connection — give it real room, and say so in the
+    // timeout message, instead of a short general timeout that reads as "your code is stuck".
+    final effectiveTimeout = _pyodideReady ? timeout : (timeout < const Duration(seconds: 60) ? const Duration(seconds: 60) : timeout);
     Map<String, dynamic> j;
     try {
-      j = await completer.future.timeout(timeout);
+      j = await completer.future.timeout(effectiveTimeout);
     } on TimeoutException {
       _pending.remove(id);
-      return 'Timed out after ${timeout.inSeconds}s. The script may be stuck (an infinite loop, or waiting on input). Shorten it or break it into steps.';
+      if (!_pyodideReady) {
+        return 'Timed out after ${effectiveTimeout.inSeconds}s still starting Python for the first time (it downloads a '
+            'few MB). This is most likely a slow or blocked internet connection, not the code. Try again, or check the '
+            "connection.";
+      }
+      return 'Timed out after ${effectiveTimeout.inSeconds}s. The script may be stuck (an infinite loop, or waiting on input). Shorten it or break it into steps.';
     }
+    _pyodideReady = true;
     final out = (j['out'] as String? ?? '').trim();
     final err = (j['err'] as String? ?? '').trim();
     if (j['ok'] != true) {

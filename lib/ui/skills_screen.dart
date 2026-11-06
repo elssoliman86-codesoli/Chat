@@ -86,8 +86,9 @@ class SkillsScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 0, 4, 14),
             child: Text(
-              'A skill is a set of instructions plus the tools it may use. '
-              'Switch one on inside a chat (the bolt), or let the assistant load it by itself when it fits.',
+              'A skill is a set of instructions plus the tools it may use. "Always active" skills are included with '
+              'every message. Others only apply when switched on inside a chat (the bolt) or loaded by the '
+              'assistant itself when it decides one fits.',
               style: TextStyle(fontSize: 13.5, color: paletteOf(context).secondary),
             ),
           ),
@@ -129,6 +130,7 @@ class _SkillEditScreenState extends State<SkillEditScreen> {
   late final TextEditingController _instr = TextEditingController(text: _s.instructions);
   late final Set<String> _tools = _s.tools.toSet();
   late bool _auto = _s.autoUse;
+  late bool _always = _s.alwaysOn;
 
   @override
   void dispose() {
@@ -148,7 +150,8 @@ class _SkillEditScreenState extends State<SkillEditScreen> {
       ..description = _desc.text.trim()
       ..instructions = _instr.text.trim()
       ..tools = _tools.toList()
-      ..autoUse = _auto;
+      ..autoUse = _auto
+      ..alwaysOn = _always;
     if (!store.skills.contains(_s)) store.skills.add(_s);
     await store.saveSkills();
     if (mounted) Navigator.pop(context);
@@ -198,13 +201,26 @@ class _SkillEditScreenState extends State<SkillEditScreen> {
               }),
             ),
         ]),
-        Group(children: [
-          SwitchCell(
-            title: 'Load automatically when it fits',
-            value: _auto,
-            onChanged: (v) => setState(() => _auto = v),
-          ),
-        ]),
+        Group(
+          footer: _always
+              ? 'Always on: the full instructions go to the assistant with every message, so this behaves like a '
+                  'fixed part of it instead of something it has to decide to use.'
+              : 'Not always on: the assistant only sees the name and description unless it decides to load the full '
+                  'instructions itself (if "load automatically" is on below), or you switch it on in a chat (the bolt).',
+          children: [
+            SwitchCell(
+              title: 'Always active',
+              value: _always,
+              onChanged: (v) => setState(() => _always = v),
+            ),
+            if (!_always)
+              SwitchCell(
+                title: 'Load automatically when it fits',
+                value: _auto,
+                onChanged: (v) => setState(() => _auto = v),
+              ),
+          ],
+        ),
       ],
     );
   }

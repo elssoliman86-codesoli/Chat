@@ -45,19 +45,25 @@ class _SkillSheetState extends State<_SkillSheet> {
           for (final s in skills)
             SwitchListTile(
               title: Text(s.name),
-              subtitle: Text(s.description, maxLines: 2, overflow: TextOverflow.ellipsis),
-              value: widget.chat.activeSkillIds.contains(s.id),
-              onChanged: (on) {
-                setState(() {
-                  if (on) {
-                    widget.chat.activeSkillIds.add(s.id);
-                  } else {
-                    widget.chat.activeSkillIds.remove(s.id);
-                  }
-                });
-                store.scheduleSave(widget.chat);
-                store.changed();
-              },
+              subtitle: Text(
+                s.alwaysOn ? 'Always active in every chat · ${s.description}' : s.description,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              value: s.alwaysOn || widget.chat.activeSkillIds.contains(s.id),
+              onChanged: s.alwaysOn
+                  ? null
+                  : (on) {
+                      setState(() {
+                        if (on) {
+                          widget.chat.activeSkillIds.add(s.id);
+                        } else {
+                          widget.chat.activeSkillIds.remove(s.id);
+                        }
+                      });
+                      store.scheduleSave(widget.chat);
+                      store.changed();
+                    },
             ),
           ListTile(
             leading: const Icon(CupertinoIcons.slider_horizontal_3),

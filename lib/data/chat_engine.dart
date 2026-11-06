@@ -29,7 +29,9 @@ class ChatEngine implements ToolHost {
   AbortHandle? _abort;
   Timer? _notifyTimer;
   Conversation? _running;
-  final Set<String> _loadedSkills = <String>{};
+  // Skills loaded with the use_skill tool, kept for the rest of that conversation (not just one turn),
+  // so the model does not have to re-load the same skill on every single message.
+  final Map<String, Set<String>> _loadedSkillsByConv = <String, Set<String>>{};
   final Map<String, List<QueuedMessage>> _queues = <String, List<QueuedMessage>>{};
 
   bool get busy => _running != null;
@@ -73,7 +75,11 @@ class ChatEngine implements ToolHost {
   void addMemory(String text) => store.addMemory(text);
 
   @override
-  void loadSkill(Skill skill) => _loadedSkills.add(skill.id);
+  void loadSkill(Skill skill) {
+    final c = _running;
+    if (c == null) return;
+    (_loadedSkillsByConv[c.id] ??= <String>{}).add(skill.id);
+  }
 
   @override
   String get githubToken => store.settings.githubToken;
@@ -234,7 +240,7 @@ class ChatEngine implements ToolHost {
     for (final sk in active) {
       b.writeln('\n## Skill: ${sk.name}\n${sk.instructions}');
     }
-    final auto = store.skills.where((k) => k.enabled && k.autoUse && !active.contains(k)).toList();
+    final auto = store.skills.where((k) => k.enabled && k.autoUse && !k.alwaysOn && !active.contains(k)).toList();
     if (auto.isNotEmpty) {
       b.writeln('\nSkills you can load with the use_skill tool when one fits the request:');
       for (final k in auto) {
@@ -294,8 +300,11 @@ class ChatEngine implements ToolHost {
     return b.toString();
   }
 
-  List<Skill> _activeSkills(Conversation c) =>
-      store.skills.where((k) => k.enabled && (c.activeSkillIds.contains(k.id) || _loadedSkills.contains(k.id))).toList();
+  List<Skill> _activeSkills(Conversation c) => store.skills
+      .where((k) =>
+          k.enabled &&
+          (k.alwaysOn || c.activeSkillIds.contains(k.id) || (_loadedSkillsByConv[c.id]?.contains(k.id) ?? false)))
+      .toList();
 
   List<ToolSpec> buildTools(Conversation c, ProviderConfig provider) {
     if (!provider.supportsTools) return const <ToolSpec>[];
@@ -326,7 +335,7 @@ class ChatEngine implements ToolHost {
         specs.add(ToolSpec(name: p.specName(t), description: '${p.name}: ${t.description}', parameters: t.parameters));
       }
     }
-    final hasAuto = store.skills.any((k) => k.enabled && k.autoUse);
+    final hasAuto = store.skills.any((k) => k.enabled && k.autoUse && !k.alwaysOn);
     if (hasAuto) specs.add(useSkillSpec);
     return specs;
   }
@@ -527,7 +536,8 @@ class ChatEngine implements ToolHost {
   Future<void> _run(Conversation c) async {
     final provider = store.providerById(c.providerId) ?? store.defaultProvider;
     _running = c;
-    _loadedSkills.clear();
+    // Skills loaded earlier in this conversation (via use_skill) stay loaded; only the per-run call
+    // dedupe resets each send, so the model is not forced to reload the same skill every message.
     _seenCalls.clear();
     _browserEpoch = 0;
     BrowserService.instance.showWhileWorking = store.settings.browserVisible;

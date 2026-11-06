@@ -134,6 +134,15 @@ void main() {
     expect(previewDocument('css', 'body{color:red}'), contains('<style>body{color:red}</style>'));
   });
 
+  test('a new skill defaults to always active, and that survives a JSON round trip', () {
+    final s = Skill(id: 's1', name: 'Test');
+    expect(s.alwaysOn, true);
+    final back = Skill.fromJson(s.toJson());
+    expect(back.alwaysOn, true);
+    final off = Skill.fromJson(<String, dynamic>{'id': 's2', 'name': 'T2', 'alwaysOn': false});
+    expect(off.alwaysOn, false);
+  });
+
   test('messages typed while busy are held in order and are not lost on a stop', () {
     final engine = ChatEngine(AppStore());
     final c = Conversation(id: 'c1');
