@@ -129,6 +129,7 @@ class _SkillEditScreenState extends State<SkillEditScreen> {
   late final TextEditingController _instr = TextEditingController(text: _s.instructions);
   late final Set<String> _tools = _s.tools.toSet();
   late bool _auto = _s.autoUse;
+  late bool _alwaysOn = _s.alwaysOn;
 
   @override
   void dispose() {
@@ -148,7 +149,8 @@ class _SkillEditScreenState extends State<SkillEditScreen> {
       ..description = _desc.text.trim()
       ..instructions = _instr.text.trim()
       ..tools = _tools.toList()
-      ..autoUse = _auto;
+      ..autoUse = _auto
+      ..alwaysOn = _alwaysOn;
     if (!store.skills.contains(_s)) store.skills.add(_s);
     await store.saveSkills();
     if (mounted) Navigator.pop(context);
@@ -203,6 +205,12 @@ class _SkillEditScreenState extends State<SkillEditScreen> {
             title: 'Load automatically when it fits',
             value: _auto,
             onChanged: (v) => setState(() => _auto = v),
+          ),
+          SwitchCell(
+            title: 'Always active in every conversation',
+            subtitle: 'A skill loaded by the assistant stays globally active until disabled here.',
+            value: _alwaysOn,
+            onChanged: (v) => setState(() => _alwaysOn = v),
           ),
         ]),
       ],
