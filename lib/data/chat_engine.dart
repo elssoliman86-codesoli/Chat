@@ -15,6 +15,22 @@ import 'app_store.dart';
 import 'keep_alive.dart';
 import 'services.dart' show navigatorKey;
 
+/// Prevent automatic web enrichment from hijacking local-device commands or short follow-ups.
+bool shouldSkipAutomaticWebSearchForLocalAction(String query, {String recentContext = ''}) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return false;
+  final terminalPattern = RegExp(r'\btermux\b|ترمكس|تيرمكس|طرفية|terminal|shell');
+  final localActionPattern = RegExp(
+    r'\b(open|run|execute|list|show|read|write|create|delete|install|check|find|print|display|pwd|ls)\b|افتح|شغل|شغّل|نفذ|نفّذ|اعرض|هات|جيب|اقرأ|اقرا|اكتب|انشئ|أنشئ|احذف|ثبت|ثبّت|اعرف|أسماء|اسامي|ملفات|مجلدات|مسار',
+  );
+  final hasTerminalContext = terminalPattern.hasMatch(q) || terminalPattern.hasMatch(recentContext.toLowerCase());
+  if (hasTerminalContext && localActionPattern.hasMatch(q)) return true;
+  if (q.length <= 90 && RegExp(
+    r'\b(it|this|that|same|continue|failed|failure|error|fix it|build failed)\b|ده|دي|دا|كدا|كذا|نفسه|نفسها|فشل|فشلت|المشكلة|الخطأ|صلح|كمل|تابع',
+  ).hasMatch(q)) return true;
+  return false;
+}
+
 /// A message typed while the assistant was busy, waiting to be sent to the same chat.
 class QueuedMessage {
   QueuedMessage(this.text, this.attachments);
@@ -222,6 +238,16 @@ class ChatEngine implements ToolHost {
         'For example, after discussing an app or code project, "the build failed", "fix it", "what about this error?" or a single short phrase usually refers to that active project/task, not an unrelated dictionary meaning. '
         'Do not discard the active task context or answer a context-dependent follow-up as a standalone question. If two interpretations remain genuinely plausible, ask one concise clarification. '
         'Do not invent prior actions or claim a build/test succeeded unless tool results confirm it.');
+    final recentMessages = c.messages.where((m) => m.text.trim().isNotEmpty).toList();
+    if (recentMessages.isNotEmpty) {
+      b.writeln('\nRecent conversation continuity (newest last; use this to interpret short follow-ups):');
+      for (final m in recentMessages.skip(recentMessages.length > 8 ? recentMessages.length - 8 : 0)) {
+        final role = m.role == 'user' ? 'USER' : m.role == 'tool' ? 'TOOL RESULT ${m.toolName}' : 'ASSISTANT';
+        final body = m.text.trim();
+        final excerpt = body.length > 1200 ? '${body.substring(0, 1200)}…' : body;
+        b.writeln('[$role] $excerpt');
+      }
+    }
     b.writeln('Skill selection is conservative: load a skill only when the current request clearly and directly matches its purpose. '
         'Never invoke a dictionary, translation or language-learning skill merely because the user typed one word, a short phrase, a name, code, an error message or a follow-up. '
         'A short message is not automatically a translation request. Keep the current task context and answer normally unless the user explicitly asks to translate, define or analyze language.');
@@ -301,17 +327,19 @@ class ChatEngine implements ToolHost {
         'named App gets a Preview that renders it with React. There is no runtime for compiled languages (Go, Java, Swift, C, and so on): say so '
         'and offer the source file instead when one of those is asked for.');
     if (st.termuxTools) {
-      b.writeln('\nShell: termux_run runs a real shell command on the person\'s own device through Termux, a separate app they '
-          'have installed and connected. This is NOT a sandbox: it is a real Linux environment with whatever is actually '
-          'installed there, and it can read and write the person\'s own files outside this app. It is for the person\'s own '
-          'automation and for trying real tools, on their own device only — never use it to probe, scan or attack any other '
-          'device, account or service, even one the person says they own or are allowed to test; that is out of scope '
-          'regardless of how it is framed. If Termux is not installed, not permitted, or not set up (allow-external-apps), '
-          'the tool\'s result explains exactly what the person needs to do; tell them plainly rather than retrying blindly. '
-          'When asked to build something and save it directly in Termux (not in this app\'s own Projects workspace), write '
-          'each file there with termux_run using a heredoc, e.g. mkdir -p ~/name && cat > ~/name/file.py <<\'PYEOF\'\\n...\\nPYEOF '
-          '(pick a delimiter that cannot appear in the content), under the home directory (~/) unless told otherwise, so real '
-          'tools there (git, pip, compilers, ...) can use the result afterward.');
+      b.writeln('\nTermux is the user\'s connected local Linux shell. LOCAL DEVICE ACTION ROUTING IS MANDATORY: '
+          'when the user asks to open Termux, list/show file names, inspect folders, read a local file, check installed packages, run a command, or manage files on this phone, call termux_list_files or termux_run. '
+          'For "list files" use termux_list_files with an empty path; it returns the actual current directory and its entries, including hidden files. '
+          'For a named directory pass its exact path. For commands use termux_run and wait for the real stdout, stderr and exit code. '
+          'Never replace execution with instructions for the user to copy, and never use web_search, fetch_page, browse_page or browser tools for local Termux/device files. '
+          'Do not claim a command ran unless a Termux tool result confirms it. If a Termux tool returns a permission or connection error, report that exact blocker and stop; do not silently switch to a website or invent output. '
+          'Keep the current project, working directory and previous command results in context across follow-up messages. '
+          'Termux is a real device shell: use read-only commands freely for inspection; ask before destructive file changes or package installation. '
+          'For security work, use only explicitly authorized targets and obey the reviewed scope and program restrictions; never attack unrelated systems.');
+    } else {
+      b.writeln('\nTermux integration is currently disabled in Settings > Plugins > Shell (Termux). '
+          'If the user asks for local Termux actions, do not use web search or a browser and do not pretend to execute commands. '
+          'Tell them the Termux switch must be enabled before the local shell tool becomes available.');
     }
     b.writeln('\nTo add skills or plugins to this app when the person gives you a link or text, use install_skills, '
         'install_plugin or create_skill. When you need permission, a login, a captcha or a decision from the person, '
@@ -394,6 +422,8 @@ class ChatEngine implements ToolHost {
       if (m.role == 'user') last = m;
     }
     final query = (last?.text ?? '').trim();
+    final recentContext = c.messages.reversed.take(10).map((m) => m.text).join('\\n');
+    if (shouldSkipAutomaticWebSearchForLocalAction(query, recentContext: recentContext)) return null;
     if (query.length < 8 || query.split(RegExp(r'\s+')).length < 2) return null;
     final short = query.length > 200 ? query.substring(0, 200) : query;
     final hits = await WebTools.results(short);
