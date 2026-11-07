@@ -575,7 +575,8 @@ class ChatEngine implements ToolHost {
 
   List<String> _toolCapabilities(String name) {
     if (const {'nmap', 'httpx', 'subfinder', 'amass', 'nuclei', 'ffuf', 'feroxbuster', 'nikto'}.contains(name)) return const <String>['network-recon'];
-    if (const {'curl', 'wget', 'mitmproxy'}.contains(name)) return const <String>['http-client'];
+    if (const {'mitmproxy', 'mitmdump', 'mitmweb'}.contains(name)) return const <String>['http-proxy'];
+    if (const {'curl', 'wget'}.contains(name)) return const <String>['http-client'];
     if (const {'python', 'python3', 'pip', 'pip3'}.contains(name)) return const <String>['python-runtime'];
     if (name == 'git') return const <String>['version-control'];
     if (const {'dig', 'whois'}.contains(name)) return const <String>['dns-recon'];
