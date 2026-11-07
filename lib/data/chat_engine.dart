@@ -587,7 +587,7 @@ class ChatEngine implements ToolHost {
     final clean = command.trim();
     if (clean.isEmpty) return 'No command was provided.';
     if (!store.settings.termuxTools) return 'Termux tools are disabled in Settings.';
-    if (RegExp(r'^\\s*python3?\\s+(?!(-V|--version)\\b)', caseSensitive: false).hasMatch(clean)) {
+    if (RegExp(r'^\s*python3?\s+(?!(-V|--version)\b)', caseSensitive: false).hasMatch(clean)) {
       return 'Run custom Python through agent_create_python_tool (sandbox test) and agent_run_python_tool (scope check plus explicit source approval). Generic Python script execution through termux_run is disabled.';
     }
     if (!await TermuxService.instance.isInstalled()) return 'Termux is not installed or the Android native bridge is unavailable.';
