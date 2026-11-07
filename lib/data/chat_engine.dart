@@ -587,17 +587,35 @@ class ChatEngine implements ToolHost {
         if (code.trim().isEmpty || code.length > 12000) return 'Python source must be non-empty and at most 12 KB so it can be reviewed in full before execution.';
         final slug = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
         if (slug.isEmpty) return 'Invalid Python helper name.';
-        final sandboxForbiddenApis = RegExp(
-          r'^\s*(?:import\s+(?:socket|requests|httpx|aiohttp|urllib\.request|urllib3|http\.client|subprocess|ctypes|os|shutil)\b|from\s+(?:socket|requests|httpx|aiohttp|urllib\.request|urllib3|http\.client|subprocess|ctypes|os|shutil|js|pyodide)\b)|\b(?:urlopen|socket\.socket|requests\.(?:get|post|put|delete)|httpx\.(?:get|post)|fetch|os\.system|os\.remove|os\.unlink|shutil\.rmtree|subprocess\.Popen)\s*\(|\b(?:DROP\s+(?:TABLE|DATABASE)|TRUNCATE\s+TABLE|DELETE\s+FROM)\b',
-          caseSensitive: false,
-          multiLine: true,
-        );
-        if (sandboxForbiddenApis.hasMatch('$code\n$testCode')) {
-          return 'Sandbox tests must be offline and non-destructive. Use injected mock clients; outbound network APIs, shell execution and destructive file/database operations are blocked during helper creation.';
-        }
         final encodedCode = base64Encode(utf8.encode(code));
         final encodedTests = base64Encode(utf8.encode(testCode));
-        final testProgram = "import base64\nsource=base64.b64decode('$encodedCode').decode('utf-8')\nnamespace={'__name__':'__omni_custom_tool_test__'}\nexec(compile(source, '$slug.py', 'exec'), namespace, namespace)\ntests=base64.b64decode('$encodedTests').decode('utf-8')\nif tests.strip(): exec(compile(tests, '<omni-tests>', 'exec'), namespace, namespace)\nprint('OMNI_TESTS_PASSED')";
+        final testProgram = '''
+import base64
+import builtins
+
+_blocked = {
+    'socket', 'requests', 'httpx', 'aiohttp', 'urllib3', 'http',
+    'subprocess', 'ctypes', 'os', 'shutil', 'websockets', 'scapy',
+    'paramiko', 'js', 'pyodide', 'builtins', 'importlib'
+}
+_original_import = builtins.__import__
+
+def _sandbox_import(name, globals=None, locals=None, fromlist=(), level=0):
+    root = name.split('.')[0]
+    if root in _blocked or name.startswith('urllib.request') or name.startswith('http.client'):
+        raise ImportError('Network and system modules are disabled in the offline helper test sandbox')
+    return _original_import(name, globals, locals, fromlist, level)
+
+_safe_builtins = dict(vars(builtins))
+_safe_builtins['__import__'] = _sandbox_import
+source = base64.b64decode('$encodedCode').decode('utf-8')
+namespace = {'__name__': '__omni_custom_tool_test__', '__builtins__': _safe_builtins}
+exec(compile(source, '$slug.py', 'exec'), namespace, namespace)
+tests = base64.b64decode('$encodedTests').decode('utf-8')
+if tests.strip():
+    exec(compile(tests, '<omni-tests>', 'exec'), namespace, namespace)
+print('OMNI_TESTS_PASSED')
+''';
         final testResult = await PythonRuntime.instance.run(testProgram, timeout: const Duration(seconds: 45));
         if (!testResult.contains('OMNI_TESTS_PASSED')) return 'Python helper was not saved because sandbox validation failed:\n$testResult';
         final base = await getApplicationDocumentsDirectory();
