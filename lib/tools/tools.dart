@@ -1,5 +1,3 @@
-import 'package:flutter/services.dart';
-
 import '../core/models.dart';
 import '../llm/llm.dart';
 import '../plugins/installer.dart';
@@ -7,7 +5,6 @@ import '../plugins/plugin.dart';
 import '../projects/project_tools.dart';
 import 'browser_service.dart';
 import 'github_tools.dart';
-import 'termux_service.dart';
 import 'web_tools.dart';
 
 /// Everything a tool needs from the app while it runs.
