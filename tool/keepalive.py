@@ -237,6 +237,11 @@ object TermuxBridge {
         val safeTimeoutMs = timeoutMs.coerceIn(1_000L, 300_000L)
         val timeoutSeconds = ((safeTimeoutMs + 999L) / 1_000L).coerceIn(1L, 300L)
         val wrappedCommand = "$TIMEOUT --signal=TERM --kill-after=5s ${timeoutSeconds}s $BASH -lc ${shellQuote(command)}"
+        if (wrappedCommand.toByteArray(Charsets.UTF_8).size > 128 * 1024) {
+            pending.remove(code)
+            result.error("command_too_large", "Wrapped Termux command exceeds the 128 KB RUN_COMMAND limit.", null)
+            return
+        }
 
         val resultIntent = Intent(appContext, TermuxResultReceiver::class.java)
         resultIntent.putExtra("request_code", code)
