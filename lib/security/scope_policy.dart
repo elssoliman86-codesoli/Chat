@@ -56,21 +56,21 @@ class ScopePolicy {
       } else if (lower.contains('in scope') || lower.contains('eligible assets')) {
         outSection = false;
       }
-      var candidate = line.replaceFirst(RegExp(r'^[\\s>+\\-•]+'), '').trim();
-      candidate = candidate.replaceFirst(RegExp(r'^\\*\\s+'), '').replaceAll(String.fromCharCode(96), '');
+      var candidate = line.replaceFirst(RegExp(r'^[\s>+\-•]+'), '').trim();
+      candidate = candidate.replaceFirst(RegExp(r'^\*\s+'), '').replaceAll(String.fromCharCode(96), '');
       if (candidate.startsWith('**') && candidate.endsWith('**') && candidate.length > 4) {
         candidate = candidate.substring(2, candidate.length - 2);
       }
       final cells = line.contains('|') ? line.split('|') : <String>[candidate];
       for (var cell in cells) {
         cell = cell.trim().replaceAll(String.fromCharCode(96), '').replaceAll('<', '').replaceAll('>', '');
-        final markdownLink = RegExp(r'^\\[([^\\]]+)\\]\\([^)]*\\)$').firstMatch(cell);
+        final markdownLink = RegExp(r'^\[([^\]]+)\]\([^)]*\)$').firstMatch(cell);
         if (markdownLink != null) cell = markdownLink.group(1)!.trim();
         cell = cell.replaceFirst(RegExp(r'^https?://', caseSensitive: false), '').split('/').first;
-        final match = RegExp(r'^(\\*\\.)?[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::\\d+)?$', caseSensitive: false)
+        final match = RegExp(r'^(\*\.)?[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::\d+)?$', caseSensitive: false)
           .firstMatch(cell);
         if (match == null) continue;
-        final host = cell.replaceFirst(RegExp(r':\\d+$'), '').toLowerCase();
+        final host = cell.replaceFirst(RegExp(r':\d+$'), '').toLowerCase();
         if (!host.contains('.')) continue;
         (outSection ? excluded : allowed).add(host);
       }
