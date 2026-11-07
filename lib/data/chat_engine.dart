@@ -463,6 +463,28 @@ class ChatEngine implements ToolHost {
             final name = item['name'] ?? '';
             store.toolRegistry.register(RegisteredTool(id: name, name: name, source: 'Termux', version: item['version'] ?? '', executablePath: item['path'] ?? '', capabilities: _toolCapabilities(name), status: ToolInstallStatus.verified, verifiedAt: DateTime.now().millisecondsSinceEpoch));
           }
+          for (final packageId in packages) {
+            final aliases = TermuxService.packageExecutables[packageId] ?? <String>[packageId];
+            Map<String, String>? match;
+            for (final alias in aliases) {
+              for (final item in found) {
+                if (item['name'] == alias) { match = item; break; }
+              }
+              if (match != null) break;
+            }
+            if (match != null) {
+              final executable = match['name'] ?? packageId;
+              store.toolRegistry.register(RegisteredTool(
+                id: packageId, name: packageId, source: 'Termux package',
+                version: match['version'] ?? '', executablePath: match['path'] ?? '',
+                capabilities: _toolCapabilities(executable), status: ToolInstallStatus.verified,
+                verifiedAt: DateTime.now().millisecondsSinceEpoch,
+              ));
+            } else {
+              final existing = store.toolRegistry.find(packageId);
+              if (existing != null) existing.status = ToolInstallStatus.failed;
+            }
+          }
           await store.saveAgentState();
           store.changed();
           final verified = packages.where((id) => store.toolRegistry.find(id)?.isUsable == true).toList();
