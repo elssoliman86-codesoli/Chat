@@ -219,6 +219,10 @@ object TermuxBridge {
             result.error("invalid_command", "Command cannot be empty.", null)
             return
         }
+        if (command.toByteArray(Charsets.UTF_8).size > 128 * 1024) {
+            result.error("command_too_large", "Command exceeds the Termux RUN_COMMAND 128 KB limit.", null)
+            return
+        }
         if (!isInstalled(context)) {
             result.error("not_installed", "Termux is not installed.", null)
             return
