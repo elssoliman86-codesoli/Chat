@@ -37,6 +37,12 @@ abstract class ToolHost {
 
   /// Attaches a file made by a tool to the assistant's reply so the person can save it.
   void deliver(String name, String path);
+
+  /// Handles Omni Chat agent orchestration tools from the normal conversation loop.
+  Future<String> agentAction(String action, Map<String, dynamic> args);
+
+  /// Executes a Termux command only after the host applies local permission and scope checks.
+  Future<String> runTermuxCommand(String command, {String? workdir, int timeoutSeconds = 60, String target = ''});
 }
 
 Map<String, dynamic> _obj(Map<String, dynamic> props, [List<String> required = const <String>[]]) =>
@@ -497,6 +503,50 @@ final List<ToolDef> builtinTools = <ToolDef>[
     run: (a, host) => BrowserService.instance.back(),
   ),
   ToolDef(
+    id: 'agent_start',
+    title: 'Start an agent task',
+    spec: ToolSpec(name: 'agent_start', description: 'Start a structured Omni Chat Agent task for a multi-step workflow. Provide a clear goal and optional target.',
+      parameters: _obj(<String, dynamic>{'goal': _str('The complete task goal'), 'target': _str('Optional exact target hostname')}, <String>['goal'])),
+    run: (a, host) => host.agentAction('start', a),
+  ),
+  ToolDef(
+    id: 'agent_plan',
+    title: 'Create agent plan',
+    spec: ToolSpec(name: 'agent_plan', description: 'Record the ordered plan before executing a multi-step task. Each step has id, title, description, and optional toolIds.',
+      parameters: _obj(<String, dynamic>{'steps': <String, dynamic>{'type': 'array', 'items': <String, dynamic>{'type': 'object', 'properties': <String, dynamic>{'id': _str('Stable step id'), 'title': _str('Short step title'), 'description': _str('What this step does'), 'toolIds': <String, dynamic>{'type': 'array', 'items': <String, dynamic>{'type': 'string'}}}, 'required': <String>['id', 'title']}}}, <String>['steps'])),
+    run: (a, host) => host.agentAction('plan', a),
+  ),
+  ToolDef(
+    id: 'agent_set_scope',
+    title: 'Review target scope',
+    spec: ToolSpec(name: 'agent_set_scope', description: 'Submit the program policy text and exact target. The app extracts explicit in-scope and out-of-scope hosts and asks the user to review and confirm them before active testing.',
+      parameters: _obj(<String, dynamic>{'target': _str('Exact target hostname'), 'policy_text': _str('Full program policy or scope section'), 'source': _str('Policy URL or program name')}, <String>['target', 'policy_text'])),
+    run: (a, host) => host.agentAction('scope', a),
+  ),
+  ToolDef(
+    id: 'termux_discover_tools',
+    title: 'Discover Termux tools',
+    group: 'termux',
+    spec: const ToolSpec(name: 'termux_discover_tools', description: 'Safely detect installed Termux CLI tools and their versions. Does not install anything.', parameters: <String, dynamic>{'type': 'object', 'properties': <String, dynamic>{}}),
+    run: (a, host) => host.agentAction('discover', a),
+  ),
+  ToolDef(
+    id: 'termux_install_batch',
+    title: 'Install approved Termux tools',
+    group: 'termux',
+    spec: ToolSpec(name: 'termux_install_batch', description: 'Propose a batch of Termux package identifiers from the supported allowlist. The app shows one approval prompt for the batch before installing.',
+      parameters: _obj(<String, dynamic>{'package_ids': <String, dynamic>{'type': 'array', 'items': <String, dynamic>{'type': 'string'}}}, <String>['package_ids'])),
+    run: (a, host) => host.agentAction('install_batch', a),
+  ),
+  ToolDef(
+    id: 'agent_create_python_tool',
+    title: 'Create and test a Python helper',
+    spec: ToolSpec(name: 'agent_create_python_tool', description: 'Create a custom Python helper. The app syntax-checks and runs its optional test code in the isolated Pyodide sandbox, then stores the script locally. This does not execute it against a target.',
+      parameters: _obj(<String, dynamic>{'name': _str('Short file/tool name'), 'description': _str('What the helper does'), 'code': _str('Complete Python source code'), 'test_code': _str('Optional isolated Python tests that exercise the code')}, <String>['name', 'code'])),
+    run: (a, host) => host.agentAction('create_python_tool', a),
+  ),
+
+  ToolDef(
     id: 'termux_run',
     title: 'Run a shell command (Termux)',
     group: 'termux',
@@ -517,51 +567,17 @@ final List<ToolDef> builtinTools = <ToolDef>[
             'description': 'Working directory (default: Termux\'s home). Use ~/ for paths under it.',
           },
           'timeout_seconds': <String, dynamic>{'type': 'integer', 'description': 'How long to wait (default 60, max 300)'},
+          'target': <String, dynamic>{'type': 'string', 'description': 'Exact authorized hostname when the command contacts a target'},
         },
         'required': <String>['command'],
       },
     ),
-    run: (a, host) async {
-      final command = _s(a, 'command').trim();
-      if (command.isEmpty) return 'No command was given.';
-      if (!await TermuxService.instance.isInstalled()) {
-        return 'Termux is not installed on this device. It needs to be installed from F-Droid or GitHub (not the Play Store '
-            'version, which is outdated and unsupported) before this tool can be used — tell the user.';
-      }
-      if (!await TermuxService.instance.hasPermission()) {
-        final granted = await TermuxService.instance.requestPermission();
-        if (!granted) {
-          return 'The "Run commands in Termux environment" permission has not been granted to this app yet. Ask the user to '
-              'grant it (a system dialog should have just appeared; if not, Android Settings → Apps → Omni Chat → Permissions), '
-              'and that Termux itself must have `allow-external-apps = true` set in ~/.termux/termux.properties (edit that file '
-              'inside Termux, then run termux-reload-settings) — this is a one-time setup only they can do.';
-        }
-      }
-      var secs = _i(a, 'timeout_seconds');
-      if (secs <= 0) secs = 60;
-      if (secs > 300) secs = 300;
-      try {
-        final r = await TermuxService.instance
-            .run(command, workdir: a['workdir']?.toString(), timeout: Duration(seconds: secs));
-        final stdout = (r['stdout'] ?? '').toString();
-        final stderr = (r['stderr'] ?? '').toString();
-        final exitCode = r['exitCode'];
-        final errmsg = (r['errmsg'] ?? '').toString();
-        if (errmsg.isNotEmpty) {
-          return 'Termux could not run the command: $errmsg\n\nThis usually means `allow-external-apps = true` is missing from '
-              '~/.termux/termux.properties inside Termux (a one-time setup only the user can do there).';
-        }
-        final b = StringBuffer('exit code: $exitCode');
-        if (stdout.trim().isNotEmpty) b.write('\n\nstdout:\n${stdout.trim()}');
-        if (stderr.trim().isNotEmpty) b.write('\n\nstderr:\n${stderr.trim()}');
-        return b.toString();
-      } on PlatformException catch (e) {
-        if (e.code == 'timeout') return 'Termux command timed out after ${secs}s. Narrow it down or raise timeout_seconds.';
-        return 'Could not run the command in Termux: ${e.message ?? e.code}';
-      } on Exception catch (e) {
-        return 'Could not reach Termux: $e';
-      }
-    },
+    run: (a, host) => host.runTermuxCommand(
+      _s(a, 'command'),
+      workdir: a['workdir']?.toString(),
+      timeoutSeconds: _i(a, 'timeout_seconds') <= 0 ? 60 : _i(a, 'timeout_seconds'),
+      target: _s(a, 'target'),
+    ),
   ),
   ...projectToolDefs,
   ToolDef(
