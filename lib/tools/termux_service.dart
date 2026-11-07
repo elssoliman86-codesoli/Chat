@@ -61,8 +61,8 @@ class TermuxService {
     final result = await run(command, timeout: const Duration(seconds: 45));
     final stdout = (result['stdout'] ?? '').toString();
     final tools = <Map<String, String>>[];
-    for (final line in stdout.split('\\n')) {
-      final parts = line.split('\\t');
+    for (final line in stdout.split('\n')) {
+      final parts = line.split('\t');
       if (parts.length < 2 || parts.first.trim().isEmpty) continue;
       tools.add(<String, String>{'name': parts[0].trim(), 'path': parts[1].trim(),
         'version': parts.length > 2 ? parts.sublist(2).join(' ').trim() : ''});
