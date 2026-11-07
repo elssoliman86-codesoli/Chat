@@ -469,8 +469,15 @@ class ChatEngine implements ToolHost {
           if ((exitCode is num && exitCode.toInt() != 0) ||
               nativeMessage.isNotEmpty ||
               (nativeErr is num && nativeErr.toInt() != -1)) {
-            for (final id in packages) { final item = store.toolRegistry.find(id); if (item != null) item.status = ToolInstallStatus.failed; }
+            for (final id in packages) {
+              final item = store.toolRegistry.find(id);
+              if (item != null) item.status = ToolInstallStatus.failed;
+              for (final requirement in agent.currentTask?.toolRequirements ?? <ToolRequirement>[]) {
+                if (requirement.id == id) requirement.status = ToolInstallStatus.failed;
+              }
+            }
             await store.saveAgentState();
+            store.changed();
             return 'Termux package installation failed (exit code $exitCode, native error $nativeErr).\n${nativeMessage.isNotEmpty ? nativeMessage : result['stderr'] ?? result['stdout'] ?? ''}';
           }
           final found = await TermuxService.instance.discoverTools();
@@ -503,8 +510,27 @@ class ChatEngine implements ToolHost {
           await store.saveAgentState();
           store.changed();
           final verified = packages.where((id) => store.toolRegistry.find(id)?.isUsable == true).toList();
+          for (final requirement in agent.currentTask?.toolRequirements ?? <ToolRequirement>[]) {
+            if (packages.contains(requirement.id)) {
+              requirement.status = verified.contains(requirement.id)
+                  ? ToolInstallStatus.verified : ToolInstallStatus.failed;
+            }
+          }
+          await store.saveAgentState();
+          store.changed();
           return 'Install command completed. Verified: ${verified.join(', ')}. Not verified: ${packages.where((id) => !verified.contains(id)).join(', ')}.\n${result['stdout'] ?? ''}';
-        } catch (e) { return 'Could not install the approved batch: $e'; }
+        } catch (e) {
+          for (final id in packages) {
+            final item = store.toolRegistry.find(id);
+            if (item != null) item.status = ToolInstallStatus.failed;
+            for (final requirement in agent.currentTask?.toolRequirements ?? <ToolRequirement>[]) {
+              if (requirement.id == id) requirement.status = ToolInstallStatus.failed;
+            }
+          }
+          await store.saveAgentState();
+          store.changed();
+          return 'Could not install the approved batch: $e';
+        }
       }
       case 'run_python_tool': {
         if (!store.settings.termuxTools) return 'Enable Termux tools in Settings first.';
