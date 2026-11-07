@@ -1,4 +1,5 @@
 import '../core/models.dart';
+import '../data/app_store.dart';
 import '../plugins/plugin.dart';
 import 'browser_service.dart';
 import 'github_tools.dart';
