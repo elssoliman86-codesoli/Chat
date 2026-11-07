@@ -98,7 +98,10 @@ class ScopePolicy {
     final host = uri?.host.toLowerCase();
     if (host == null || host.isEmpty || !host.contains('.') ||
         host.contains('..') || host.contains(' ')) return null;
-    return host.endsWith('.') ? host.substring(0, host.length - 1) : host;
+    if (host.endsWith('.')) {
+      return host.substring(0, host.length - 1);
+    }
+    return host;
   }
 
   static bool _matches(String host, String rule) {
