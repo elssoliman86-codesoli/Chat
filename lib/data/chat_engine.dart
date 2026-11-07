@@ -422,7 +422,7 @@ class ChatEngine implements ToolHost {
       if (m.role == 'user') last = m;
     }
     final query = (last?.text ?? '').trim();
-    final recentContext = c.messages.reversed.take(10).map((m) => m.text).join('\\n');
+    final recentContext = c.messages.map((m) => m.text).join('\n');
     if (shouldSkipAutomaticWebSearchForLocalAction(query, recentContext: recentContext)) return null;
     if (query.length < 8 || query.split(RegExp(r'\s+')).length < 2) return null;
     final short = query.length > 200 ? query.substring(0, 200) : query;
