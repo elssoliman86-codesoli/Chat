@@ -315,7 +315,7 @@ class ChatEngine implements ToolHost {
         'named App gets a Preview that renders it with React. There is no runtime for compiled languages (Go, Java, Swift, C, and so on): say so '
         'and offer the source file instead when one of those is asked for.');
     if (st.termuxTools) {
-      b.writeln('\\nTermux Agent: use agent_start and agent_plan for multi-step tasks. For security testing, first retrieve and read the current program policy, then call agent_set_scope with the exact target and policy text. The app extracts explicit in-scope and out-of-scope hosts and requires the user to review and confirm them. Never infer sibling domains, API hosts, IPs or mobile backends into scope. Out-of-scope rules always override. Use termux_discover_tools before selecting local tools; it only inspects installed commands. If tools are missing, propose them with termux_install_batch: the app asks for one approval for the complete batch and installs only supported package identifiers. Use termux_run only after its confirmation prompt. Any command that contacts a target must include the exact target hostname and pass the scope gate; active testing also requires reviewed and user-confirmed policy. Follow the program rules, rate limits and exclusions. Never perform destructive testing, denial of service, brute force, credential attacks, access other users data, or bypass program restrictions. Termux is a real device shell, not a sandbox; do not claim a command ran unless its exit status confirms it.');
+      b.writeln('\nTermux Agent: use agent_start and agent_plan for multi-step tasks. For security testing, first retrieve and read the current program policy, then call agent_set_scope with the exact target and policy text. The app extracts explicit in-scope and out-of-scope hosts and requires the user to review and confirm them. Never infer sibling domains, API hosts, IPs or mobile backends into scope. Out-of-scope rules always override. Use termux_discover_tools before selecting local tools; it only inspects installed commands. If tools are missing, propose them with termux_install_batch: the app asks for one approval for the complete batch and installs only supported package identifiers. Use termux_run only after its confirmation prompt. Any command that contacts a target must include the exact target hostname and pass the scope gate; active testing also requires reviewed and user-confirmed policy. Follow the program rules, rate limits and exclusions. Never perform destructive testing, denial of service, brute force, credential attacks, access other users data, or bypass program restrictions. Termux is a real device shell, not a sandbox; do not claim a command ran unless its exit status confirms it.');
     }    b.writeln('\nTo add skills or plugins to this app when the person gives you a link or text, use install_skills, '
         'install_plugin or create_skill. When you need permission, a login, a captcha or a decision from the person, '
         'call ask_user instead of guessing.');
@@ -393,7 +393,7 @@ class ChatEngine implements ToolHost {
         if (initial.decision != ScopeDecision.allow) return 'Target rejected: ${initial.reason} Parsed in-scope entries: ${policy.inScope.join(', ')}';
         final inScope = policy.inScope.toList()..sort();
         final outScope = policy.outOfScope.toList()..sort();
-        final approved = await confirm('Review program scope before testing\\n\\nTarget: $target\\nSource: $source\\n\\nIn scope:\\n${inScope.join('\\n')}\\n\\nOut of scope:\\n${outScope.isEmpty ? '(none extracted)' : outScope.join('\\n')}\\n\\nConfirm that you reviewed this policy and that these extracted entries are accurate?');
+        final approved = await confirm('Review program scope before testing\n\nTarget: $target\nSource: $source\n\nIn scope:\n${inScope.join('\n')}\n\nOut of scope:\n${outScope.isEmpty ? '(none extracted)' : outScope.join('\n')}\n\nConfirm that you reviewed this policy and that these extracted entries are accurate?');
         policy.reviewed = approved;
         policy.userConfirmed = approved;
         agent.setPolicy(policy);
@@ -417,7 +417,7 @@ class ChatEngine implements ToolHost {
         await store.saveAgentState();
         final missing = TermuxService.installablePackages.keys.where((id) => !found.any((item) => item['name'] == id)).toList();
         store.changed();
-        return 'Discovered ${found.length} installed tools:\\n${found.map((item) => '${item['name']} — ${item['version']}').join('\\n')}\\n\\nSupported packages not detected: ${missing.join(', ')}';
+        return 'Discovered ${found.length} installed tools:\n${found.map((item) => '${item['name']} — ${item['version']}').join('\n')}\n\nSupported packages not detected: ${missing.join(', ')}';
       }
       case 'install_batch': {
         final raw = args['package_ids'];
@@ -441,7 +441,7 @@ class ChatEngine implements ToolHost {
           if (exitCode is num && exitCode.toInt() != 0) {
             for (final id in packages) { final item = store.toolRegistry.find(id); if (item != null) item.status = ToolInstallStatus.failed; }
             await store.saveAgentState();
-            return 'Termux package installation failed (exit code $exitCode).\\n${result['stderr'] ?? result['errmsg'] ?? result['stdout'] ?? ''}';
+            return 'Termux package installation failed (exit code $exitCode).\n${result['stderr'] ?? result['errmsg'] ?? result['stdout'] ?? ''}';
           }
           final found = await TermuxService.instance.discoverTools();
           for (final item in found) {
@@ -451,7 +451,7 @@ class ChatEngine implements ToolHost {
           await store.saveAgentState();
           store.changed();
           final verified = packages.where((id) => store.toolRegistry.find(id)?.isUsable == true).toList();
-          return 'Install command completed. Verified: ${verified.join(', ')}. Not verified: ${packages.where((id) => !verified.contains(id)).join(', ')}.\\n${result['stdout'] ?? ''}';
+          return 'Install command completed. Verified: ${verified.join(', ')}. Not verified: ${packages.where((id) => !verified.contains(id)).join(', ')}.\n${result['stdout'] ?? ''}';
         } catch (e) { return 'Could not install the approved batch: $e'; }
       }
       case 'create_python_tool': {
@@ -463,9 +463,9 @@ class ChatEngine implements ToolHost {
         if (slug.isEmpty) return 'Invalid Python helper name.';
         final encodedCode = base64Encode(utf8.encode(code));
         final encodedTests = base64Encode(utf8.encode(testCode));
-        final testProgram = "import base64\\nsource=base64.b64decode('$encodedCode').decode('utf-8')\\nnamespace={'__name__':'__omni_custom_tool_test__'}\\nexec(compile(source, '$slug.py', 'exec'), namespace, namespace)\\ntests=base64.b64decode('$encodedTests').decode('utf-8')\\nif tests.strip(): exec(compile(tests, '<omni-tests>', 'exec'), namespace, namespace)\\nprint('OMNI_TESTS_PASSED')";
+        final testProgram = "import base64\nsource=base64.b64decode('$encodedCode').decode('utf-8')\nnamespace={'__name__':'__omni_custom_tool_test__'}\nexec(compile(source, '$slug.py', 'exec'), namespace, namespace)\ntests=base64.b64decode('$encodedTests').decode('utf-8')\nif tests.strip(): exec(compile(tests, '<omni-tests>', 'exec'), namespace, namespace)\nprint('OMNI_TESTS_PASSED')";
         final testResult = await PythonRuntime.instance.run(testProgram, timeout: const Duration(seconds: 45));
-        if (!testResult.contains('OMNI_TESTS_PASSED')) return 'Python helper was not saved because sandbox validation failed:\\n$testResult';
+        if (!testResult.contains('OMNI_TESTS_PASSED')) return 'Python helper was not saved because sandbox validation failed:\n$testResult';
         final base = await getApplicationDocumentsDirectory();
         final dir = Directory('${base.path}/agent_tools');
         await dir.create(recursive: true);
@@ -475,7 +475,7 @@ class ChatEngine implements ToolHost {
         await store.saveAgentState();
         deliver('$slug.py', file.path);
         store.changed();
-        return 'Created and sandbox-tested $slug.py. The file is stored locally at ${file.path}. It has NOT been executed in Termux or against any target; a separate explicit approval is required before transferring or running it externally.\\n$testResult';
+        return 'Created and sandbox-tested $slug.py. The file is stored locally at ${file.path}. It has NOT been executed in Termux or against any target; a separate explicit approval is required before transferring or running it externally.\n$testResult';
       }
       default: return 'Unknown agent action: $action';
     }
@@ -500,18 +500,18 @@ class ChatEngine implements ToolHost {
       final ask = await confirm('Omni Chat needs the Android “Run commands in Termux environment” permission. Request it now?');
       if (!ask || !await TermuxService.instance.requestPermission()) return 'Termux permission was not granted.';
     }
-    final networkPattern = RegExp(r'\\b(nmap|subfinder|amass|httpx|nuclei|ffuf|feroxbuster|nikto|sqlmap|curl|wget|dig|whois|ping|traceroute|mitmproxy|nc|netcat)\\b', caseSensitive: false);
+    final networkPattern = RegExp(r'\b(nmap|subfinder|amass|httpx|nuclei|ffuf|feroxbuster|nikto|sqlmap|curl|wget|dig|whois|ping|traceroute|mitmproxy|nc|netcat)\\b', caseSensitive: false);
     final contactsTarget = networkPattern.hasMatch(clean);
     if (contactsTarget) {
-      if (RegExp(r'[;|&`$<>\\n]').hasMatch(clean)) return 'Blocked: target-facing commands cannot contain shell chaining, redirection, command substitution or pipelines. Run one reviewed command at a time.';
+      if (RegExp(r'[;|&`$<>\n]').hasMatch(clean)) return 'Blocked: target-facing commands cannot contain shell chaining, redirection, command substitution or pipelines. Run one reviewed command at a time.';
       if (target.trim().isEmpty) return 'Blocked: supply the exact target hostname and review the current program policy with agent_set_scope first.';
-      final risk = RegExp(r'\\b(nmap|subfinder|amass|nuclei|ffuf|feroxbuster|nikto|sqlmap)\\b', caseSensitive: false).hasMatch(clean) ? AgentOperationRisk.active : AgentOperationRisk.passive;
+      final risk = RegExp(r'\b(nmap|subfinder|amass|nuclei|ffuf|feroxbuster|nikto|sqlmap)\\b', caseSensitive: false).hasMatch(clean) ? AgentOperationRisk.active : AgentOperationRisk.passive;
       final decision = agent.authorizeOperation(target: target, risk: risk);
       if (decision.decision != ScopeDecision.allow) return 'Blocked by scope policy: ${decision.reason}';
     }
     final packageInstall = RegExp(r'^\\s*(pkg|apt|pip|pip3|npm|gem|cargo)\\s+install\\b', caseSensitive: false).hasMatch(clean);
     if (packageInstall) return 'Package installation must use termux_install_batch so the package allowlist and one batch approval are enforced.';
-    final approved = await confirm('Run this real command on your device in Termux?\\n\\n$clean\\n\\n${contactsTarget ? 'Target: $target\\nScope policy check: passed.\\n' : ''}This can read or modify files in your Termux home.');
+    final approved = await confirm('Run this real command on your device in Termux?\n\n$clean\n\n${contactsTarget ? 'Target: $target\nScope policy check: passed.\n' : ''}This can read or modify files in your Termux home.');
     if (!approved) return 'Command was not approved and was not executed.';
     try {
       final result = await TermuxService.instance.run(clean, workdir: workdir, timeout: Duration(seconds: timeoutSeconds.clamp(1, 300)));
@@ -520,9 +520,9 @@ class ChatEngine implements ToolHost {
       final exitCode = result['exitCode'];
       final error = (result['errmsg'] ?? '').toString();
       final b = StringBuffer('exit code: $exitCode');
-      if (error.isNotEmpty) b.write('\\nTermux error: $error');
-      if (stdout.trim().isNotEmpty) b.write('\\n\\nstdout:\\n${stdout.trim()}');
-      if (stderr.trim().isNotEmpty) b.write('\\n\\nstderr:\\n${stderr.trim()}');
+      if (error.isNotEmpty) b.write('\nTermux error: $error');
+      if (stdout.trim().isNotEmpty) b.write('\n\nstdout:\n${stdout.trim()}');
+      if (stderr.trim().isNotEmpty) b.write('\n\nstderr:\n${stderr.trim()}');
       return b.toString();
     } on PlatformException catch (e) { return e.code == 'timeout' ? 'Termux command timed out after $timeoutSeconds seconds.' : 'Termux failed: ${e.message ?? e.code}'; }
     catch (e) { return 'Termux execution failed: $e'; }
