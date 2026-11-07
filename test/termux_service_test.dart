@@ -12,6 +12,7 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
+      if (call.method == 'getVersion') return '0.118.0';
       if (call.method == 'run') {
         final command = (call.arguments as Map)['command'] as String;
         if (command.contains('pkg install')) {
