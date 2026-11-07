@@ -1,14 +1,6 @@
 import '../core/models.dart';
 import '../data/app_store.dart';
-import '../plugins/plugin.dart';
-import 'browser_service.dart';
-import 'github_tools.dart';
 import 'tools.dart';
-import 'web_tools.dart';
-import '../projects/project_tools.dart';
-import '../tools/termux_service.dart';
-import '../tools/python_runtime.dart';
-import '../tools/image_reader.dart';
 import '../llm/llm.dart';
 
 /// Central registry that builds the complete list of tools available to the model
