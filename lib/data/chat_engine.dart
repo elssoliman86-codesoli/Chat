@@ -402,6 +402,7 @@ class ChatEngine implements ToolHost {
         final policyText = (args['policy_text'] ?? '').toString();
         final policySummary = (args['policy_summary'] ?? '').toString().trim();
         if (target.isEmpty || policyText.trim().isEmpty || policySummary.isEmpty) return 'A target, full policy text, and summary of important program rules are required.';
+        agent.clearPolicy();
         final policy = ScopePolicy.parse(policyText, source: source);
         final initial = policy.evaluate(target, activeOperation: false);
         if (initial.decision != ScopeDecision.allow) return 'Target rejected: ${initial.reason} Parsed in-scope entries: ${policy.inScope.join(', ')}';
