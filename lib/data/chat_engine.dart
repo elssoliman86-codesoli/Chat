@@ -511,16 +511,28 @@ class ChatEngine implements ToolHost {
       final ask = await confirm('Omni Chat needs the Android “Run commands in Termux environment” permission. Request it now?');
       if (!ask || !await TermuxService.instance.requestPermission()) return 'Termux permission was not granted.';
     }
-    final networkPattern = RegExp(r'\b(nmap|subfinder|amass|httpx|nuclei|ffuf|feroxbuster|nikto|sqlmap|curl|wget|dig|whois|ping|traceroute|mitmproxy|nc|netcat)\\b', caseSensitive: false);
+    final networkPattern = RegExp(r'\b(nmap|subfinder|amass|httpx|nuclei|ffuf|feroxbuster|nikto|sqlmap|curl|wget|dig|whois|ping|traceroute|mitmproxy|nc|netcat)\b', caseSensitive: false);
     final contactsTarget = networkPattern.hasMatch(clean);
     if (contactsTarget) {
       if (RegExp(r'[;|&`$<>\n]').hasMatch(clean)) return 'Blocked: target-facing commands cannot contain shell chaining, redirection, command substitution or pipelines. Run one reviewed command at a time.';
+      if (RegExp(r'\b(?:\d{1,3}\.){3}\d{1,3}\b').hasMatch(clean)) return 'Blocked: IP literals are not accepted by this hostname-only scope gate. Use an explicitly listed hostname.';
       if (target.trim().isEmpty) return 'Blocked: supply the exact target hostname and review the current program policy with agent_set_scope first.';
-      final risk = RegExp(r'\b(nmap|subfinder|amass|nuclei|ffuf|feroxbuster|nikto|sqlmap)\\b', caseSensitive: false).hasMatch(clean) ? AgentOperationRisk.active : AgentOperationRisk.passive;
-      final decision = agent.authorizeOperation(target: target, risk: risk);
+      final risk = RegExp(r'\b(nmap|subfinder|amass|nuclei|ffuf|feroxbuster|nikto|sqlmap)\b', caseSensitive: false).hasMatch(clean) ||
+          RegExp(r'\b(-X|--request)\s*(POST|PUT|PATCH|DELETE)\b|--data(?:-raw|-binary)?\b|\s-d\s|\s-F\s', caseSensitive: false).hasMatch(clean)
+        ? AgentOperationRisk.active : AgentOperationRisk.passive;
+      final declared = Uri.tryParse(target.contains('://') ? target : 'https://$target')?.host.toLowerCase();
+      if (declared == null || declared.isEmpty) return 'Blocked: target must be a valid hostname.';
+      final decision = agent.authorizeOperation(target: declared, risk: risk);
       if (decision.decision != ScopeDecision.allow) return 'Blocked by scope policy: ${decision.reason}';
+      final hostPattern = RegExp(r'(?<![a-z0-9-])(?:https?://)?([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,})(?::\d+)?', caseSensitive: false);
+      final commandHosts = hostPattern.allMatches(clean).map((match) => match.group(1)!.toLowerCase()).toSet();
+      if (commandHosts.isEmpty) return 'Blocked: the command must visibly include its target hostname so it can be checked against scope.';
+      for (final host in commandHosts) {
+        final hostDecision = agent.authorizeOperation(target: host, risk: risk);
+        if (hostDecision.decision != ScopeDecision.allow) return 'Blocked: command target $host is not authorized. ${hostDecision.reason}';
+      }
     }
-    final packageInstall = RegExp(r'^\\s*(pkg|apt|pip|pip3|npm|gem|cargo)\\s+install\\b', caseSensitive: false).hasMatch(clean);
+    final packageInstall = RegExp(r'^\s*(pkg|apt|pip|pip3|npm|gem|cargo)\s+install\b', caseSensitive: false).hasMatch(clean);
     if (packageInstall) return 'Package installation must use termux_install_batch so the package allowlist and one batch approval are enforced.';
     final approved = await confirm('Run this real command on your device in Termux?\n\n$clean\n\n${contactsTarget ? 'Target: $target\nScope policy check: passed.\n' : ''}This can read or modify files in your Termux home.');
     if (!approved) return 'Command was not approved and was not executed.';
