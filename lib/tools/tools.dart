@@ -48,6 +48,44 @@ Map<String, dynamic> _str(String description) => <String, dynamic>{'type': 'stri
 String _s(Map<String, dynamic> a, String k) => (a[k] ?? '').toString();
 int _i(Map<String, dynamic> a, String k) => int.tryParse((a[k] ?? '0').toString()) ?? 0;
 
+String _shellQuote(String value) => "'\${value.replaceAll("'", "'\\''")}'";
+
+Future<String> _runTermuxCommand(String command, {String? workdir, int timeoutSeconds = 60}) async {
+  if (command.trim().isEmpty) return 'No command was given.';
+  if (!await TermuxService.instance.isInstalled()) {
+    return 'Termux is not installed or the Android Termux bridge is unavailable.';
+  }
+  if (!await TermuxService.instance.hasPermission()) {
+    final granted = await TermuxService.instance.requestPermission();
+    if (!granted) {
+      return 'Termux permission was not granted. Enable "Run commands in Termux environment" for this app and set allow-external-apps = true in ~/.termux/termux.properties inside Termux.';
+    }
+  }
+  final seconds = timeoutSeconds.clamp(1, 300);
+  try {
+    final result = await TermuxService.instance.run(
+      command,
+      workdir: workdir,
+      timeout: Duration(seconds: seconds),
+    );
+    final stdout = (result['stdout'] ?? '').toString();
+    final stderr = (result['stderr'] ?? '').toString();
+    final exitCode = result['exitCode'];
+    final error = (result['errmsg'] ?? '').toString();
+    final out = StringBuffer('exit code: $exitCode');
+    if (error.isNotEmpty) out.write('\\nTermux error: $error');
+    if (stdout.trim().isNotEmpty) out.write('\\n\\nstdout:\\n\${stdout.trim()}');
+    if (stderr.trim().isNotEmpty) out.write('\\n\\nstderr:\\n\${stderr.trim()}');
+    return out.toString();
+  } on PlatformException catch (e) {
+    return e.code == 'timeout'
+        ? 'Termux command timed out after \${seconds}s.'
+        : 'Could not run the command in Termux: \${e.message ?? e.code}';
+  } catch (e) {
+    return 'Could not reach Termux: $e';
+  }
+}
+
 class ToolDef {
   const ToolDef({required this.id, required this.title, required this.spec, required this.run, this.group = 'core'});
 
@@ -498,71 +536,56 @@ final List<ToolDef> builtinTools = <ToolDef>[
     run: (a, host) => BrowserService.instance.back(),
   ),
   ToolDef(
+    id: 'termux_list_files',
+    title: 'List files in Termux',
+    group: 'termux',
+    spec: const ToolSpec(
+      name: 'termux_list_files',
+      description: 'Read-only file listing from the connected Termux environment on the user phone. MUST use this when the user asks to open Termux, show/list file or folder names, inspect a directory, or see hidden files. Do not use web search or a browser for local device files. Empty path means the current Termux directory. Set include_hidden=true to include dotfiles; recursive=true lists a limited directory tree.',
+      parameters: <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'path': <String, dynamic>{'type': 'string', 'description': 'Optional path; defaults to the current Termux directory.'},
+          'include_hidden': <String, dynamic>{'type': 'boolean', 'description': 'Include hidden files; default true.'},
+          'recursive': <String, dynamic>{'type': 'boolean', 'description': 'List a directory tree instead of one directory.'},
+          'max_depth': <String, dynamic>{'type': 'integer', 'description': 'Maximum recursion depth, 1 to 4; default 2.'},
+        },
+      },
+    ),
+    run: (a, host) async {
+      final path = _s(a, 'path').trim();
+      final target = path.isEmpty ? '.' : _shellQuote(path);
+      final recursive = a['recursive'] == true;
+      final includeHidden = a['include_hidden'] != false;
+      final depth = _i(a, 'max_depth').clamp(1, 4);
+      final command = recursive
+          ? 'printf "Termux directory: "; pwd; find $target -maxdepth $depth \${includeHidden ? '' : "-not -name \\".*\\""} -print 2>&1 | head -n 300'
+          : 'printf "Termux directory: "; pwd; ls -la \${includeHidden ? '' : '-A'} -- $target 2>&1';
+      return _runTermuxCommand(command, timeoutSeconds: 45);
+    },
+  ),
+  ToolDef(
     id: 'termux_run',
     title: 'Run a shell command (Termux)',
     group: 'termux',
     spec: const ToolSpec(
       name: 'termux_run',
-      description: 'Runs a real shell command on the user\'s own device through Termux, a separate terminal app the user has '
-          'installed and connected (not a sandbox: whatever is actually installed there — python, pip, node, git, curl, '
-          'compilers, and so on — is available, and it can read and write the user\'s own files). For the user\'s own automation, '
-          'trying a real tool, or anything that genuinely needs a shell, not for the sandboxed python_run. Runs with bash -lc, '
-          'so chain with && or ; as needed. Output over roughly 100KB is truncated. Give it a few seconds for a slow command via '
-          'timeout_seconds; a truly long-running or background process is not a good fit for this tool.',
+      description: 'Runs a real shell command on the user phone through the connected Termux app. This is the real phone filesystem and Linux environment, not a web browser or sandbox. For local file listing prefer termux_list_files. When the user asks you to execute a command, execute it here instead of merely printing a command for the user. Do not use web_search or browser tools for local device operations.',
       parameters: <String, dynamic>{
         'type': 'object',
         'properties': <String, dynamic>{
-          'command': <String, dynamic>{'type': 'string', 'description': 'Shell command to run'},
-          'workdir': <String, dynamic>{
-            'type': 'string',
-            'description': 'Working directory (default: Termux\'s home). Use ~/ for paths under it.',
-          },
-          'timeout_seconds': <String, dynamic>{'type': 'integer', 'description': 'How long to wait (default 60, max 300)'},
+          'command': <String, dynamic>{'type': 'string', 'description': 'Shell command to execute on the user phone.'},
+          'workdir': <String, dynamic>{'type': 'string', 'description': 'Working directory; defaults to Termux home.'},
+          'timeout_seconds': <String, dynamic>{'type': 'integer', 'description': 'Timeout from 1 to 300 seconds; default 60.'},
         },
         'required': <String>['command'],
       },
     ),
-    run: (a, host) async {
-      final command = _s(a, 'command').trim();
-      if (command.isEmpty) return 'No command was given.';
-      if (!await TermuxService.instance.isInstalled()) {
-        return 'Termux is not installed on this device. It needs to be installed from F-Droid or GitHub (not the Play Store '
-            'version, which is outdated and unsupported) before this tool can be used — tell the user.';
-      }
-      if (!await TermuxService.instance.hasPermission()) {
-        final granted = await TermuxService.instance.requestPermission();
-        if (!granted) {
-          return 'The "Run commands in Termux environment" permission has not been granted to this app yet. Ask the user to '
-              'grant it (a system dialog should have just appeared; if not, Android Settings → Apps → Omni Chat → Permissions), '
-              'and that Termux itself must have `allow-external-apps = true` set in ~/.termux/termux.properties (edit that file '
-              'inside Termux, then run termux-reload-settings) — this is a one-time setup only they can do.';
-        }
-      }
-      var secs = _i(a, 'timeout_seconds');
-      if (secs <= 0) secs = 60;
-      if (secs > 300) secs = 300;
-      try {
-        final r = await TermuxService.instance
-            .run(command, workdir: a['workdir']?.toString(), timeout: Duration(seconds: secs));
-        final stdout = (r['stdout'] ?? '').toString();
-        final stderr = (r['stderr'] ?? '').toString();
-        final exitCode = r['exitCode'];
-        final errmsg = (r['errmsg'] ?? '').toString();
-        if (errmsg.isNotEmpty) {
-          return 'Termux could not run the command: $errmsg\n\nThis usually means `allow-external-apps = true` is missing from '
-              '~/.termux/termux.properties inside Termux (a one-time setup only the user can do there).';
-        }
-        final b = StringBuffer('exit code: $exitCode');
-        if (stdout.trim().isNotEmpty) b.write('\n\nstdout:\n${stdout.trim()}');
-        if (stderr.trim().isNotEmpty) b.write('\n\nstderr:\n${stderr.trim()}');
-        return b.toString();
-      } on PlatformException catch (e) {
-        if (e.code == 'timeout') return 'Termux command timed out after ${secs}s. Narrow it down or raise timeout_seconds.';
-        return 'Could not run the command in Termux: ${e.message ?? e.code}';
-      } on Exception catch (e) {
-        return 'Could not reach Termux: $e';
-      }
-    },
+    run: (a, host) => _runTermuxCommand(
+      _s(a, 'command'),
+      workdir: a['workdir']?.toString(),
+      timeoutSeconds: _i(a, 'timeout_seconds') <= 0 ? 60 : _i(a, 'timeout_seconds'),
+    ),
   ),
   ToolDef(
     id: 'python_run',
