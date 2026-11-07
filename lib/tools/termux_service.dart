@@ -53,6 +53,18 @@ class TermuxService {
     }
   }
 
+  Future<String> version() async {
+    return (await _channel.invokeMethod<String>('getVersion'))?.trim() ?? '';
+  }
+
+  Future<bool> supportsRunCommandResult() async {
+    final value = await version();
+    final parts = RegExp(r'\\d+').allMatches(value).take(2)
+        .map((match) => int.tryParse(match.group(0)!) ?? 0).toList();
+    if (parts.length < 2) return false;
+    return parts[0] > 0 || (parts[0] == 0 && parts[1] >= 109);
+  }
+
   Future<bool> hasPermission() async {
     try {
       return await _channel.invokeMethod<bool>('hasPermission') ?? false;
