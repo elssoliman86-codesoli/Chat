@@ -52,6 +52,8 @@ class RegisteredTool {
 }
 
 class ToolRegistry {
+  ToolRegistry();
+
   final Map<String, RegisteredTool> _tools = <String, RegisteredTool>{};
 
   List<RegisteredTool> get all => List<RegisteredTool>.unmodifiable(_tools.values);
@@ -80,8 +82,13 @@ class ToolRegistry {
 
   factory ToolRegistry.fromJson(Map<String, dynamic> json) {
     final registry = ToolRegistry();
-    for (final item in (json['tools'] as List?)?.whereType<Map>() ?? const []) {
-      registry.register(RegisteredTool.fromJson(item.cast<String, dynamic>()));
+    final rawTools = json['tools'];
+    if (rawTools is List) {
+      for (final item in rawTools) {
+        if (item is Map) {
+          registry.register(RegisteredTool.fromJson(Map<String, dynamic>.from(item)));
+        }
+      }
     }
     return registry;
   }
