@@ -454,10 +454,14 @@ class ChatEngine implements ToolHost {
           await store.saveAgentState();
           final result = await TermuxService.instance.installPackages(packages);
           final exitCode = result['exitCode'];
-          if (exitCode is num && exitCode.toInt() != 0) {
+          final nativeErr = result['err'];
+          final nativeMessage = (result['errmsg'] ?? '').toString();
+          if ((exitCode is num && exitCode.toInt() != 0) ||
+              nativeMessage.isNotEmpty ||
+              (nativeErr is num && nativeErr.toInt() != -1)) {
             for (final id in packages) { final item = store.toolRegistry.find(id); if (item != null) item.status = ToolInstallStatus.failed; }
             await store.saveAgentState();
-            return 'Termux package installation failed (exit code $exitCode).\n${result['stderr'] ?? result['errmsg'] ?? result['stdout'] ?? ''}';
+            return 'Termux package installation failed (exit code $exitCode, native error $nativeErr).\n${nativeMessage.isNotEmpty ? nativeMessage : result['stderr'] ?? result['stdout'] ?? ''}';
           }
           final found = await TermuxService.instance.discoverTools();
           for (final item in found) {
@@ -520,7 +524,12 @@ class ChatEngine implements ToolHost {
         try {
           final copied = await TermuxService.instance.run(transfer, timeout: const Duration(seconds: 45));
           final copyCode = copied['exitCode'];
-          if (copyCode is num && copyCode.toInt() != 0) return 'Could not transfer the approved helper to Termux: ${copied['stderr'] ?? copied['errmsg'] ?? copied['stdout'] ?? ''}';
+          final copyNativeErr = copied['err'];
+          final copyMessage = (copied['errmsg'] ?? '').toString();
+          if ((copyCode is num && copyCode.toInt() != 0) || copyMessage.isNotEmpty ||
+              (copyNativeErr is num && copyNativeErr.toInt() != -1)) {
+            return 'Could not transfer the approved helper to Termux: ${copyMessage.isNotEmpty ? copyMessage : copied['stderr'] ?? copied['stdout'] ?? ''}';
+          }
           final executed = await TermuxService.instance.run('python ~/omni_agent_tools/$slug.py --target $targetHost', timeout: const Duration(minutes: 5));
           final exitCode = executed['exitCode'];
           final stdout = (executed['stdout'] ?? '').toString();
@@ -606,9 +615,11 @@ class ChatEngine implements ToolHost {
       final stdout = (result['stdout'] ?? '').toString();
       final stderr = (result['stderr'] ?? '').toString();
       final exitCode = result['exitCode'];
+      final nativeErr = result['err'];
       final error = (result['errmsg'] ?? '').toString();
       final b = StringBuffer('exit code: $exitCode');
       if (error.isNotEmpty) b.write('\nTermux error: $error');
+      if (nativeErr is num && nativeErr.toInt() != -1) b.write('\nTermux native error code: $nativeErr');
       if (stdout.trim().isNotEmpty) b.write('\n\nstdout:\n${stdout.trim()}');
       if (stderr.trim().isNotEmpty) b.write('\n\nstderr:\n${stderr.trim()}');
       return b.toString();
