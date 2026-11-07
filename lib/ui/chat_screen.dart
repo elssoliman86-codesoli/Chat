@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/models.dart';
+import 'agent_timeline.dart';
 import '../data/services.dart';
 import 'browser_dock.dart';
 import 'composer.dart';
@@ -156,6 +157,8 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           body: Stack(children: [
             Column(children: [
+            if (store.agentTask != null && store.agentTask!.conversationId == c.id)
+              AgentTimelinePanel(task: store.agentTask!, registry: store.toolRegistry),
             Expanded(
               child: c.messages.isEmpty
                   ? _Empty(

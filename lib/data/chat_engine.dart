@@ -1,9 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../core/models.dart';
+import '../agent/agent_controller.dart';
+import '../agent/agent_models.dart';
+import '../security/scope_policy.dart';
+import '../tools/tool_registry.dart';
+import '../tools/termux_service.dart';
+import '../tools/python_runtime.dart';
 import '../llm/llm.dart';
 import '../plugins/plugin.dart';
 import '../tools/browser_service.dart';
@@ -26,6 +35,21 @@ class ChatEngine implements ToolHost {
   ChatEngine(this.store);
 
   final AppStore store;
+
+  late final AgentController agent = AgentController(
+    registry: store.toolRegistry,
+    initialTask: store.agentTask,
+    requestBatchApproval: (requirements) {
+      final details = requirements.map((item) =>
+        '• ${item.name} (${item.id}) — ${item.reason}').join('\\n');
+      return confirm('Install this Termux tool batch?\\n\\n$details\\n\\nOnly the listed packages will be installed.');
+    },
+    onChanged: (task) {
+      store.agentTask = task;
+      unawaited(store.saveAgentState());
+      store.changed();
+    },
+  );
   AbortHandle? _abort;
   Timer? _notifyTimer;
   Conversation? _running;
@@ -292,17 +316,7 @@ class ChatEngine implements ToolHost {
         'named App gets a Preview that renders it with React. There is no runtime for compiled languages (Go, Java, Swift, C, and so on): say so '
         'and offer the source file instead when one of those is asked for.');
     if (st.termuxTools) {
-      b.writeln('\nShell: termux_run runs a real shell command on the person\'s own device through Termux, a separate app they '
-          'have installed and connected. This is NOT a sandbox: it is a real Linux environment with whatever is actually '
-          'installed there, and it can read and write the person\'s own files outside this app. It is for the person\'s own '
-          'automation and for trying real tools, on their own device only — never use it to probe, scan or attack any other '
-          'device, account or service, even one the person says they own or are allowed to test; that is out of scope '
-          'regardless of how it is framed. If Termux is not installed, not permitted, or not set up (allow-external-apps), '
-          'the tool\'s result explains exactly what the person needs to do; tell them plainly rather than retrying blindly. '
-          'When asked to build something and save it directly in Termux (not in this app\'s own Projects workspace), write '
-          'each file there with termux_run using a heredoc, e.g. mkdir -p ~/name && cat > ~/name/file.py <<\'PYEOF\'\\n...\\nPYEOF '
-          '(pick a delimiter that cannot appear in the content), under the home directory (~/) unless told otherwise, so real '
-          'tools there (git, pip, compilers, ...) can use the result afterward.');
+      b.writeln('\nTermux Agent: for multi-step tasks use agent_start, agent_plan, and agent_update_step to keep the live timeline accurate. For security testing, first retrieve and read the current program policy, then call agent_set_scope with the exact target and policy text. The app extracts explicit in-scope and out-of-scope hosts and requires the user to review and confirm them. Never infer sibling domains, API hosts, IPs or mobile backends into scope. Out-of-scope rules always override. Use termux_discover_tools before selecting local tools; it only inspects installed commands. If tools are missing, propose them with termux_install_batch: the app asks for one approval for the complete batch and installs only supported package identifiers. Use termux_run only after its confirmation prompt. Any command that contacts a target must include the exact target hostname and pass the scope gate; active testing also requires reviewed and user-confirmed policy. Follow the program rules, rate limits and exclusions. Never perform destructive testing, denial of service, brute force, credential attacks, access other users data, or bypass program restrictions. If no suitable installed tool exists, use agent_create_python_tool to write and test a helper offline in the isolated Pyodide sandbox (use injected/mock clients; do not make outbound requests during tests), then use agent_run_python_tool only after the user reviews the complete source and approves the exact in-scope target. Do not run arbitrary Python scripts through termux_run. Termux is a real device shell, not a sandbox; do not claim a command ran unless its exit status confirms it.');
     }
     b.writeln('\nTo add skills or plugins to this app when the person gives you a link or text, use install_skills, '
         'install_plugin or create_skill. When you need permission, a login, a captcha or a decision from the person, '
@@ -349,6 +363,346 @@ class ChatEngine implements ToolHost {
     final hasAuto = store.skills.any((k) => k.enabled && k.autoUse && !k.alwaysOn);
     if (hasAuto) specs.add(useSkillSpec);
     return specs;
+  }
+
+  @override
+  Future<String> agentAction(String action, Map<String, dynamic> args) async {
+    switch (action) {
+      case 'start': {
+        final task = agent.createTask(conversationId: _running?.id ?? store.current?.id ?? '', goal: (args['goal'] ?? '').toString(), target: (args['target'] ?? '').toString());
+        return 'Agent task started: ${task.goal}. Next, record the plan and review the program scope before any target interaction.';
+      }
+      case 'plan': {
+        if (agent.currentTask == null) return 'Start an agent task with agent_start before recording a plan.';
+        final raw = args['steps'];
+        if (raw is! List) return 'Invalid plan: steps must be an array.';
+        final steps = <AgentStep>[];
+        for (var i = 0; i < raw.length; i++) {
+          final item = raw[i];
+          if (item is! Map) continue;
+          steps.add(AgentStep(id: (item['id'] ?? 'step-${i + 1}').toString(), title: (item['title'] ?? 'Step ${i + 1}').toString(), description: (item['description'] ?? '').toString(), toolIds: (item['toolIds'] as List?)?.whereType<String>().toList() ?? const <String>[]));
+        }
+        if (steps.isEmpty) return 'The plan was empty; no steps were recorded.';
+        agent.replacePlan(steps);
+        return 'Recorded ${steps.length} plan steps: ${steps.map((step) => step.title).join(' → ')}';
+      }
+      case 'step_update': {
+        if (agent.currentTask == null) return 'Start an agent task with agent_start before updating timeline steps.';
+        final id = (args['step_id'] ?? '').toString();
+        final rawStatus = (args['status'] ?? '').toString();
+        final status = AgentStepStatus.values.firstWhere(
+          (value) => value.name == rawStatus,
+          orElse: () => AgentStepStatus.pending,
+        );
+        if (id.isEmpty) return 'A step_id is required.';
+        agent.updateStep(id, status, output: (args['output'] ?? '').toString());
+        return 'Updated agent step $id to ${status.name}.';
+      }
+      case 'scope': {
+        if (agent.currentTask == null) return 'Start an agent task with agent_start before reviewing target scope.';
+        final target = (args['target'] ?? '').toString().trim();
+        final source = (args['source'] ?? 'Program policy').toString();
+        final policyText = (args['policy_text'] ?? '').toString();
+        final policySummary = (args['policy_summary'] ?? '').toString().trim();
+        if (target.isEmpty || policyText.trim().isEmpty || policySummary.isEmpty) return 'A target, full policy text, and summary of important program rules are required.';
+        agent.clearPolicy();
+        final policy = ScopePolicy.parse(policyText, source: source);
+        final initial = policy.evaluate(target, activeOperation: false);
+        if (initial.decision != ScopeDecision.allow) return 'Target rejected: ${initial.reason} Parsed in-scope entries: ${policy.inScope.join(', ')}';
+        final inScope = policy.inScope.toList()..sort();
+        final outScope = policy.outOfScope.toList()..sort();
+        final approved = await confirm('Review program policy before testing\n\nTarget: $target\nSource: $source\n\nImportant rules and restrictions:\n$policySummary\n\nIn scope:\n${inScope.join('\n')}\n\nOut of scope:\n${outScope.isEmpty ? '(none extracted)' : outScope.join('\n')}\n\nConfirm that you reviewed these rules and that the extracted scope is accurate?');
+        policy.reviewed = approved;
+        policy.userConfirmed = approved;
+        agent.setPolicy(policy);
+        final task = agent.currentTask;
+        if (task != null) task.target = target;
+        await store.saveAgentState();
+        store.changed();
+        return approved ? 'Scope reviewed and confirmed for $target. Active testing is still subject to program rules and per-command approval.' : 'Scope was not confirmed. Target interaction remains blocked.';
+      }
+      case 'discover': {
+        if (!store.settings.termuxTools) return 'Enable Termux tools in Settings first.';
+        if (!await TermuxService.instance.isInstalled()) return 'Termux is not installed or Android native bridge is unavailable.';
+        if (!await TermuxService.instance.supportsRunCommandResult()) return 'Termux 0.109 or newer is required to return command results to Omni Chat.';
+        if (!await TermuxService.instance.hasPermission()) {
+          final ask = await confirm('Omni Chat needs the Android “Run commands in Termux environment” permission to inspect installed tools. Request it now?');
+          if (!ask || !await TermuxService.instance.requestPermission()) return 'Termux permission was not granted.';
+        }
+        final found = await TermuxService.instance.discoverTools();
+        for (final item in found) {
+          final name = item['name'] ?? '';
+          store.toolRegistry.register(RegisteredTool(id: name, name: name, source: 'Termux', version: item['version'] ?? '', executablePath: item['path'] ?? '', capabilities: _toolCapabilities(name), status: ToolInstallStatus.verified, verifiedAt: DateTime.now().millisecondsSinceEpoch));
+        }
+        await store.saveAgentState();
+        final missing = TermuxService.installablePackages.keys.where((id) {
+          final aliases = TermuxService.packageExecutables[id] ?? <String>[id];
+          return !found.any((item) => aliases.contains(item['name']));
+        }).toList();
+        store.changed();
+        return 'Discovered ${found.length} installed tools:\n${found.map((item) => '${item['name']} — ${item['version']}').join('\n')}\n\nSupported packages not detected: ${missing.join(', ')}';
+      }
+      case 'install_batch': {
+        if (agent.currentTask == null) return 'Start an agent task with agent_start before proposing a tool batch.';
+        if (!store.settings.termuxTools) return 'Enable Termux tools in Settings first.';
+        final raw = args['package_ids'];
+        if (raw is! List) return 'package_ids must be an array.';
+        final packages = raw.whereType<String>().toSet().toList(growable: false);
+        if (packages.isEmpty) return 'No packages were selected.';
+        final invalid = packages.where((id) => !TermuxService.installablePackages.containsKey(id)).toList();
+        if (invalid.isNotEmpty) return 'Rejected unsupported package ids: ${invalid.join(', ')}';
+        if (!await TermuxService.instance.isInstalled()) return 'Termux is not installed or Android native bridge is unavailable.';
+        if (!await TermuxService.instance.supportsRunCommandResult()) return 'Termux 0.109 or newer is required to return command results to Omni Chat.';
+        if (!await TermuxService.instance.hasPermission()) return 'Grant Termux command permission first, then retry the batch.';
+        agent.proposeTools(packages.map((id) => ToolRequirement(id: id, name: TermuxService.installablePackages[id]!, reason: 'Requested for the current agent task', installHint: 'pkg install $id')));
+        if (!await agent.approveToolBatch()) return 'The tool installation batch was declined.';
+        try {
+          for (final id in packages) {
+            final entry = store.toolRegistry.find(id);
+            if (entry == null) { store.toolRegistry.register(RegisteredTool(id: id, name: id, source: 'Termux pkg', status: ToolInstallStatus.installing)); } else { entry.status = ToolInstallStatus.installing; }
+          }
+          await store.saveAgentState();
+          final result = await TermuxService.instance.installPackages(packages);
+          final exitCode = result['exitCode'];
+          final nativeErr = result['err'];
+          final nativeMessage = (result['errmsg'] ?? '').toString();
+          if ((exitCode is num && exitCode.toInt() != 0) ||
+              nativeMessage.isNotEmpty ||
+              (nativeErr is num && nativeErr.toInt() != -1)) {
+            for (final id in packages) {
+              final item = store.toolRegistry.find(id);
+              if (item != null) item.status = ToolInstallStatus.failed;
+              for (final requirement in agent.currentTask?.toolRequirements ?? <ToolRequirement>[]) {
+                if (requirement.id == id) requirement.status = ToolInstallStatus.failed;
+              }
+            }
+            await store.saveAgentState();
+            store.changed();
+            return 'Termux package installation failed (exit code $exitCode, native error $nativeErr).\n${nativeMessage.isNotEmpty ? nativeMessage : result['stderr'] ?? result['stdout'] ?? ''}';
+          }
+          final found = await TermuxService.instance.discoverTools();
+          for (final item in found) {
+            final name = item['name'] ?? '';
+            store.toolRegistry.register(RegisteredTool(id: name, name: name, source: 'Termux', version: item['version'] ?? '', executablePath: item['path'] ?? '', capabilities: _toolCapabilities(name), status: ToolInstallStatus.verified, verifiedAt: DateTime.now().millisecondsSinceEpoch));
+          }
+          for (final packageId in packages) {
+            final aliases = TermuxService.packageExecutables[packageId] ?? <String>[packageId];
+            Map<String, String>? match;
+            for (final alias in aliases) {
+              for (final item in found) {
+                if (item['name'] == alias) { match = item; break; }
+              }
+              if (match != null) break;
+            }
+            if (match != null) {
+              final executable = match['name'] ?? packageId;
+              store.toolRegistry.register(RegisteredTool(
+                id: packageId, name: packageId, source: 'Termux package',
+                version: match['version'] ?? '', executablePath: match['path'] ?? '',
+                capabilities: _toolCapabilities(executable), status: ToolInstallStatus.verified,
+                verifiedAt: DateTime.now().millisecondsSinceEpoch,
+              ));
+            } else {
+              final existing = store.toolRegistry.find(packageId);
+              if (existing != null) existing.status = ToolInstallStatus.failed;
+            }
+          }
+          await store.saveAgentState();
+          store.changed();
+          final verified = packages.where((id) => store.toolRegistry.find(id)?.isUsable == true).toList();
+          for (final requirement in agent.currentTask?.toolRequirements ?? <ToolRequirement>[]) {
+            if (packages.contains(requirement.id)) {
+              requirement.status = verified.contains(requirement.id)
+                  ? ToolInstallStatus.verified : ToolInstallStatus.failed;
+            }
+          }
+          await store.saveAgentState();
+          store.changed();
+          return 'Install command completed. Verified: ${verified.join(', ')}. Not verified: ${packages.where((id) => !verified.contains(id)).join(', ')}.\n${result['stdout'] ?? ''}';
+        } catch (e) {
+          for (final id in packages) {
+            final item = store.toolRegistry.find(id);
+            if (item != null) item.status = ToolInstallStatus.failed;
+            for (final requirement in agent.currentTask?.toolRequirements ?? <ToolRequirement>[]) {
+              if (requirement.id == id) requirement.status = ToolInstallStatus.failed;
+            }
+          }
+          await store.saveAgentState();
+          store.changed();
+          return 'Could not install the approved batch: $e';
+        }
+      }
+      case 'run_python_tool': {
+        if (!store.settings.termuxTools) return 'Enable Termux tools in Settings first.';
+        final name = (args['name'] ?? '').toString().trim();
+        final target = (args['target'] ?? '').toString().trim();
+        final slug = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
+        if (slug.isEmpty || target.isEmpty) return 'A valid helper name and exact target hostname are required.';
+        final entry = store.toolRegistry.find('custom:$slug');
+        if (entry == null || entry.status != ToolInstallStatus.verified || entry.executablePath.isEmpty) return 'No sandbox-verified custom helper named $name was found.';
+        final decision = agent.authorizeOperation(target: target, risk: AgentOperationRisk.active);
+        if (decision.decision != ScopeDecision.allow) return 'Custom helper execution blocked by scope policy: ${decision.reason}';
+        final targetHost = Uri.tryParse(target.contains('://') ? target : 'https://$target')?.host.toLowerCase();
+        if (targetHost == null || !RegExp(r'^[a-z0-9.-]+$').hasMatch(targetHost)) return 'Invalid target hostname.';
+        if (!await TermuxService.instance.isInstalled()) return 'Termux is not installed or the Android native bridge is unavailable.';
+        if (!await TermuxService.instance.supportsRunCommandResult()) return 'Termux 0.109 or newer is required to return command results to Omni Chat.';
+        final availableTools = await TermuxService.instance.discoverTools();
+        if (!availableTools.any((item) => item['name'] == 'python' || item['name'] == 'python3')) {
+          return 'Termux Python is not installed. Discover tools and approve the python package in a batch before running this helper.';
+        }
+        final file = File(entry.executablePath);
+        if (!await file.exists()) return 'The saved Python helper file is missing from local storage.';
+        final code = await file.readAsString();
+        if (code.length > 12000) return 'This helper is larger than the safe approval preview limit (12 KB). Reduce it before running.';
+        if (!await TermuxService.instance.hasPermission()) {
+          final askPermission = await confirm('Omni Chat needs the Android “Run commands in Termux environment” permission before it can run this helper. Request it now?');
+          if (!askPermission || !await TermuxService.instance.requestPermission()) return 'Termux permission was not granted.';
+        }
+        final approved = await confirm('Review and approve this sandbox-tested Python helper before running it against $targetHost.\n\nFile: $slug.py\nTarget: $targetHost\n\nComplete source code:\n\n$code\n\nThis will copy the file into Termux and execute it with --target $targetHost. Only proceed if the program policy explicitly permits this test.');
+        if (!approved) return 'Custom helper was not transferred or executed.';
+        final encoded = base64Encode(utf8.encode(code));
+        final transfer = "python -c 'import base64,pathlib; p=pathlib.Path.home()/\"omni_agent_tools\"/\"$slug.py\"; p.parent.mkdir(parents=True,exist_ok=True); p.write_bytes(base64.b64decode(\"$encoded\"))'";
+        try {
+          final copied = await TermuxService.instance.run(transfer, timeout: const Duration(seconds: 45));
+          final copyCode = copied['exitCode'];
+          final copyNativeErr = copied['err'];
+          final copyMessage = (copied['errmsg'] ?? '').toString();
+          if ((copyCode is num && copyCode.toInt() != 0) || copyMessage.isNotEmpty ||
+              (copyNativeErr is num && copyNativeErr.toInt() != -1)) {
+            return 'Could not transfer the approved helper to Termux: ${copyMessage.isNotEmpty ? copyMessage : copied['stderr'] ?? copied['stdout'] ?? ''}';
+          }
+          final executed = await TermuxService.instance.run('python ~/omni_agent_tools/$slug.py --target $targetHost', timeout: const Duration(minutes: 5));
+          final exitCode = executed['exitCode'];
+          final stdout = (executed['stdout'] ?? '').toString();
+          final stderr = (executed['stderr'] ?? '').toString();
+          return 'Custom helper execution finished. Exit code: $exitCode\n\nstdout:\n$stdout\n\nstderr:\n$stderr';
+        } catch (e) {
+          return 'Custom helper execution failed: $e';
+        }
+      }
+      case 'create_python_tool': {
+        final name = (args['name'] ?? 'custom_tool').toString().trim();
+        final code = (args['code'] ?? '').toString();
+        final testCode = (args['test_code'] ?? '').toString();
+        if (code.trim().isEmpty || code.length > 12000) return 'Python source must be non-empty and at most 12 KB so it can be reviewed in full before execution.';
+        final slug = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
+        if (slug.isEmpty) return 'Invalid Python helper name.';
+        final encodedCode = base64Encode(utf8.encode(code));
+        final encodedTests = base64Encode(utf8.encode(testCode));
+        final testProgram = '''
+import base64
+import builtins
+
+_blocked = {
+    'socket', 'requests', 'httpx', 'aiohttp', 'urllib3', 'http',
+    'subprocess', 'ctypes', 'os', 'shutil', 'websockets', 'scapy',
+    'paramiko', 'js', 'pyodide', 'builtins', 'importlib'
+}
+_original_import = builtins.__import__
+
+def _sandbox_import(name, globals=None, locals=None, fromlist=(), level=0):
+    root = name.split('.')[0]
+    if root in _blocked or name.startswith('urllib.request') or name.startswith('http.client'):
+        raise ImportError('Network and system modules are disabled in the offline helper test sandbox')
+    return _original_import(name, globals, locals, fromlist, level)
+
+_safe_builtins = dict(vars(builtins))
+_safe_builtins['__import__'] = _sandbox_import
+source = base64.b64decode('$encodedCode').decode('utf-8')
+namespace = {'__name__': '__omni_custom_tool_test__', '__builtins__': _safe_builtins}
+exec(compile(source, '$slug.py', 'exec'), namespace, namespace)
+tests = base64.b64decode('$encodedTests').decode('utf-8')
+if tests.strip():
+    exec(compile(tests, '<omni-tests>', 'exec'), namespace, namespace)
+print('OMNI_TESTS_PASSED')
+''';
+        final testResult = await PythonRuntime.instance.run(testProgram, timeout: const Duration(seconds: 45));
+        if (!testResult.contains('OMNI_TESTS_PASSED')) return 'Python helper was not saved because sandbox validation failed:\n$testResult';
+        final base = await getApplicationDocumentsDirectory();
+        final dir = Directory('${base.path}/agent_tools');
+        await dir.create(recursive: true);
+        final file = File('${dir.path}/$slug.py');
+        await file.writeAsString(code, flush: true);
+        store.toolRegistry.register(RegisteredTool(id: 'custom:$slug', name: name, source: 'Omni Chat Pyodide sandbox', version: '1', executablePath: file.path, description: (args['description'] ?? '').toString(), capabilities: <String>['python-helper'], status: ToolInstallStatus.verified, verifiedAt: DateTime.now().millisecondsSinceEpoch));
+        await store.saveAgentState();
+        deliver('$slug.py', file.path);
+        store.changed();
+        return 'Created and sandbox-tested $slug.py. The file is stored locally at ${file.path}. It has NOT been executed in Termux or against any target; a separate explicit approval is required before transferring or running it externally.\n$testResult';
+      }
+      default: return 'Unknown agent action: $action';
+    }
+  }
+
+  List<String> _toolCapabilities(String name) {
+    if (const {'nmap', 'httpx', 'subfinder', 'amass', 'nuclei', 'ffuf', 'feroxbuster', 'nikto'}.contains(name)) return const <String>['network-recon'];
+    if (const {'mitmproxy', 'mitmdump', 'mitmweb'}.contains(name)) return const <String>['http-proxy'];
+    if (const {'curl', 'wget'}.contains(name)) return const <String>['http-client'];
+    if (const {'python', 'python3', 'pip', 'pip3'}.contains(name)) return const <String>['python-runtime'];
+    if (name == 'git') return const <String>['version-control'];
+    if (const {'dig', 'whois'}.contains(name)) return const <String>['dns-recon'];
+    return const <String>['cli'];
+  }
+
+  @override
+  Future<String> runTermuxCommand(String command, {String? workdir, int timeoutSeconds = 60, String target = ''}) async {
+    final clean = command.trim();
+    if (clean.isEmpty) return 'No command was provided.';
+    if (!store.settings.termuxTools) return 'Termux tools are disabled in Settings.';
+    if (RegExp(r'^\s*python3?\s+(?!(-V|--version)\b)', caseSensitive: false).hasMatch(clean)) {
+      return 'Run custom Python through agent_create_python_tool (sandbox test) and agent_run_python_tool (scope check plus explicit source approval). Generic Python script execution through termux_run is disabled.';
+    }
+    if (!await TermuxService.instance.isInstalled()) return 'Termux is not installed or the Android native bridge is unavailable.';
+    if (!await TermuxService.instance.supportsRunCommandResult()) return 'Termux 0.109 or newer is required to return command results to Omni Chat.';
+    if (!await TermuxService.instance.hasPermission()) {
+      final ask = await confirm('Omni Chat needs the Android “Run commands in Termux environment” permission. Request it now?');
+      if (!ask || !await TermuxService.instance.requestPermission()) return 'Termux permission was not granted.';
+    }
+    final networkPattern = RegExp(r'\b(nmap|subfinder|amass|httpx|nuclei|ffuf|feroxbuster|nikto|sqlmap|curl|wget|dig|whois|ping|traceroute|mitmproxy|nc|netcat)\b', caseSensitive: false);
+    final contactsTarget = networkPattern.hasMatch(clean);
+    if (contactsTarget) {
+      if (RegExp(r'[;|&`$<>\n]').hasMatch(clean)) return 'Blocked: target-facing commands cannot contain shell chaining, redirection, command substitution or pipelines. Run one reviewed command at a time.';
+      if (RegExp(r'\b(?:\d{1,3}\.){3}\d{1,3}\b|\b[0-9a-fA-F]*:[0-9a-fA-F:]+\b').hasMatch(clean)) return 'Blocked: IP literals are not accepted by this hostname-only scope gate. Use an explicitly listed hostname.';
+      if (target.trim().isEmpty) return 'Blocked: supply the exact target hostname and review the current program policy with agent_set_scope first.';
+      final risk = RegExp(r'\b(nmap|subfinder|amass|nuclei|ffuf|feroxbuster|nikto|sqlmap)\b', caseSensitive: false).hasMatch(clean) ||
+          RegExp(r'\b(-X|--request)\s*(POST|PUT|PATCH|DELETE)\b|--data(?:-raw|-binary)?\b|\s-d\s|\s-F\s', caseSensitive: false).hasMatch(clean)
+        ? AgentOperationRisk.active : AgentOperationRisk.passive;
+      final declared = Uri.tryParse(target.contains('://') ? target : 'https://$target')?.host.toLowerCase();
+      if (declared == null || declared.isEmpty) return 'Blocked: target must be a valid hostname.';
+      final decision = agent.authorizeOperation(target: declared, risk: risk);
+      if (decision.decision != ScopeDecision.allow) return 'Blocked by scope policy: ${decision.reason}';
+      final hostPattern = RegExp(r'(?:https?://)?([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,})(?::\d+)?', caseSensitive: false);
+      final commandHosts = hostPattern.allMatches(clean).map((match) => match.group(1)!.toLowerCase()).toSet();
+      if (commandHosts.isEmpty) return 'Blocked: the command must visibly include its target hostname so it can be checked against scope.';
+      for (final host in commandHosts) {
+        final hostDecision = agent.authorizeOperation(target: host, risk: risk);
+        if (hostDecision.decision != ScopeDecision.allow) return 'Blocked: command target $host is not authorized. ${hostDecision.reason}';
+      }
+    }
+    final packageInstall = RegExp(r'^\s*(pkg|apt|pip|pip3|npm|gem|cargo)\s+install\b', caseSensitive: false).hasMatch(clean);
+    if (packageInstall) return 'Package installation must use termux_install_batch so the package allowlist and one batch approval are enforced.';
+    final approved = await confirm('Run this real command on your device in Termux?\n\n$clean\n\n${contactsTarget ? 'Target: $target\nScope policy check: passed.\n' : ''}This can read or modify files in your Termux home.');
+    if (!approved) return 'Command was not approved and was not executed.';
+    try {
+      final result = await TermuxService.instance.run(clean, workdir: workdir, timeout: Duration(seconds: timeoutSeconds.clamp(1, 300)));
+      final stdout = (result['stdout'] ?? '').toString();
+      final stderr = (result['stderr'] ?? '').toString();
+      final stdoutOriginal = int.tryParse((result['stdoutOriginalLength'] ?? '').toString());
+      final stderrOriginal = int.tryParse((result['stderrOriginalLength'] ?? '').toString());
+      final exitCode = result['exitCode'];
+      final nativeErr = result['err'];
+      final error = (result['errmsg'] ?? '').toString();
+      final b = StringBuffer('exit code: $exitCode');
+      if (error.isNotEmpty) b.write('\nTermux error: $error');
+      if (nativeErr is num && nativeErr.toInt() != -1) b.write('\nTermux native error code: $nativeErr');
+      if ((stdoutOriginal != null && stdoutOriginal > stdout.length) ||
+          (stderrOriginal != null && stderrOriginal > stderr.length)) {
+        b.write('\nOutput was truncated by Termux. Original stdout: $stdoutOriginal bytes; stderr: $stderrOriginal bytes.');
+      }
+      if (stdout.trim().isNotEmpty) b.write('\n\nstdout:\n${stdout.trim()}');
+      if (stderr.trim().isNotEmpty) b.write('\n\nstderr:\n${stderr.trim()}');
+      return b.toString();
+    } on PlatformException catch (e) { return e.code == 'timeout' ? 'Termux command timed out after $timeoutSeconds seconds.' : 'Termux failed: ${e.message ?? e.code}'; }
+    catch (e) { return 'Termux execution failed: $e'; }
   }
 
   Future<void> send(Conversation c, String text, List<Attachment> attachments) async {
@@ -638,7 +992,18 @@ class ChatEngine implements ToolHost {
       }
     } catch (e) {
       c.messages.add(ChatMessage(role: 'assistant', error: true, text: e.toString()));
+      if (store.agentTask != null && store.agentTask!.conversationId == c.id) {
+        agent.failTask();
+      }
     } finally {
+      if (store.agentTask != null && store.agentTask!.conversationId == c.id) {
+        if (_abort?.aborted ?? false) {
+          agent.cancelTask();
+        } else if (store.agentTask!.status != AgentTaskStatus.failed &&
+            store.agentTask!.status != AgentTaskStatus.awaitingApproval) {
+          agent.completeTask();
+        }
+      }
       await BackgroundWork.stop();
       _currentReply = null;
       _running = null;

@@ -39,6 +39,9 @@ if 'usesCleartextTraffic' not in s:
 if 'KeepAliveService' not in s:
     svc = '        <service android:name=".KeepAliveService" android:foregroundServiceType="dataSync" android:exported="false" />\n    '
     s = s.replace('</application>', svc + '</application>', 1)
+if 'TermuxResultReceiver' not in s:
+    receiver = '        <receiver android:name=".TermuxResultReceiver" android:exported="false" />\n    '
+    s = s.replace('</application>', receiver + '</application>', 1)
 p.write_text(s)
 PY
 grep -nE 'label|uses-permission|Cleartext|KeepAlive' "$MANIFEST"
