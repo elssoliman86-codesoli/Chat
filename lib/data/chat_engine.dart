@@ -638,12 +638,18 @@ class ChatEngine implements ToolHost {
       final result = await TermuxService.instance.run(clean, workdir: workdir, timeout: Duration(seconds: timeoutSeconds.clamp(1, 300)));
       final stdout = (result['stdout'] ?? '').toString();
       final stderr = (result['stderr'] ?? '').toString();
+      final stdoutOriginal = int.tryParse((result['stdoutOriginalLength'] ?? '').toString());
+      final stderrOriginal = int.tryParse((result['stderrOriginalLength'] ?? '').toString());
       final exitCode = result['exitCode'];
       final nativeErr = result['err'];
       final error = (result['errmsg'] ?? '').toString();
       final b = StringBuffer('exit code: $exitCode');
       if (error.isNotEmpty) b.write('\nTermux error: $error');
       if (nativeErr is num && nativeErr.toInt() != -1) b.write('\nTermux native error code: $nativeErr');
+      if ((stdoutOriginal != null && stdoutOriginal > stdout.length) ||
+          (stderrOriginal != null && stderrOriginal > stderr.length)) {
+        b.write('\nOutput was truncated by Termux. Original stdout: $stdoutOriginal bytes; stderr: $stderrOriginal bytes.');
+      }
       if (stdout.trim().isNotEmpty) b.write('\n\nstdout:\n${stdout.trim()}');
       if (stderr.trim().isNotEmpty) b.write('\n\nstderr:\n${stderr.trim()}');
       return b.toString();
