@@ -21,7 +21,7 @@ class TermuxService {
     'openssl': 'TLS utilities', 'netcat-openbsd': 'Netcat',
     'rust': 'Rust toolchain', 'golang': 'Go toolchain', 'nodejs-lts': 'Node.js LTS',
     'php': 'PHP runtime', 'ruby': 'Ruby runtime', 'clang': 'C/C++ compiler',
-    'make': 'Build utility', 'mitmproxy': 'Terminal HTTP proxy (repository availability varies)',
+    'make': 'Build utility', 'proot-distro': 'Debian/Ubuntu userspace manager',
   };
 
   Future<bool> isInstalled() async {
@@ -53,7 +53,8 @@ class TermuxService {
   Future<List<Map<String, String>>> discoverTools() async {
     const names = <String>['python', 'python3', 'pip', 'pip3', 'git', 'curl', 'wget', 'jq',
       'nmap', 'whois', 'dig', 'openssl', 'nc', 'rustc', 'go', 'node', 'npm', 'php', 'ruby',
-      'clang', 'make', 'mitmproxy'];
+      'clang', 'make', 'subfinder', 'amass', 'httpx', 'nuclei', 'ffuf', 'feroxbuster', 'nikto', 'sqlmap',
+      'proot-distro', 'mitmproxy', 'mitmdump', 'mitmweb'];
     final quoted = names.map((name) => "'$name'").join(' ');
     final command = 'for t in $quoted; do p=$(command -v "$t" 2>/dev/null || true); '
         'if [ -n "$p" ]; then v=$("$p" --version 2>&1 | head -n 1); '
