@@ -46,6 +46,7 @@ class AgentController {
     final task = _task;
     if (task != null) {
       task.policyReference = '';
+      task.target = '';
       task.touch();
       _emit();
     }
