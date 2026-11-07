@@ -71,7 +71,7 @@ class ScopePolicy {
           .firstMatch(cell);
         if (match == null) continue;
         final host = cell.replaceFirst(RegExp(r':\d+$'), '').toLowerCase();
-        if (!host.contains('.') || RegExp(r'^(?:\\d{1,3}\\.){3}\\d{1,3}
+        if (!host.contains('.') || RegExp(r'^(?:\d{1,3}\.){3}\d{1,3}$').hasMatch(host) || host.contains(':')) continue;
       }
     }
     return ScopePolicy(source: source, inScope: allowed, outOfScope: excluded);
@@ -101,7 +101,7 @@ class ScopePolicy {
     final uri = Uri.tryParse(input.contains('://') ? input : 'https://$input');
     final host = uri?.host.toLowerCase();
     if (host == null || host.isEmpty || !host.contains('.') || host.contains('..') || host.contains(' ') ||
-        host.contains(':') || RegExp(r'^(?:\\d{1,3}\\.){3}\\d{1,3}
+        host.contains(':') || RegExp(r'^(?:\d{1,3}\.){3}\d{1,3}$').hasMatch(host)) {
       return null;
     }
     return host.endsWith('.') ? host.substring(0, host.length - 1) : host;
