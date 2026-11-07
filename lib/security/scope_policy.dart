@@ -9,8 +9,8 @@ class ScopeEvaluation {
   bool get allowed => decision == ScopeDecision.allow;
 }
 
-/// A conservative policy snapshot. Parsing policy text never grants authorization by itself:
-/// the user must review and explicitly confirm the extracted scope before active testing.
+/// A conservative policy snapshot. Parsing never grants authorization by itself.
+/// Active testing requires policy review and explicit user confirmation.
 class ScopePolicy {
   ScopePolicy({
     required this.source,
@@ -42,8 +42,7 @@ class ScopePolicy {
     'userConfirmed': userConfirmed,
   };
 
-  /// Extracts only explicit host-like entries from common HackerOne policy lines.
-  /// It deliberately does not infer related domains, API hosts, mobile backends, or vendors.
+  /// Extracts only explicit host entries. Related domains are never inferred.
   static ScopePolicy parse(String text, {String source = ''}) {
     final allowed = <String>{};
     final excluded = <String>{};
@@ -57,17 +56,15 @@ class ScopePolicy {
       } else if (lower.contains('in scope') || lower.contains('eligible assets')) {
         outSection = false;
       }
-      var candidate = line
-        .replaceFirst(RegExp(r'^[\s>+\-•]+'), '')
-        .trim();
-      candidate = candidate.replaceFirst(RegExp(r'^\*\s+'), '').replaceAll('`', '');
+      var candidate = line.replaceFirst(RegExp(r'^[\s>+\-•]+'), '').trim();
+      candidate = candidate.replaceFirst(RegExp(r'^\*\s+'), '').replaceAll(String.fromCharCode(96), '');
       if (candidate.startsWith('**') && candidate.endsWith('**') && candidate.length > 4) {
         candidate = candidate.substring(2, candidate.length - 2);
       }
       final match = RegExp(r'^(\*\.)?[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::\d+)?/?$', caseSensitive: false)
         .firstMatch(candidate);
       if (match == null) continue;
-      final host = candidate.replaceFirst(RegExp(r':\d+, '').replaceAll(RegExp(r'/$'), '').toLowerCase();
+      final host = candidate.replaceFirst(RegExp(r':\d+$'), '').replaceAll(RegExp(r'/$'), '').toLowerCase();
       if (!host.contains('.')) continue;
       (outSection ? excluded : allowed).add(host);
     }
@@ -86,10 +83,8 @@ class ScopePolicy {
       return ScopeEvaluation(ScopeDecision.deny, '$host is not explicitly listed in scope.');
     }
     if (activeOperation && (!reviewed || !userConfirmed)) {
-      return const ScopeEvaluation(
-        ScopeDecision.needsReview,
-        'The policy must be reviewed and the extracted scope explicitly confirmed before active testing.',
-      );
+      return const ScopeEvaluation(ScopeDecision.needsReview,
+        'The policy must be reviewed and the extracted scope explicitly confirmed before active testing.');
     }
     return const ScopeEvaluation(ScopeDecision.allow, 'Target is explicitly in scope.');
   }
@@ -99,61 +94,10 @@ class ScopePolicy {
     if (input.isEmpty) return null;
     final uri = Uri.tryParse(input.contains('://') ? input : 'https://$input');
     final host = uri?.host.toLowerCase();
-    if (host == null || host.isEmpty || !host.contains('.') ||
-        host.contains('..') || host.contains(' ')) return null;
-    if (host.endsWith('.')) {
-      return host.substring(0, host.length - 1);
+    if (host == null || host.isEmpty || !host.contains('.') || host.contains('..') || host.contains(' ')) {
+      return null;
     }
-    return host;
-  }
-
-  static bool _matches(String host, String rule) {
-    final normalized = rule.toLowerCase().trim();
-    if (normalized.startsWith('*.')) {
-      final suffix = normalized.substring(2);
-      return host != suffix && host.endsWith('.$suffix');
-    }
-    return host == normalized;
-  }
-}
-), '').replaceAll(RegExp(r'/$'), '').toLowerCase();
-      if (!host.contains('.')) continue;
-      (outSection ? excluded : allowed).add(host);
-    }
-    return ScopePolicy(source: source, inScope: allowed, outOfScope: excluded);
-  }
-
-  ScopeEvaluation evaluate(String target, {required bool activeOperation}) {
-    final host = _host(target);
-    if (host == null) {
-      return const ScopeEvaluation(ScopeDecision.deny, 'Target is not a valid hostname or URL.');
-    }
-    if (outOfScope.any((entry) => _matches(host, entry))) {
-      return ScopeEvaluation(ScopeDecision.deny, '$host matches an explicitly out-of-scope asset.');
-    }
-    if (!inScope.any((entry) => _matches(host, entry))) {
-      return ScopeEvaluation(ScopeDecision.deny, '$host is not explicitly listed in scope.');
-    }
-    if (activeOperation && (!reviewed || !userConfirmed)) {
-      return const ScopeEvaluation(
-        ScopeDecision.needsReview,
-        'The policy must be reviewed and the extracted scope explicitly confirmed before active testing.',
-      );
-    }
-    return const ScopeEvaluation(ScopeDecision.allow, 'Target is explicitly in scope.');
-  }
-
-  static String? _host(String value) {
-    final input = value.trim();
-    if (input.isEmpty) return null;
-    final uri = Uri.tryParse(input.contains('://') ? input : 'https://$input');
-    final host = uri?.host.toLowerCase();
-    if (host == null || host.isEmpty || !host.contains('.') ||
-        host.contains('..') || host.contains(' ')) return null;
-    if (host.endsWith('.')) {
-      return host.substring(0, host.length - 1);
-    }
-    return host;
+    return host.endsWith('.') ? host.substring(0, host.length - 1) : host;
   }
 
   static bool _matches(String host, String rule) {
