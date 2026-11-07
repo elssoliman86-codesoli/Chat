@@ -518,6 +518,8 @@ class ChatEngine implements ToolHost {
         if (decision.decision != ScopeDecision.allow) return 'Custom helper execution blocked by scope policy: ${decision.reason}';
         final targetHost = Uri.tryParse(target.contains('://') ? target : 'https://$target')?.host.toLowerCase();
         if (targetHost == null || !RegExp(r'^[a-z0-9.-]+$').hasMatch(targetHost)) return 'Invalid target hostname.';
+        if (!await TermuxService.instance.isInstalled()) return 'Termux is not installed or the Android native bridge is unavailable.';
+        if (!await TermuxService.instance.supportsRunCommandResult()) return 'Termux 0.109 or newer is required to return command results to Omni Chat.';
         final availableTools = await TermuxService.instance.discoverTools();
         if (!availableTools.any((item) => item['name'] == 'python' || item['name'] == 'python3')) {
           return 'Termux Python is not installed. Discover tools and approve the python package in a batch before running this helper.';
@@ -526,7 +528,6 @@ class ChatEngine implements ToolHost {
         if (!await file.exists()) return 'The saved Python helper file is missing from local storage.';
         final code = await file.readAsString();
         if (code.length > 12000) return 'This helper is larger than the safe approval preview limit (12 KB). Reduce it before running.';
-        if (!await TermuxService.instance.isInstalled()) return 'Termux is not installed or the Android native bridge is unavailable.';
         if (!await TermuxService.instance.hasPermission()) {
           final askPermission = await confirm('Omni Chat needs the Android “Run commands in Termux environment” permission before it can run this helper. Request it now?');
           if (!askPermission || !await TermuxService.instance.requestPermission()) return 'Termux permission was not granted.';
