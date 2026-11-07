@@ -291,6 +291,15 @@ class ChatEngine implements ToolHost {
         'A ```python code block in a reply also gets a Preview button that runs it the same way. A ```jsx or ```tsx code block with a component '
         'named App gets a Preview that renders it with React. There is no runtime for compiled languages (Go, Java, Swift, C, and so on): say so '
         'and offer the source file instead when one of those is asked for.');
+    if (st.termuxTools) {
+      b.writeln('\nShell: termux_run runs a real shell command on the person\'s own device through Termux, a separate app they '
+          'have installed and connected. This is NOT a sandbox: it is a real Linux environment with whatever is actually '
+          'installed there, and it can read and write the person\'s own files outside this app. It is for the person\'s own '
+          'automation and for trying real tools, on their own device only — never use it to probe, scan or attack any other '
+          'device, account or service, even one the person says they own or are allowed to test; that is out of scope '
+          'regardless of how it is framed. If Termux is not installed, not permitted, or not set up (allow-external-apps), '
+          'the tool\'s result explains exactly what the person needs to do; tell them plainly rather than retrying blindly.');
+    }
     b.writeln('\nTo add skills or plugins to this app when the person gives you a link or text, use install_skills, '
         'install_plugin or create_skill. When you need permission, a login, a captcha or a decision from the person, '
         'call ask_user instead of guessing.');
@@ -314,6 +323,7 @@ class ChatEngine implements ToolHost {
         'github' => st.pluginGithub,
         'github_write' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
         'project_push' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
+        'termux' => st.termuxTools,
         _ => true,
       };
       if (on) ids.add(t.id);

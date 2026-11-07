@@ -20,11 +20,18 @@ perms = [
     "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
     "android.permission.POST_NOTIFICATIONS",
     "android.permission.WAKE_LOCK",
+    # Lets the user grant this app access to run commands in a separately installed Termux app
+    # (declared by Termux itself, not the Android platform; harmless if Termux isn't installed).
+    "com.termux.permission.RUN_COMMAND",
 ]
 lines = ""
 for name in perms:
     if f'android:name="{name}"' not in s:
         lines += f'    <uses-permission android:name="{name}" />\n'
+# Package-visibility declaration (Android 11+ / targetSdk 30+): without this, the app cannot even see
+# whether Termux is installed, let alone send it a command.
+if '<package android:name="com.termux"' not in s:
+    lines += '    <queries>\n        <package android:name="com.termux" />\n    </queries>\n'
 s = s.replace('<application', lines + '    <application', 1)
 # Allow http:// servers on the local network (Ollama, LM Studio).
 if 'usesCleartextTraffic' not in s:

@@ -497,6 +497,7 @@ class AppSettings {
     this.helperModel = '',
     this.browserVisible = false,
     this.keepAlive = true,
+    this.termuxTools = false,
     List<String>? favorites,
   }) : favorites = favorites ?? <String>[];
 
@@ -534,6 +535,10 @@ class AppSettings {
   /// Keep long tasks running when the app is in the background.
   bool keepAlive;
 
+  /// Let the assistant run real shell commands through a separately installed Termux app (off by
+  /// default: unlike the other tools, this reaches a real Linux environment on the device, not a sandbox).
+  bool termuxTools;
+
   /// Favorite models, each as "providerId|model".
   List<String> favorites;
 
@@ -558,6 +563,7 @@ class AppSettings {
         'helperModel': helperModel,
         'browserVisible': browserVisible,
         'keepAlive': keepAlive,
+        'termuxTools': termuxTools,
         'favorites': favorites,
       };
 
@@ -582,6 +588,7 @@ class AppSettings {
         helperModel: j['helperModel'] as String? ?? '',
         browserVisible: j['browserVisible'] as bool? ?? false,
         keepAlive: j['keepAlive'] as bool? ?? true,
+        termuxTools: j['termuxTools'] as bool? ?? false,
         favorites: (j['favorites'] as List?)?.whereType<String>().toList(),
       );
 }

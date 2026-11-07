@@ -118,6 +118,8 @@ void main() {
     expect(back.projectId, 'p1');
     expect(back.messages.first.outputs, ['a.zip\t/tmp/a.zip']);
     expect(AppSettings.fromJson(<String, dynamic>{}).browserVisible, false);
+    expect(AppSettings.fromJson(<String, dynamic>{}).termuxTools, false);
+    expect(AppSettings.fromJson(AppSettings(termuxTools: true).toJson()).termuxTools, true);
   });
 
   test('preview covers the web-renderable languages and runs them', () {

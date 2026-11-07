@@ -1,3 +1,5 @@
+import 'package:flutter/services.dart';
+
 import '../core/models.dart';
 import '../llm/llm.dart';
 import '../plugins/installer.dart';
@@ -5,6 +7,7 @@ import '../plugins/plugin.dart';
 import '../projects/project_tools.dart';
 import 'browser_service.dart';
 import 'github_tools.dart';
+import 'termux_service.dart';
 import 'web_tools.dart';
 
 /// Everything a tool needs from the app while it runs.
@@ -492,6 +495,73 @@ final List<ToolDef> builtinTools = <ToolDef>[
       parameters: _obj(<String, dynamic>{}),
     ),
     run: (a, host) => BrowserService.instance.back(),
+  ),
+  ToolDef(
+    id: 'termux_run',
+    title: 'Run a shell command (Termux)',
+    group: 'termux',
+    spec: const ToolSpec(
+      name: 'termux_run',
+      description: 'Runs a real shell command on the user\'s own device through Termux, a separate terminal app the user has '
+          'installed and connected (not a sandbox: whatever is actually installed there — python, pip, node, git, curl, '
+          'compilers, and so on — is available, and it can read and write the user\'s own files). For the user\'s own automation, '
+          'trying a real tool, or anything that genuinely needs a shell, not for the sandboxed python_run. Runs with bash -lc, '
+          'so chain with && or ; as needed. Output over roughly 100KB is truncated. Give it a few seconds for a slow command via '
+          'timeout_seconds; a truly long-running or background process is not a good fit for this tool.',
+      parameters: <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'command': <String, dynamic>{'type': 'string', 'description': 'Shell command to run'},
+          'workdir': <String, dynamic>{
+            'type': 'string',
+            'description': 'Working directory (default: Termux\'s home). Use ~/ for paths under it.',
+          },
+          'timeout_seconds': <String, dynamic>{'type': 'integer', 'description': 'How long to wait (default 60, max 300)'},
+        },
+        'required': <String>['command'],
+      },
+    ),
+    run: (a, host) async {
+      final command = _s(a, 'command').trim();
+      if (command.isEmpty) return 'No command was given.';
+      if (!await TermuxService.instance.isInstalled()) {
+        return 'Termux is not installed on this device. It needs to be installed from F-Droid or GitHub (not the Play Store '
+            'version, which is outdated and unsupported) before this tool can be used — tell the user.';
+      }
+      if (!await TermuxService.instance.hasPermission()) {
+        final granted = await TermuxService.instance.requestPermission();
+        if (!granted) {
+          return 'The "Run commands in Termux environment" permission has not been granted to this app yet. Ask the user to '
+              'grant it (a system dialog should have just appeared; if not, Android Settings → Apps → Omni Chat → Permissions), '
+              'and that Termux itself must have `allow-external-apps = true` set in ~/.termux/termux.properties (edit that file '
+              'inside Termux, then run termux-reload-settings) — this is a one-time setup only they can do.';
+        }
+      }
+      var secs = _i(a, 'timeout_seconds');
+      if (secs <= 0) secs = 60;
+      if (secs > 300) secs = 300;
+      try {
+        final r = await TermuxService.instance
+            .run(command, workdir: a['workdir']?.toString(), timeout: Duration(seconds: secs));
+        final stdout = (r['stdout'] ?? '').toString();
+        final stderr = (r['stderr'] ?? '').toString();
+        final exitCode = r['exitCode'];
+        final errmsg = (r['errmsg'] ?? '').toString();
+        if (errmsg.isNotEmpty) {
+          return 'Termux could not run the command: $errmsg\n\nThis usually means `allow-external-apps = true` is missing from '
+              '~/.termux/termux.properties inside Termux (a one-time setup only the user can do there).';
+        }
+        final b = StringBuffer('exit code: $exitCode');
+        if (stdout.trim().isNotEmpty) b.write('\n\nstdout:\n${stdout.trim()}');
+        if (stderr.trim().isNotEmpty) b.write('\n\nstderr:\n${stderr.trim()}');
+        return b.toString();
+      } on PlatformException catch (e) {
+        if (e.code == 'timeout') return 'Termux command timed out after ${secs}s. Narrow it down or raise timeout_seconds.';
+        return 'Could not run the command in Termux: ${e.message ?? e.code}';
+      } on Exception catch (e) {
+        return 'Could not reach Termux: $e';
+      }
+    },
   ),
   ...projectToolDefs,
   ToolDef(

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/services.dart';
+import '../tools/termux_service.dart';
 import 'model_list.dart';
 import '../plugins/installer.dart';
 import 'browser_dock.dart';
@@ -23,6 +24,20 @@ class PluginsScreen extends StatefulWidget {
 class _PluginsScreenState extends State<PluginsScreen> {
   late final TextEditingController _token = TextEditingController(text: store.settings.githubToken);
   bool _show = false;
+  bool? _termuxInstalled;
+  bool? _termuxPermission;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshTermux();
+  }
+
+  Future<void> _refreshTermux() async {
+    final installed = await TermuxService.instance.isInstalled();
+    final perm = installed ? await TermuxService.instance.hasPermission() : false;
+    if (mounted) setState(() { _termuxInstalled = installed; _termuxPermission = perm; });
+  }
 
   @override
   void dispose() {
@@ -95,6 +110,53 @@ class _PluginsScreenState extends State<PluginsScreen> {
             color: iosGray,
             chevron: true,
             onTap: () => showBrowser(context),
+          ),
+        ],
+      ),
+      Group(
+        header: 'Shell (Termux)',
+        footer: _termuxInstalled == false
+            ? 'Termux is not installed. It is a separate, free terminal app — install it, open it once, then come back here.'
+            : _termuxPermission == false
+                ? 'Termux is installed but has not granted this app permission to run commands in it yet.'
+                : 'Unlike every other tool, this reaches a real Linux shell on your own device — whatever you actually have '
+                    'installed there (python, git, pip, compilers, ...) — not a sandbox. Off by default on purpose.',
+        children: [
+          SwitchCell(
+            title: 'Real shell commands',
+            subtitle: 'termux_run, through the Termux app',
+            icon: CupertinoIcons.chevron_left_slash_chevron_right,
+            color: iosRed,
+            value: s.termuxTools,
+            onChanged: (v) => set(() => s.termuxTools = v),
+          ),
+          Cell(
+            title: _termuxInstalled == null
+                ? 'Checking Termux…'
+                : _termuxInstalled == false
+                    ? 'Termux is not installed'
+                    : _termuxPermission == false
+                        ? 'Grant permission'
+                        : 'Termux is ready',
+            subtitle: _termuxInstalled == true && _termuxPermission == true ? null : 'Tap to check again',
+            icon: _termuxInstalled == true && _termuxPermission == true
+                ? CupertinoIcons.checkmark_circle
+                : CupertinoIcons.exclamationmark_circle,
+            color: _termuxInstalled == true && _termuxPermission == true ? iosGreen : iosOrange,
+            chevron: true,
+            onTap: () async {
+              if (_termuxInstalled == true && _termuxPermission == false) {
+                await TermuxService.instance.requestPermission();
+              }
+              await _refreshTermux();
+            },
+          ),
+          Cell(
+            title: 'How Termux setup works',
+            icon: CupertinoIcons.question_circle,
+            color: iosGray,
+            chevron: true,
+            onTap: _termuxHelp,
           ),
         ],
       ),
@@ -374,6 +436,43 @@ class _PluginsScreenState extends State<PluginsScreen> {
           TextButton(
             onPressed: () {
               Clipboard.setData(const ClipboardData(text: pluginHelp));
+              Navigator.pop(d);
+            },
+            child: const Text('Copy'),
+          ),
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  static const String _termuxHelpText =
+      '1. Install Termux from F-Droid or its GitHub releases page (not the Play Store version — it is outdated and no '
+      'longer works for this).\n\n'
+      '2. Open Termux once so it finishes setting itself up.\n\n'
+      '3. In Termux, run:\n'
+      '   echo "allow-external-apps = true" >> ~/.termux/termux.properties\n'
+      '   termux-reload-settings\n\n'
+      '4. Come back here, turn on "Real shell commands", and tap "Grant permission" when asked — this lets Omni Chat run '
+      'commands inside Termux.\n\n'
+      'Once set up, the assistant can run real shell commands on your device through Termux (python, pip, git, curl, '
+      'whatever you have installed there) — this is your actual device, not a sandbox, so only turn it on if you want that.';
+
+  Future<void> _termuxHelp() async {
+    await showDialog<void>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('How Termux setup works'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(_termuxHelpText, style: const TextStyle(fontSize: 13.5, height: 1.4)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(const ClipboardData(text: _termuxHelpText));
               Navigator.pop(d);
             },
             child: const Text('Copy'),
