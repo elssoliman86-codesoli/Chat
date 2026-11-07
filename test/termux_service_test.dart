@@ -18,7 +18,7 @@ void main() {
           return <String, dynamic>{'stdout': 'installed', 'stderr': '', 'exitCode': 0};
         }
         return <String, dynamic>{
-          'stdout': 'python\t/data/data/com.termux/files/usr/bin/python\tPython 3.12.1\\ngit\t/data/data/com.termux/files/usr/bin/git\tgit version 2.45.0',
+          'stdout': 'python\t/data/data/com.termux/files/usr/bin/python\tPython 3.12.1\ngit\t/data/data/com.termux/files/usr/bin/git\tgit version 2.45.0',
           'stderr': '',
           'exitCode': 0,
         };
