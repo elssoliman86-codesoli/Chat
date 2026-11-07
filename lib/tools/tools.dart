@@ -517,6 +517,17 @@ final List<ToolDef> builtinTools = <ToolDef>[
     run: (a, host) => host.agentAction('plan', a),
   ),
   ToolDef(
+    id: 'agent_update_step',
+    title: 'Update agent timeline step',
+    spec: ToolSpec(name: 'agent_update_step', description: 'Update a recorded agent plan step as it starts, waits for approval, completes, fails, or is skipped. Include a concise output summary when complete.',
+      parameters: _obj(<String, dynamic>{
+        'step_id': _str('The id from agent_plan'),
+        'status': <String, dynamic>{'type': 'string', 'enum': <String>['running', 'awaitingApproval', 'completed', 'failed', 'skipped', 'pending']},
+        'output': _str('Short result or reason'),
+      }, <String>['step_id', 'status'])),
+    run: (a, host) => host.agentAction('step_update', a),
+  ),
+  ToolDef(
     id: 'agent_set_scope',
     title: 'Review target scope',
     spec: ToolSpec(name: 'agent_set_scope', description: 'Submit the program policy text and exact target. The app extracts explicit in-scope and out-of-scope hosts and asks the user to review and confirm them before active testing.',
