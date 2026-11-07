@@ -70,6 +70,17 @@ Out of Scope
       expect(policy.evaluate('admin.example.com', activeOperation: false).decision, ScopeDecision.deny);
     });
 
+    test('hostname-only scope rejects IP literals', () {
+      final policy = ScopePolicy.parse('''
+In Scope
+- app.example.com
+- 192.168.1.10
+''');
+      expect(policy.inScope, contains('app.example.com'));
+      expect(policy.inScope, isNot(contains('192.168.1.10')));
+      expect(policy.evaluate('192.168.1.10', activeOperation: false).decision, ScopeDecision.deny);
+    });
+
     test('policy JSON round trip preserves confirmation state', () {
       final policy = ScopePolicy(
         source: 'url',
