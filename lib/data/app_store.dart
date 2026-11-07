@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/models.dart';
 import '../plugins/plugin.dart';
+import '../agent/agent_models.dart';
+import '../tools/tool_registry.dart';
 
 String _encodeChat(Map<String, dynamic> json) => jsonEncode(json);
 
@@ -27,6 +29,10 @@ class AppStore extends ChangeNotifier {
   Conversation? current;
   bool loaded = false;
 
+  /// Persisted agent state is kept separate from conversation JSON for backwards compatibility.
+  AgentTask? agentTask;
+  ToolRegistry toolRegistry = ToolRegistry();
+
   /// The theme page only needs to rebuild when this changes, not on every chat update.
   final ValueNotifier<String> themeMode = ValueNotifier<String>('dark');
 
@@ -36,6 +42,22 @@ class AppStore extends ChangeNotifier {
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     _prefs = prefs;
+    final rawAgentTask = prefs.getString('agent_task');
+    if (rawAgentTask != null) {
+      try {
+        agentTask = AgentTask.fromJson((jsonDecode(rawAgentTask) as Map).cast<String, dynamic>());
+      } catch (_) {
+        agentTask = null;
+      }
+    }
+    final rawToolRegistry = prefs.getString('agent_tool_registry');
+    if (rawToolRegistry != null) {
+      try {
+        toolRegistry = ToolRegistry.fromJson((jsonDecode(rawToolRegistry) as Map).cast<String, dynamic>());
+      } catch (_) {
+        toolRegistry = ToolRegistry();
+      }
+    }
     providers = _decodeList(prefs.getString('providers'), ProviderConfig.fromJson);
     skills = _decodeList(prefs.getString('skills'), Skill.fromJson);
     memory = _decodeList(prefs.getString('memory'), MemoryFact.fromJson);
@@ -135,6 +157,17 @@ class AppStore extends ChangeNotifier {
   Future<void> saveMemory() async {
     await _saveJson('memory', memory.map((m) => m.toJson()).toList());
     notifyListeners();
+  }
+
+  Future<void> saveAgentState() async {
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    _prefs = prefs;
+    if (agentTask == null) {
+      await prefs.remove('agent_task');
+    } else {
+      await prefs.setString('agent_task', jsonEncode(agentTask!.toJson()));
+    }
+    await prefs.setString('agent_tool_registry', jsonEncode(toolRegistry.toJson()));
   }
 
   Future<void> saveSettings() async {
