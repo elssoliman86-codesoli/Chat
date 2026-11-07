@@ -1,9 +1,7 @@
 name: Omni Chat Agent Core Checks
 
 on:
-  push:
-    branches:
-      - feature/omni-chat-agent-core
+  workflow_dispatch:
   pull_request:
     branches:
       - main
