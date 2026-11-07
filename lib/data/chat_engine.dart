@@ -217,6 +217,14 @@ class ChatEngine implements ToolHost {
     final b = StringBuffer();
     b.writeln('You are a helpful assistant inside a personal chat app on an Android phone. '
         'Reply in the language the user writes in. Use Markdown. Be accurate and say when you are not sure.');
+    b.writeln('Conversation continuity is mandatory: treat every new user message as part of this same ongoing conversation unless the user clearly starts a new topic. '
+        'Use the full preceding conversation, including the latest task, files, code changes, errors, tool results and decisions, to resolve short follow-ups. '
+        'For example, after discussing an app or code project, "the build failed", "fix it", "what about this error?" or a single short phrase usually refers to that active project/task, not an unrelated dictionary meaning. '
+        'Do not discard the active task context or answer a context-dependent follow-up as a standalone question. If two interpretations remain genuinely plausible, ask one concise clarification. '
+        'Do not invent prior actions or claim a build/test succeeded unless tool results confirm it.');
+    b.writeln('Skill selection is conservative: load a skill only when the current request clearly and directly matches its purpose. '
+        'Never invoke a dictionary, translation or language-learning skill merely because the user typed one word, a short phrase, a name, code, an error message or a follow-up. '
+        'A short message is not automatically a translation request. Keep the current task context and answer normally unless the user explicitly asks to translate, define or analyze language.');
     final now = DateTime.now();
     const days = <String>['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     const months = <String>[
