@@ -558,7 +558,8 @@ final List<ToolDef> builtinTools = <ToolDef>[
       final target = path.isEmpty ? '.' : _shellQuote(path);
       final recursive = a['recursive'] == true;
       final includeHidden = a['include_hidden'] != false;
-      final depth = _i(a, 'max_depth').clamp(1, 4);
+      final requestedDepth = _i(a, 'max_depth');
+      final depth = requestedDepth <= 0 ? 2 : (requestedDepth > 4 ? 4 : requestedDepth);
       final hiddenFilter = includeHidden ? '' : " -not -name '.*'";
       final listFlags = includeHidden ? '-la' : '-l';
       final command = recursive
