@@ -558,13 +558,13 @@ class ChatEngine implements ToolHost {
         if (code.trim().isEmpty || code.length > 60000) return 'Python source must be non-empty and at most 60 KB.';
         final slug = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
         if (slug.isEmpty) return 'Invalid Python helper name.';
-        final sandboxNetworkApis = RegExp(
+        final sandboxForbiddenApis = RegExp(
           r'^\s*(?:import\s+(?:socket|requests|httpx|aiohttp|urllib\.request|urllib3|http\.client|subprocess|ctypes|os)\b|from\s+(?:socket|requests|httpx|aiohttp|urllib\.request|urllib3|http\.client|subprocess|ctypes|os|js|pyodide)\b)|\b(?:urlopen|socket\.socket|requests\.(?:get|post|put|delete)|httpx\.(?:get|post)|fetch)\s*\(',
           caseSensitive: false,
           multiLine: true,
         );
         if (sandboxNetworkApis.hasMatch('$code\n$testCode')) {
-          return 'Sandbox tests must be offline. Keep network access behind an injected client and test it with a local mock; outbound network APIs are blocked during helper creation.';
+          return 'Sandbox tests must be offline and non-destructive. Use injected mock clients; outbound network APIs, shell execution and destructive file/database operations are blocked during helper creation.';
         }
         final encodedCode = base64Encode(utf8.encode(code));
         final encodedTests = base64Encode(utf8.encode(testCode));
