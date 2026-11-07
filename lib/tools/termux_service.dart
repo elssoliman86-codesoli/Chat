@@ -58,11 +58,15 @@ class TermuxService {
   }
 
   Future<bool> supportsRunCommandResult() async {
-    final value = await version();
-    final parts = RegExp(r'\d+').allMatches(value).take(2)
-        .map((match) => int.tryParse(match.group(0)!) ?? 0).toList();
-    if (parts.length < 2) return false;
-    return parts[0] > 0 || (parts[0] == 0 && parts[1] >= 109);
+    try {
+      final value = await version();
+      final parts = RegExp(r'\d+').allMatches(value).take(2)
+          .map((match) => int.tryParse(match.group(0)!) ?? 0).toList();
+      if (parts.length < 2) return false;
+      return parts[0] > 0 || (parts[0] == 0 && parts[1] >= 109);
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> hasPermission() async {
