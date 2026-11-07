@@ -81,6 +81,14 @@ class TermuxService {
         'if [ -n "\$p" ]; then v=$("\$p" --version 2>&1 | head -n 1); '
         "printf '%s\\t%s\\t%s\\n' \"\$t\" \"\$p\" \"\$v\"; fi; done";
     final result = await run(command, timeout: const Duration(seconds: 45));
+    final exitCode = result['exitCode'];
+    final nativeError = result['err'];
+    final errorText = (result['errmsg'] ?? '').toString();
+    if ((exitCode is num && exitCode.toInt() != 0) ||
+        errorText.isNotEmpty ||
+        (nativeError is num && nativeError.toInt() != -1)) {
+      throw StateError(errorText.isNotEmpty ? errorText : 'Termux discovery command failed (exit: $exitCode, err: $nativeError).');
+    }
     final stdout = (result['stdout'] ?? '').toString();
     final tools = <Map<String, String>>[];
     for (final line in stdout.split('\n')) {
