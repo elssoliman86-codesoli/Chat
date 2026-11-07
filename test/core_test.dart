@@ -5,6 +5,7 @@ import 'package:omni_chat/core/models.dart';
 import 'package:omni_chat/core/skill_import.dart';
 import 'package:omni_chat/data/app_store.dart';
 import 'package:omni_chat/data/chat_engine.dart';
+import 'package:omni_chat/tools/registry.dart';
 import 'package:omni_chat/files/attachment_service.dart';
 import 'package:omni_chat/files/code_export.dart';
 import 'package:omni_chat/llm/llm.dart';
@@ -144,6 +145,31 @@ void main() {
     expect(back.alwaysOn, true);
     final onByDefault = Skill.fromJson(<String, dynamic>{'id': 's2', 'name': 'T2'});
     expect(onByDefault.alwaysOn, false);
+  });
+
+  test('local Termux requests and contextual follow-ups skip automatic web search', () {
+    expect(shouldSkipAutomaticWebSearchForLocalAction('Open Termux and list files'), true);
+    expect(shouldSkipAutomaticWebSearchForLocalAction('هات أسماء الملفات', recentContext: 'We are working in Termux'), true);
+    expect(shouldSkipAutomaticWebSearchForLocalAction('البناء فشل تاني'), true);
+    expect(shouldSkipAutomaticWebSearchForLocalAction('What is the latest Flutter release?'), false);
+  });
+
+  test('Termux file listing tool is exposed only when the shell setting is enabled', () {
+    final store = AppStore();
+    final conversation = Conversation(id: 'termux-test');
+    final provider = ProviderConfig(
+      id: 'p',
+      name: 'Test',
+      kind: ProviderKind.openai,
+      baseUrl: 'https://example.invalid/v1',
+      model: 'test-model',
+    );
+    expect(ToolRegistry.specsFor(conversation, store, provider).map((tool) => tool.name),
+        isNot(contains('termux_list_files')));
+    store.settings.termuxTools = true;
+    final names = ToolRegistry.specsFor(conversation, store, provider).map((tool) => tool.name);
+    expect(names, contains('termux_list_files'));
+    expect(names, contains('termux_run'));
   });
 
   test('messages typed while busy are held in order and are not lost on a stop', () {
