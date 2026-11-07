@@ -175,6 +175,11 @@ In Scope
         controller.authorizeOperation(target: 'outside.example.net', risk: AgentOperationRisk.passive).decision,
         ScopeDecision.deny,
       );
+      controller.clearPolicy();
+      expect(
+        controller.authorizeOperation(target: 'app.example.com', risk: AgentOperationRisk.passive).decision,
+        ScopeDecision.needsReview,
+      );
       expect(
         controller.authorizeOperation(target: 'app.example.com', risk: AgentOperationRisk.destructive).decision,
         ScopeDecision.deny,
