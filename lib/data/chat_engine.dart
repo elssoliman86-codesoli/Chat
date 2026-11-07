@@ -511,6 +511,10 @@ class ChatEngine implements ToolHost {
         if (decision.decision != ScopeDecision.allow) return 'Custom helper execution blocked by scope policy: ${decision.reason}';
         final targetHost = Uri.tryParse(target.contains('://') ? target : 'https://$target')?.host.toLowerCase();
         if (targetHost == null || !RegExp(r'^[a-z0-9.-]+$').hasMatch(targetHost)) return 'Invalid target hostname.';
+        final availableTools = await TermuxService.instance.discoverTools();
+        if (!availableTools.any((item) => item['name'] == 'python' || item['name'] == 'python3')) {
+          return 'Termux Python is not installed. Discover tools and approve the python package in a batch before running this helper.';
+        }
         final file = File(entry.executablePath);
         if (!await file.exists()) return 'The saved Python helper file is missing from local storage.';
         final code = await file.readAsString();
