@@ -589,7 +589,7 @@ class ChatEngine implements ToolHost {
     final contactsTarget = networkPattern.hasMatch(clean);
     if (contactsTarget) {
       if (RegExp(r'[;|&`$<>\n]').hasMatch(clean)) return 'Blocked: target-facing commands cannot contain shell chaining, redirection, command substitution or pipelines. Run one reviewed command at a time.';
-      if (RegExp(r'\b(?:\d{1,3}\.){3}\d{1,3}\b').hasMatch(clean)) return 'Blocked: IP literals are not accepted by this hostname-only scope gate. Use an explicitly listed hostname.';
+      if (RegExp(r'\b(?:\d{1,3}\.){3}\d{1,3}\b|\b[0-9a-fA-F]*:[0-9a-fA-F:]+\b').hasMatch(clean)) return 'Blocked: IP literals are not accepted by this hostname-only scope gate. Use an explicitly listed hostname.';
       if (target.trim().isEmpty) return 'Blocked: supply the exact target hostname and review the current program policy with agent_set_scope first.';
       final risk = RegExp(r'\b(nmap|subfinder|amass|nuclei|ffuf|feroxbuster|nikto|sqlmap)\b', caseSensitive: false).hasMatch(clean) ||
           RegExp(r'\b(-X|--request)\s*(POST|PUT|PATCH|DELETE)\b|--data(?:-raw|-binary)?\b|\s-d\s|\s-F\s', caseSensitive: false).hasMatch(clean)
@@ -598,7 +598,7 @@ class ChatEngine implements ToolHost {
       if (declared == null || declared.isEmpty) return 'Blocked: target must be a valid hostname.';
       final decision = agent.authorizeOperation(target: declared, risk: risk);
       if (decision.decision != ScopeDecision.allow) return 'Blocked by scope policy: ${decision.reason}';
-      final hostPattern = RegExp(r'(?<![a-z0-9-])(?:https?://)?([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,})(?::\d+)?', caseSensitive: false);
+      final hostPattern = RegExp(r'(?:https?://)?([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,})(?::\d+)?', caseSensitive: false);
       final commandHosts = hostPattern.allMatches(clean).map((match) => match.group(1)!.toLowerCase()).toSet();
       if (commandHosts.isEmpty) return 'Blocked: the command must visibly include its target hostname so it can be checked against scope.';
       for (final host in commandHosts) {
