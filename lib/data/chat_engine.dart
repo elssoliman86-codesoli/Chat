@@ -563,7 +563,7 @@ class ChatEngine implements ToolHost {
           caseSensitive: false,
           multiLine: true,
         );
-        if (sandboxNetworkApis.hasMatch('$code\\n$testCode')) {
+        if (sandboxNetworkApis.hasMatch('$code\n$testCode')) {
           return 'Sandbox tests must be offline. Keep network access behind an injected client and test it with a local mock; outbound network APIs are blocked during helper creation.';
         }
         final encodedCode = base64Encode(utf8.encode(code));
