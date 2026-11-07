@@ -41,6 +41,16 @@ class AgentController {
     return task;
   }
 
+  void clearPolicy() {
+    _policy = null;
+    final task = _task;
+    if (task != null) {
+      task.policyReference = '';
+      task.touch();
+      _emit();
+    }
+  }
+
   void setPolicy(ScopePolicy policy) {
     _requireTask();
     _policy = policy;
