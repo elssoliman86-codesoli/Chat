@@ -38,6 +38,21 @@ class AppStore extends ChangeNotifier {
     _prefs = prefs;
     providers = _decodeList(prefs.getString('providers'), ProviderConfig.fromJson);
     skills = _decodeList(prefs.getString('skills'), Skill.fromJson);
+    // The built-in translator must not auto-trigger on arbitrary short messages.
+    // Migrate existing installs too, including skills previously auto-loaded by the model.
+    var skillsMigrated = false;
+    for (final skill in skills) {
+      if (skill.name.trim().toLowerCase() == 'trilingual translator' &&
+          skill.description == 'Translate between Arabic, English and Russian.' &&
+          skill.tools.isEmpty) {
+        if (skill.autoUse || skill.alwaysOn) {
+          skill.autoUse = false;
+          skill.alwaysOn = false;
+          skillsMigrated = true;
+        }
+      }
+    }
+    if (skillsMigrated) await saveSkills();
     memory = _decodeList(prefs.getString('memory'), MemoryFact.fromJson);
     plugins = _decodeList(prefs.getString('plugins'), Plugin.fromJson);
     final rawSettings = prefs.getString('settings');
