@@ -315,7 +315,7 @@ class ChatEngine implements ToolHost {
         'named App gets a Preview that renders it with React. There is no runtime for compiled languages (Go, Java, Swift, C, and so on): say so '
         'and offer the source file instead when one of those is asked for.');
     if (st.termuxTools) {
-      b.writeln('\nTermux Agent: use agent_start and agent_plan for multi-step tasks. For security testing, first retrieve and read the current program policy, then call agent_set_scope with the exact target and policy text. The app extracts explicit in-scope and out-of-scope hosts and requires the user to review and confirm them. Never infer sibling domains, API hosts, IPs or mobile backends into scope. Out-of-scope rules always override. Use termux_discover_tools before selecting local tools; it only inspects installed commands. If tools are missing, propose them with termux_install_batch: the app asks for one approval for the complete batch and installs only supported package identifiers. Use termux_run only after its confirmation prompt. Any command that contacts a target must include the exact target hostname and pass the scope gate; active testing also requires reviewed and user-confirmed policy. Follow the program rules, rate limits and exclusions. Never perform destructive testing, denial of service, brute force, credential attacks, access other users data, or bypass program restrictions. Termux is a real device shell, not a sandbox; do not claim a command ran unless its exit status confirms it.');
+      b.writeln('\nTermux Agent: for multi-step tasks use agent_start, agent_plan, and agent_update_step to keep the live timeline accurate. For security testing, first retrieve and read the current program policy, then call agent_set_scope with the exact target and policy text. The app extracts explicit in-scope and out-of-scope hosts and requires the user to review and confirm them. Never infer sibling domains, API hosts, IPs or mobile backends into scope. Out-of-scope rules always override. Use termux_discover_tools before selecting local tools; it only inspects installed commands. If tools are missing, propose them with termux_install_batch: the app asks for one approval for the complete batch and installs only supported package identifiers. Use termux_run only after its confirmation prompt. Any command that contacts a target must include the exact target hostname and pass the scope gate; active testing also requires reviewed and user-confirmed policy. Follow the program rules, rate limits and exclusions. Never perform destructive testing, denial of service, brute force, credential attacks, access other users data, or bypass program restrictions. Termux is a real device shell, not a sandbox; do not claim a command ran unless its exit status confirms it.');
     }    b.writeln('\nTo add skills or plugins to this app when the person gives you a link or text, use install_skills, '
         'install_plugin or create_skill. When you need permission, a login, a captcha or a decision from the person, '
         'call ask_user instead of guessing.');
@@ -382,6 +382,17 @@ class ChatEngine implements ToolHost {
         if (steps.isEmpty) return 'The plan was empty; no steps were recorded.';
         agent.replacePlan(steps);
         return 'Recorded ${steps.length} plan steps: ${steps.map((step) => step.title).join(' → ')}';
+      }
+      case 'step_update': {
+        final id = (args['step_id'] ?? '').toString();
+        final rawStatus = (args['status'] ?? '').toString();
+        final status = AgentStepStatus.values.firstWhere(
+          (value) => value.name == rawStatus,
+          orElse: () => AgentStepStatus.pending,
+        );
+        if (id.isEmpty) return 'A step_id is required.';
+        agent.updateStep(id, status, output: (args['output'] ?? '').toString());
+        return 'Updated agent step $id to ${status.name}.';
       }
       case 'scope': {
         final target = (args['target'] ?? '').toString().trim();
