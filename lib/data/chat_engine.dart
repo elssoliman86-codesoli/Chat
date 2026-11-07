@@ -416,6 +416,7 @@ class ChatEngine implements ToolHost {
         return approved ? 'Scope reviewed and confirmed for $target. Active testing is still subject to program rules and per-command approval.' : 'Scope was not confirmed. Target interaction remains blocked.';
       }
       case 'discover': {
+        if (!store.settings.termuxTools) return 'Enable Termux tools in Settings first.';
         if (!await TermuxService.instance.isInstalled()) return 'Termux is not installed or Android native bridge is unavailable.';
         if (!await TermuxService.instance.hasPermission()) {
           final ask = await confirm('Omni Chat needs the Android “Run commands in Termux environment” permission to inspect installed tools. Request it now?');
@@ -432,6 +433,7 @@ class ChatEngine implements ToolHost {
         return 'Discovered ${found.length} installed tools:\n${found.map((item) => '${item['name']} — ${item['version']}').join('\n')}\n\nSupported packages not detected: ${missing.join(', ')}';
       }
       case 'install_batch': {
+        if (!store.settings.termuxTools) return 'Enable Termux tools in Settings first.';
         final raw = args['package_ids'];
         if (raw is! List) return 'package_ids must be an array.';
         final packages = raw.whereType<String>().toSet().toList(growable: false);
@@ -467,6 +469,7 @@ class ChatEngine implements ToolHost {
         } catch (e) { return 'Could not install the approved batch: $e'; }
       }
       case 'run_python_tool': {
+        if (!store.settings.termuxTools) return 'Enable Termux tools in Settings first.';
         final name = (args['name'] ?? '').toString().trim();
         final target = (args['target'] ?? '').toString().trim();
         final slug = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
