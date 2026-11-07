@@ -140,6 +140,26 @@ class AgentController {
     _emit();
   }
 
+  void updateStep(String stepId, AgentStepStatus status, {String output = ''}) {
+    final task = _requireTask();
+    final step = _findStep(task, stepId);
+    if (step == null) throw ArgumentError.value(stepId, 'stepId', 'Unknown agent step.');
+    step
+      ..status = status
+      ..output = output;
+    if (status == AgentStepStatus.running) {
+      task.status = AgentTaskStatus.running;
+    } else if (status == AgentStepStatus.failed) {
+      task.status = AgentTaskStatus.failed;
+    } else if (status == AgentStepStatus.awaitingApproval) {
+      task.status = AgentTaskStatus.awaitingApproval;
+    } else {
+      task.status = AgentTaskStatus.paused;
+    }
+    task.touch();
+    _emit();
+  }
+
   void completeTask() {
     final task = _requireTask();
     task.status = AgentTaskStatus.completed;
