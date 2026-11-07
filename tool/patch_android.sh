@@ -151,3 +151,21 @@ android {
 GRV
 fi
 grep -n "applicationId" "$APP_KTS" "$APP_GRV" 2>/dev/null || true
+
+# Install the Termux RUN_COMMAND MethodChannel bridge into the generated Flutter Android host.
+KOTLIN_DIR="$ROOT/android/app/src/main/kotlin/com/codesoli/omni_chat"
+mkdir -p "$KOTLIN_DIR"
+cp "$ROOT/tool/android/MainActivity.kt" "$KOTLIN_DIR/MainActivity.kt"
+cp "$ROOT/tool/android/TermuxResultReceiver.kt" "$KOTLIN_DIR/TermuxResultReceiver.kt"
+python3 - "$MANIFEST" <<'PY'
+import sys
+from pathlib import Path
+
+manifest = Path(sys.argv[1])
+source = manifest.read_text()
+receiver = '        <receiver android:name=".TermuxResultReceiver" android:exported="false" />\\n'
+if 'android:name=".TermuxResultReceiver"' not in source:
+    source = source.replace('</application>', receiver + '    </application>', 1)
+manifest.write_text(source)
+PY
+echo "Installed Omni Chat Termux MethodChannel bridge."
