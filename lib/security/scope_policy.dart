@@ -15,7 +15,7 @@ class ScopePolicy {
   ScopePolicy({
     required this.source,
     required this.inScope,
-    this.outOfScope = const <String>[],
+    this.outOfScope = const <String>{},
     this.reviewed = false,
     this.userConfirmed = false,
   });
