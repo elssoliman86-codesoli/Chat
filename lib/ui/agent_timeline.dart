@@ -57,6 +57,9 @@ class AgentTimelinePanel extends StatelessWidget {
                   Text('${i + 1}. ${task.steps[i].title}', style: theme.textTheme.bodySmall),
                   if (task.steps[i].description.isNotEmpty)
                     Text(task.steps[i].description, style: theme.textTheme.labelSmall),
+                  if (task.steps[i].output.isNotEmpty)
+                    Text(task.steps[i].output, maxLines: 3, overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
                 ])),
                 Text(task.steps[i].status.name, style: theme.textTheme.labelSmall),
               ]),
