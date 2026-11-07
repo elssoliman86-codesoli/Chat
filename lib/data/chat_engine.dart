@@ -424,6 +424,7 @@ class ChatEngine implements ToolHost {
       case 'discover': {
         if (!store.settings.termuxTools) return 'Enable Termux tools in Settings first.';
         if (!await TermuxService.instance.isInstalled()) return 'Termux is not installed or Android native bridge is unavailable.';
+        if (!await TermuxService.instance.supportsRunCommandResult()) return 'Termux 0.109 or newer is required to return command results to Omni Chat.';
         if (!await TermuxService.instance.hasPermission()) {
           final ask = await confirm('Omni Chat needs the Android “Run commands in Termux environment” permission to inspect installed tools. Request it now?');
           if (!ask || !await TermuxService.instance.requestPermission()) return 'Termux permission was not granted.';
@@ -451,6 +452,7 @@ class ChatEngine implements ToolHost {
         final invalid = packages.where((id) => !TermuxService.installablePackages.containsKey(id)).toList();
         if (invalid.isNotEmpty) return 'Rejected unsupported package ids: ${invalid.join(', ')}';
         if (!await TermuxService.instance.isInstalled()) return 'Termux is not installed or Android native bridge is unavailable.';
+        if (!await TermuxService.instance.supportsRunCommandResult()) return 'Termux 0.109 or newer is required to return command results to Omni Chat.';
         if (!await TermuxService.instance.hasPermission()) return 'Grant Termux command permission first, then retry the batch.';
         agent.proposeTools(packages.map((id) => ToolRequirement(id: id, name: TermuxService.installablePackages[id]!, reason: 'Requested for the current agent task', installHint: 'pkg install $id')));
         if (!await agent.approveToolBatch()) return 'The tool installation batch was declined.';
@@ -605,6 +607,7 @@ class ChatEngine implements ToolHost {
       return 'Run custom Python through agent_create_python_tool (sandbox test) and agent_run_python_tool (scope check plus explicit source approval). Generic Python script execution through termux_run is disabled.';
     }
     if (!await TermuxService.instance.isInstalled()) return 'Termux is not installed or the Android native bridge is unavailable.';
+    if (!await TermuxService.instance.supportsRunCommandResult()) return 'Termux 0.109 or newer is required to return command results to Omni Chat.';
     if (!await TermuxService.instance.hasPermission()) {
       final ask = await confirm('Omni Chat needs the Android “Run commands in Termux environment” permission. Request it now?');
       if (!ask || !await TermuxService.instance.requestPermission()) return 'Termux permission was not granted.';
