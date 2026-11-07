@@ -298,7 +298,11 @@ class ChatEngine implements ToolHost {
           'automation and for trying real tools, on their own device only — never use it to probe, scan or attack any other '
           'device, account or service, even one the person says they own or are allowed to test; that is out of scope '
           'regardless of how it is framed. If Termux is not installed, not permitted, or not set up (allow-external-apps), '
-          'the tool\'s result explains exactly what the person needs to do; tell them plainly rather than retrying blindly.');
+          'the tool\'s result explains exactly what the person needs to do; tell them plainly rather than retrying blindly. '
+          'When asked to build something and save it directly in Termux (not in this app\'s own Projects workspace), write '
+          'each file there with termux_run using a heredoc, e.g. mkdir -p ~/name && cat > ~/name/file.py <<\'PYEOF\'\\n...\\nPYEOF '
+          '(pick a delimiter that cannot appear in the content), under the home directory (~/) unless told otherwise, so real '
+          'tools there (git, pip, compilers, ...) can use the result afterward.');
     }
     b.writeln('\nTo add skills or plugins to this app when the person gives you a link or text, use install_skills, '
         'install_plugin or create_skill. When you need permission, a login, a captcha or a decision from the person, '
