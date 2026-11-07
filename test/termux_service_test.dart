@@ -49,8 +49,8 @@ void main() {
   });
 
   test('rejects arbitrary package names before invoking Termux', () async {
-    expect(
-      () => TermuxService.instance.installPackages(['python; rm -rf ~']),
+    await expectLater(
+      TermuxService.instance.installPackages(['python; rm -rf ~']),
       throwsArgumentError,
     );
     expect(calls, isEmpty);
