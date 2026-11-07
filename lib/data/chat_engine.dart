@@ -9,6 +9,7 @@ import '../plugins/plugin.dart';
 import '../tools/browser_service.dart';
 import '../tools/image_reader.dart';
 import '../tools/tools.dart';
+import '../tools/registry.dart';
 import '../tools/web_tools.dart';
 import 'app_store.dart';
 import 'keep_alive.dart';
@@ -317,38 +318,7 @@ class ChatEngine implements ToolHost {
       store.skills.where((k) => k.enabled && (k.alwaysOn || c.activeSkillIds.contains(k.id))).toList();
 
   List<ToolSpec> buildTools(Conversation c, ProviderConfig provider) {
-    if (!provider.supportsTools) return const <ToolSpec>[];
-    final st = store.settings;
-    final ids = <String>{};
-    for (final t in builtinTools) {
-      final on = switch (t.group) {
-        'web' => st.webTools,
-        'browser' => st.pluginBrowser,
-        'github' => st.pluginGithub,
-        'github_write' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
-        'project_push' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
-        'termux' => st.termuxTools,
-        _ => true,
-      };
-      if (on) ids.add(t.id);
-    }
-    if (!(st.memoryEnabled && !c.temporary)) ids.remove('remember');
-    for (final k in _activeSkills(c)) {
-      ids.addAll(k.tools);
-    }
-    final specs = <ToolSpec>[];
-    for (final id in ids) {
-      final def = toolById(id);
-      if (def != null) specs.add(def.spec);
-    }
-    for (final p in store.plugins.where((p) => p.enabled)) {
-      for (final t in p.tools) {
-        specs.add(ToolSpec(name: p.specName(t), description: '${p.name}: ${t.description}', parameters: t.parameters));
-      }
-    }
-    final hasAuto = store.skills.any((k) => k.enabled && k.autoUse && !k.alwaysOn);
-    if (hasAuto) specs.add(useSkillSpec);
-    return specs;
+    return ToolRegistry.specsFor(c, store, provider);
   }
 
   Future<void> send(Conversation c, String text, List<Attachment> attachments) async {

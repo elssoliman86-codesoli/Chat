@@ -7,6 +7,7 @@ import '../plugins/plugin.dart';
 import '../projects/project_tools.dart';
 import 'browser_service.dart';
 import 'github_tools.dart';
+import 'python_runtime.dart';
 import 'termux_service.dart';
 import 'web_tools.dart';
 
@@ -561,6 +562,34 @@ final List<ToolDef> builtinTools = <ToolDef>[
       } on Exception catch (e) {
         return 'Could not reach Termux: $e';
       }
+    },
+  ),
+  ToolDef(
+    id: 'python_run',
+    title: 'Run Python (sandboxed)',
+    group: 'python',
+    spec: const ToolSpec(
+      name: 'python_run',
+      description: 'Runs Python in a sandbox on the phone (Pyodide, a full Python compiled to WebAssembly). '
+          'It is a sandbox: no shell, no access to the phone\'s files or apps, nothing installed — '
+          'good for the model to write and test a script before handing it over, or to compute something, '
+          'not for controlling the device or other programs. Variables and imports from earlier calls stay '
+          'available, like a notebook, until reset is called.',
+      parameters: <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'code': <String, dynamic>{'type': 'string', 'description': 'Python code to run'},
+          'reset': <String, dynamic>{'type': 'boolean', 'description': 'Clear earlier variables and imports first'},
+        },
+        'required': <String>['code'],
+      },
+    ),
+    run: (args, host) async {
+      final code = _s(args, 'code');
+      if (code.trim().isEmpty) return 'No code was given.';
+      final reset = args['reset'] == true;
+      if (reset) await PythonRuntime.instance.reset();
+      return PythonRuntime.instance.run(code);
     },
   ),
   ...projectToolDefs,
