@@ -108,6 +108,9 @@ class AgentController {
     if (policy == null) {
       return const ScopeEvaluation(ScopeDecision.needsReview, 'Load and review the program policy before target interaction.');
     }
+    if (!policy.reviewed || !policy.userConfirmed) {
+      return const ScopeEvaluation(ScopeDecision.needsReview, 'The user has not reviewed and confirmed the program scope.');
+    }
     return policy.evaluate(target, activeOperation: risk == AgentOperationRisk.active);
   }
 
