@@ -130,6 +130,9 @@ class TermuxService {
   /// code). Output is truncated by Termux itself around 100KB. Throws a PlatformException with a
   /// human-readable message on anything that stops the command from running at all.
   Future<Map<String, dynamic>> run(String command, {String? workdir, Duration timeout = const Duration(seconds: 60)}) async {
+    if (!await supportsRunCommandResult()) {
+      throw StateError('Termux 0.109 or newer is required for command result callbacks.');
+    }
     final r = await _channel.invokeMethod<Map<Object?, Object?>>('run', <String, dynamic>{
       'command': command,
       if (workdir != null && workdir.trim().isNotEmpty) 'workdir': workdir.trim(),
