@@ -584,7 +584,7 @@ class ChatEngine implements ToolHost {
         final name = (args['name'] ?? 'custom_tool').toString().trim();
         final code = (args['code'] ?? '').toString();
         final testCode = (args['test_code'] ?? '').toString();
-        if (code.trim().isEmpty || code.length > 60000) return 'Python source must be non-empty and at most 60 KB.';
+        if (code.trim().isEmpty || code.length > 12000) return 'Python source must be non-empty and at most 12 KB so it can be reviewed in full before execution.';
         final slug = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
         if (slug.isEmpty) return 'Invalid Python helper name.';
         final sandboxForbiddenApis = RegExp(
