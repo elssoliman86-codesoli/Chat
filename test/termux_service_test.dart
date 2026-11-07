@@ -39,14 +39,15 @@ void main() {
     expect(tools.first['name'], 'python');
     expect(tools.first['path'], '/data/data/com.termux/files/usr/bin/python');
     expect(tools.first['version'], 'Python 3.12.1');
-    expect(calls.single.method, 'run');
-    expect((calls.single.arguments as Map)['command'], contains('command -v'));
+    expect(calls.map((call) => call.method), ['getVersion', 'run']);
+    expect((calls.last.arguments as Map)['command'], contains('command -v'));
   });
 
   test('installs only supported package identifiers', () async {
     final result = await TermuxService.instance.installPackages(['python', 'git']);
     expect(result['exitCode'], 0);
-    expect((calls.single.arguments as Map)['command'], 'pkg install -y python git');
+    expect(calls.map((call) => call.method), ['getVersion', 'run']);
+    expect((calls.last.arguments as Map)['command'], 'pkg install -y python git');
   });
 
   test('rejects arbitrary package names before invoking Termux', () async {
