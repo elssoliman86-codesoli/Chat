@@ -419,12 +419,19 @@ class Skill {
     this.autoUse = true,
     this.enabled = true,
     this.alwaysOn = false,
+    this.source = '',
   }) : tools = tools ?? <String>[];
 
   final String id;
   String name;
   String description;
   String instructions;
+
+  /// Where this skill came from, for grouping the Skills list into folders: a GitHub "owner/repo"
+  /// (or a site's host for a direct SKILL.md link) when installed with install_skills/install_plugin,
+  /// or empty for a skill written or pasted by hand (create_skill, pasted text, a ZIP), which is
+  /// grouped under a single "Manual" folder.
+  String source;
 
   /// Tool ids from the built-in tool list.
   List<String> tools;
@@ -448,6 +455,7 @@ class Skill {
         'autoUse': autoUse,
         'enabled': enabled,
         'alwaysOn': alwaysOn,
+        'source': source,
       };
 
   factory Skill.fromJson(Map<String, dynamic> j) => Skill(
@@ -459,6 +467,7 @@ class Skill {
         autoUse: j['autoUse'] as bool? ?? true,
         enabled: j['enabled'] as bool? ?? true,
         alwaysOn: j['alwaysOn'] as bool? ?? false,
+        source: j['source'] as String? ?? '',
       );
 }
 

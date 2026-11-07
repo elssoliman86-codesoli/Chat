@@ -172,6 +172,24 @@ void main() {
     expect(names, contains('termux_run'));
   });
 
+  test('a skill installed from GitHub keeps its repo as a folder; a manual one has none', () {
+    final fromRepo = Skill(id: 's3', name: 'From repo', source: 'octocat/hello-world');
+    expect(Skill.fromJson(fromRepo.toJson()).source, 'octocat/hello-world');
+    final manual = Skill(id: 's4', name: 'Manual');
+    expect(manual.source, '');
+    expect(Skill.fromJson(<String, dynamic>{'id': 's5', 'name': 'T5'}).source, '');
+  });
+
+  test('Termux guidance defaults to acting without the word "Termux" and keeps looping until done', () {
+    final engine = ChatEngine(AppStore());
+    final c = Conversation(id: 'termux-prompt-test');
+    engine.store.settings.termuxTools = true;
+    final prompt = engine.buildSystem(c);
+    expect(prompt, contains('DEFAULT'));
+    expect(prompt, contains('Never wait for the word "Termux"'));
+    expect(prompt, contains('Work in a loop, not one shot'));
+  });
+
   test('messages typed while busy are held in order and are not lost on a stop', () {
     final engine = ChatEngine(AppStore());
     final c = Conversation(id: 'c1');

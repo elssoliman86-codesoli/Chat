@@ -18,6 +18,7 @@ Future<String> installSkillsFrom(ToolHost host, String source) async {
     if (res.statusCode != 200) return 'Could not download the file (HTTP ${res.statusCode}).';
     final skill = parseSkillMarkdown(utf8.decode(res.bodyBytes, allowMalformed: true));
     if (skill == null) return 'That file does not look like a skill.';
+    skill.source = Uri.tryParse(source.trim())?.host ?? source.trim();
     host.installSkill(skill);
     return 'Installed skill "${skill.name}".';
   }
@@ -29,6 +30,7 @@ Future<String> installSkillsFrom(ToolHost host, String source) async {
     final fallback = folder.isEmpty ? src.repo.split('/').last : folder.split('/').last;
     final skill = parseSkillMarkdown(text, fallbackName: fallback);
     if (skill == null) continue;
+    skill.source = src.repo;
     skill.tools = <String>{...skill.tools, 'github_file', 'github_tree'}.toList();
     skill.instructions = '${skill.instructions}\n\n'
         '(Installed from ${src.repo}${folder.isEmpty ? '' : ' / $folder'}, branch $branch. Other files of this skill, '
@@ -161,6 +163,9 @@ Future<String> installFromZip(ToolHost host, List<int> bytes) async {
     if (base == 'skill.md') {
       final skill = parseSkillMarkdown(text, fallbackName: fallback);
       if (skill != null) {
+        // A ZIP usually comes from a repo's "Download ZIP", whose entries are rooted in a single
+        // top folder (repo-branch/...) — use that as the skill's source folder, like a GitHub install.
+        skill.source = parts.length > 2 ? parts.first : '';
         host.installSkill(skill);
         done.add('skill ${skill.name}');
       }

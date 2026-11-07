@@ -68,47 +68,72 @@ class SkillsScreen extends StatelessWidget {
     if (context.mounted) _edit(context, skill, isNew: true);
   }
 
+  /// Groups skills into folders: "Built-in" first, then one folder per GitHub repo (or site) a skill
+  /// was installed from, then a single "Manual" folder last for anything written or pasted by hand.
+  Map<String, List<Skill>> _folders(List<Skill> skills) {
+    final folders = <String, List<Skill>>{};
+    for (final s in skills) {
+      final key = s.source.trim().isEmpty ? 'Manual' : s.source.trim();
+      folders.putIfAbsent(key, () => <Skill>[]).add(s);
+    }
+    int rank(String key) => key == 'Built-in' ? 0 : (key == 'Manual' ? 2 : 1);
+    return Map.fromEntries(folders.entries.toList()
+      ..sort((a, b) {
+        final r = rank(a.key).compareTo(rank(b.key));
+        if (r != 0) return r;
+        return a.key.toLowerCase().compareTo(b.key.toLowerCase());
+      }));
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: store,
-      builder: (context, _) => GroupedPage(
-        title: 'Skills',
-        actions: [
-          IconButton(tooltip: 'Import', icon: const Icon(CupertinoIcons.arrow_down_doc), onPressed: () => _import(context)),
-          IconButton(
-            tooltip: 'New skill',
-            icon: const Icon(CupertinoIcons.plus),
-            onPressed: () => _edit(context, Skill(id: newId(), name: ''), isNew: true),
-          ),
-        ],
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 0, 4, 14),
-            child: Text(
-              'A skill is a set of instructions plus the tools it may use. "Always active" skills are included with '
-              'every message. Others only apply when switched on inside a chat (the bolt) or loaded by the '
-              'assistant itself when it decides one fits.',
-              style: TextStyle(fontSize: 13.5, color: paletteOf(context).secondary),
+      builder: (context, _) {
+        final folders = _folders(store.skills);
+        return GroupedPage(
+          title: 'Skills',
+          actions: [
+            IconButton(tooltip: 'Import', icon: const Icon(CupertinoIcons.arrow_down_doc), onPressed: () => _import(context)),
+            IconButton(
+              tooltip: 'New skill',
+              icon: const Icon(CupertinoIcons.plus),
+              onPressed: () => _edit(context, Skill(id: newId(), name: ''), isNew: true),
             ),
-          ),
-          Group(children: [
-            for (final s in store.skills)
-              Cell(
-                title: s.name,
-                subtitle: '${s.alwaysOn ? 'Always active in every conversation · ' : (s.autoUse ? 'Available for automatic activation · ' : '')}${s.description}${s.tools.isEmpty ? '' : '\nTools: ${s.tools.join(', ')}'}',
-                onTap: () => _edit(context, s),
-                trailing: Switch(
-                  value: s.enabled,
-                  onChanged: (v) {
-                    s.enabled = v;
-                    store.saveSkills();
-                  },
-                ),
+          ],
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 14),
+              child: Text(
+                'A skill is a set of instructions plus the tools it may use. "Always active" skills are included with '
+                'every message. Others only apply when switched on inside a chat (the bolt) or loaded by the '
+                'assistant itself when it decides one fits. Skills are grouped into a folder per repo they came '
+                'from, plus a Manual folder for the ones written or pasted by hand.',
+                style: TextStyle(fontSize: 13.5, color: paletteOf(context).secondary),
               ),
-          ]),
-        ],
-      ),
+            ),
+            for (final folder in folders.keys)
+              Group(
+                header: folder == 'Manual' ? 'Manual' : folder,
+                children: [
+                  for (final s in folders[folder]!)
+                    Cell(
+                      title: s.name,
+                      subtitle: '${s.alwaysOn ? 'Always active in every conversation · ' : (s.autoUse ? 'Available for automatic activation · ' : '')}${s.description}${s.tools.isEmpty ? '' : '\nTools: ${s.tools.join(', ')}'}',
+                      onTap: () => _edit(context, s),
+                      trailing: Switch(
+                        value: s.enabled,
+                        onChanged: (v) {
+                          s.enabled = v;
+                          store.saveSkills();
+                        },
+                      ),
+                    ),
+                ],
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -182,6 +207,8 @@ class _SkillEditScreenState extends State<SkillEditScreen> {
             label: 'When to use it (the assistant reads this to decide)',
             lines: 2,
           ),
+          if (_s.source.trim().isNotEmpty)
+            Cell(title: 'Folder', subtitle: _s.source.trim(), icon: CupertinoIcons.folder),
         ]),
         Group(header: 'Instructions', children: [
           FieldCell(controller: _instr, label: 'What the assistant should do', lines: 8),

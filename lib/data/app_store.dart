@@ -105,6 +105,7 @@ class AppStore extends ChangeNotifier {
               'Compare the figures, ignore outliers and spam, and give a clear answer with the sources named. '
               'Say when sources disagree. If something essential is missing, ask one short question first.',
           tools: <String>['web_search', 'fetch_page'],
+          source: 'Built-in',
         ),
         Skill(
           id: newId(),
@@ -113,6 +114,7 @@ class AppStore extends ChangeNotifier {
           instructions: 'Work only from the attached files and images. Quote short passages when it helps, '
               'name the file each fact comes from, and say clearly when the files do not contain the answer. '
               'For several files, compare them in a table.',
+          source: 'Built-in',
         ),
         Skill(
           id: newId(),
@@ -121,6 +123,7 @@ class AppStore extends ChangeNotifier {
           instructions: 'Translate the user\'s text between Arabic (Egyptian dialect when informal), English and Russian. '
               'Keep names, numbers and formatting. Give only the translation unless asked to explain.',
           autoUse: true,
+          source: 'Built-in',
         ),
       ];
 
