@@ -400,13 +400,14 @@ class ChatEngine implements ToolHost {
         final target = (args['target'] ?? '').toString().trim();
         final source = (args['source'] ?? 'Program policy').toString();
         final policyText = (args['policy_text'] ?? '').toString();
-        if (target.isEmpty || policyText.trim().isEmpty) return 'A target and full policy text are required.';
+        final policySummary = (args['policy_summary'] ?? '').toString().trim();
+        if (target.isEmpty || policyText.trim().isEmpty || policySummary.isEmpty) return 'A target, full policy text, and summary of important program rules are required.';
         final policy = ScopePolicy.parse(policyText, source: source);
         final initial = policy.evaluate(target, activeOperation: false);
         if (initial.decision != ScopeDecision.allow) return 'Target rejected: ${initial.reason} Parsed in-scope entries: ${policy.inScope.join(', ')}';
         final inScope = policy.inScope.toList()..sort();
         final outScope = policy.outOfScope.toList()..sort();
-        final approved = await confirm('Review program scope before testing\n\nTarget: $target\nSource: $source\n\nIn scope:\n${inScope.join('\n')}\n\nOut of scope:\n${outScope.isEmpty ? '(none extracted)' : outScope.join('\n')}\n\nConfirm that you reviewed this policy and that these extracted entries are accurate?');
+        final approved = await confirm('Review program policy before testing\n\nTarget: $target\nSource: $source\n\nImportant rules and restrictions:\n$policySummary\n\nIn scope:\n${inScope.join('\n')}\n\nOut of scope:\n${outScope.isEmpty ? '(none extracted)' : outScope.join('\n')}\n\nConfirm that you reviewed these rules and that the extracted scope is accurate?');
         policy.reviewed = approved;
         policy.userConfirmed = approved;
         agent.setPolicy(policy);
