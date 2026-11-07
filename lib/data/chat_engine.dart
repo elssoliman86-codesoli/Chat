@@ -1,4 +1,5 @@
-import 'dart:async'; import 'dart:convert';
+import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
@@ -7,8 +8,8 @@ import '../llm/llm.dart';
 import '../plugins/plugin.dart';
 import '../tools/browser_service.dart';
 import '../tools/image_reader.dart';
-import '../tools/registry.dart';
 import '../tools/tools.dart';
+import '../tools/registry.dart';
 import '../tools/web_tools.dart';
 import 'app_store.dart';
 import 'keep_alive.dart';
