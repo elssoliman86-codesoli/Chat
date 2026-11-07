@@ -316,7 +316,8 @@ class ChatEngine implements ToolHost {
         'and offer the source file instead when one of those is asked for.');
     if (st.termuxTools) {
       b.writeln('\nTermux Agent: for multi-step tasks use agent_start, agent_plan, and agent_update_step to keep the live timeline accurate. For security testing, first retrieve and read the current program policy, then call agent_set_scope with the exact target and policy text. The app extracts explicit in-scope and out-of-scope hosts and requires the user to review and confirm them. Never infer sibling domains, API hosts, IPs or mobile backends into scope. Out-of-scope rules always override. Use termux_discover_tools before selecting local tools; it only inspects installed commands. If tools are missing, propose them with termux_install_batch: the app asks for one approval for the complete batch and installs only supported package identifiers. Use termux_run only after its confirmation prompt. Any command that contacts a target must include the exact target hostname and pass the scope gate; active testing also requires reviewed and user-confirmed policy. Follow the program rules, rate limits and exclusions. Never perform destructive testing, denial of service, brute force, credential attacks, access other users data, or bypass program restrictions. Termux is a real device shell, not a sandbox; do not claim a command ran unless its exit status confirms it.');
-    }    b.writeln('\nTo add skills or plugins to this app when the person gives you a link or text, use install_skills, '
+    }
+    b.writeln('\nTo add skills or plugins to this app when the person gives you a link or text, use install_skills, '
         'install_plugin or create_skill. When you need permission, a login, a captcha or a decision from the person, '
         'call ask_user instead of guessing.');
     for (final p in store.plugins.where((p) => p.enabled && p.instructions.trim().isNotEmpty)) {
