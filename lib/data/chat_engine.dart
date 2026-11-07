@@ -373,6 +373,7 @@ class ChatEngine implements ToolHost {
         return 'Agent task started: ${task.goal}. Next, record the plan and review the program scope before any target interaction.';
       }
       case 'plan': {
+        if (agent.currentTask == null) return 'Start an agent task with agent_start before recording a plan.';
         final raw = args['steps'];
         if (raw is! List) return 'Invalid plan: steps must be an array.';
         final steps = <AgentStep>[];
@@ -386,6 +387,7 @@ class ChatEngine implements ToolHost {
         return 'Recorded ${steps.length} plan steps: ${steps.map((step) => step.title).join(' → ')}';
       }
       case 'step_update': {
+        if (agent.currentTask == null) return 'Start an agent task with agent_start before updating timeline steps.';
         final id = (args['step_id'] ?? '').toString();
         final rawStatus = (args['status'] ?? '').toString();
         final status = AgentStepStatus.values.firstWhere(
@@ -397,6 +399,7 @@ class ChatEngine implements ToolHost {
         return 'Updated agent step $id to ${status.name}.';
       }
       case 'scope': {
+        if (agent.currentTask == null) return 'Start an agent task with agent_start before reviewing target scope.';
         final target = (args['target'] ?? '').toString().trim();
         final source = (args['source'] ?? 'Program policy').toString();
         final policyText = (args['policy_text'] ?? '').toString();
@@ -439,6 +442,7 @@ class ChatEngine implements ToolHost {
         return 'Discovered ${found.length} installed tools:\n${found.map((item) => '${item['name']} — ${item['version']}').join('\n')}\n\nSupported packages not detected: ${missing.join(', ')}';
       }
       case 'install_batch': {
+        if (agent.currentTask == null) return 'Start an agent task with agent_start before proposing a tool batch.';
         if (!store.settings.termuxTools) return 'Enable Termux tools in Settings first.';
         final raw = args['package_ids'];
         if (raw is! List) return 'package_ids must be an array.';
