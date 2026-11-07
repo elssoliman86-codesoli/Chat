@@ -559,7 +559,7 @@ class ChatEngine implements ToolHost {
         final slug = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
         if (slug.isEmpty) return 'Invalid Python helper name.';
         final sandboxNetworkApis = RegExp(
-          r'^\\s*(?:import\\s+(?:socket|requests|httpx|aiohttp|urllib\\.request|urllib3|http\\.client|subprocess|ctypes|os)\\b|from\\s+(?:socket|requests|httpx|aiohttp|urllib\\.request|urllib3|http\\.client|subprocess|ctypes|os|js|pyodide)\\b)|\\b(?:urlopen|socket\\.socket|requests\\.(?:get|post|put|delete)|httpx\\.(?:get|post)|fetch)\\s*\\(',
+          r'^\s*(?:import\s+(?:socket|requests|httpx|aiohttp|urllib\.request|urllib3|http\.client|subprocess|ctypes|os)\b|from\s+(?:socket|requests|httpx|aiohttp|urllib\.request|urllib3|http\.client|subprocess|ctypes|os|js|pyodide)\b)|\b(?:urlopen|socket\.socket|requests\.(?:get|post|put|delete)|httpx\.(?:get|post)|fetch)\s*\(',
           caseSensitive: false,
           multiLine: true,
         );
