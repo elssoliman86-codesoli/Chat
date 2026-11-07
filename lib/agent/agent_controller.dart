@@ -7,11 +7,20 @@ typedef BatchApproval = Future<bool> Function(List<ToolRequirement> requirements
 /// Coordinates the state transitions of one agent task. Installation and execution remain
 /// separate adapters so this controller cannot silently install or run a device command.
 class AgentController {
-  AgentController({required this.registry, required this.requestBatchApproval});
+  AgentController({
+    required this.registry,
+    required this.requestBatchApproval,
+    this.initialTask,
+    this.onChanged,
+  }) : _task = initialTask;
 
   final ToolRegistry registry;
   final BatchApproval requestBatchApproval;
+  final AgentTask? initialTask;
+  final void Function(AgentTask? task)? onChanged;
   AgentTask? _task;
+
+  void _emit() => onChanged?.call(_task);
   ScopePolicy? _policy;
 
   AgentTask? get currentTask => _task;
@@ -28,6 +37,7 @@ class AgentController {
     );
     _task = task;
     _policy = null;
+    _emit();
     return task;
   }
 
@@ -36,6 +46,7 @@ class AgentController {
     _policy = policy;
     _task!.policyReference = policy.source;
     _task!.touch();
+    _emit();
   }
 
   void replacePlan(Iterable<AgentStep> steps) {
@@ -45,6 +56,7 @@ class AgentController {
       ..addAll(steps);
     task.status = AgentTaskStatus.planning;
     task.touch();
+    _emit();
   }
 
   void proposeTools(Iterable<ToolRequirement> requirements) {
@@ -59,6 +71,7 @@ class AgentController {
       }
     }
     task.touch();
+    _emit();
   }
 
   /// One approval covers only this proposed batch. It does not authorize installation itself.
@@ -70,12 +83,14 @@ class AgentController {
     if (batch.isEmpty) return false;
     task.status = AgentTaskStatus.awaitingApproval;
     task.touch();
+    _emit();
     final approved = await requestBatchApproval(List<ToolRequirement>.unmodifiable(batch));
     for (final item in batch) {
       item.status = approved ? ToolInstallStatus.approved : ToolInstallStatus.rejected;
     }
     task.status = approved ? AgentTaskStatus.paused : AgentTaskStatus.planning;
     task.touch();
+    _emit();
     return approved;
   }
 
@@ -107,6 +122,7 @@ class AgentController {
     step.status = AgentStepStatus.running;
     task.status = AgentTaskStatus.running;
     task.touch();
+    _emit();
   }
 
   void finishStep(String stepId, {String output = '', bool failed = false}) {
@@ -118,12 +134,14 @@ class AgentController {
       ..output = output;
     task.status = failed ? AgentTaskStatus.failed : AgentTaskStatus.paused;
     task.touch();
+    _emit();
   }
 
   void completeTask() {
     final task = _requireTask();
     task.status = AgentTaskStatus.completed;
     task.touch();
+    _emit();
   }
 
   AgentStep? _findStep(AgentTask task, String id) {
