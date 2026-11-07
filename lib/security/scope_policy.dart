@@ -71,7 +71,112 @@ class ScopePolicy {
           .firstMatch(cell);
         if (match == null) continue;
         final host = cell.replaceFirst(RegExp(r':\d+$'), '').toLowerCase();
-        if (!host.contains('.')) continue;
+        if (!host.contains('.') || RegExp(r'^(?:\\d{1,3}\\.){3}\\d{1,3}
+      }
+    }
+    return ScopePolicy(source: source, inScope: allowed, outOfScope: excluded);
+  }
+
+  ScopeEvaluation evaluate(String target, {required bool activeOperation}) {
+    final host = _host(target);
+    if (host == null) {
+      return const ScopeEvaluation(ScopeDecision.deny, 'Target is not a valid hostname or URL.');
+    }
+    if (outOfScope.any((entry) => _matches(host, entry))) {
+      return ScopeEvaluation(ScopeDecision.deny, '$host matches an explicitly out-of-scope asset.');
+    }
+    if (!inScope.any((entry) => _matches(host, entry))) {
+      return ScopeEvaluation(ScopeDecision.deny, '$host is not explicitly listed in scope.');
+    }
+    if (activeOperation && (!reviewed || !userConfirmed)) {
+      return const ScopeEvaluation(ScopeDecision.needsReview,
+        'The policy must be reviewed and the extracted scope explicitly confirmed before active testing.');
+    }
+    return const ScopeEvaluation(ScopeDecision.allow, 'Target is explicitly in scope.');
+  }
+
+  static String? _host(String value) {
+    final input = value.trim();
+    if (input.isEmpty) return null;
+    final uri = Uri.tryParse(input.contains('://') ? input : 'https://$input');
+    final host = uri?.host.toLowerCase();
+    if (host == null || host.isEmpty || !host.contains('.') || host.contains('..') || host.contains(' ') ||
+        host.contains(':') || RegExp(r'^(?:\\d{1,3}\\.){3}\\d{1,3}
+      return null;
+    }
+    return host.endsWith('.') ? host.substring(0, host.length - 1) : host;
+  }
+
+  static bool _matches(String host, String rule) {
+    final normalized = rule.toLowerCase().trim();
+    if (normalized.startsWith('*.')) {
+      final suffix = normalized.substring(2);
+      return host != suffix && host.endsWith('.$suffix');
+    }
+    return host == normalized;
+  }
+}
+).hasMatch(host) || host.contains(':')) continue;
+        (outSection ? excluded : allowed).add(host);
+      }
+    }
+    return ScopePolicy(source: source, inScope: allowed, outOfScope: excluded);
+  }
+
+  ScopeEvaluation evaluate(String target, {required bool activeOperation}) {
+    final host = _host(target);
+    if (host == null) {
+      return const ScopeEvaluation(ScopeDecision.deny, 'Target is not a valid hostname or URL.');
+    }
+    if (outOfScope.any((entry) => _matches(host, entry))) {
+      return ScopeEvaluation(ScopeDecision.deny, '$host matches an explicitly out-of-scope asset.');
+    }
+    if (!inScope.any((entry) => _matches(host, entry))) {
+      return ScopeEvaluation(ScopeDecision.deny, '$host is not explicitly listed in scope.');
+    }
+    if (activeOperation && (!reviewed || !userConfirmed)) {
+      return const ScopeEvaluation(ScopeDecision.needsReview,
+        'The policy must be reviewed and the extracted scope explicitly confirmed before active testing.');
+    }
+    return const ScopeEvaluation(ScopeDecision.allow, 'Target is explicitly in scope.');
+  }
+
+  static String? _host(String value) {
+    final input = value.trim();
+    if (input.isEmpty) return null;
+    final uri = Uri.tryParse(input.contains('://') ? input : 'https://$input');
+    final host = uri?.host.toLowerCase();
+    if (host == null || host.isEmpty || !host.contains('.') || host.contains('..') || host.contains(' ')) {
+      return null;
+    }
+    return host.endsWith('.') ? host.substring(0, host.length - 1) : host;
+  }
+
+  static bool _matches(String host, String rule) {
+    final normalized = rule.toLowerCase().trim();
+    if (normalized.startsWith('*.')) {
+      final suffix = normalized.substring(2);
+      return host != suffix && host.endsWith('.$suffix');
+    }
+    return host == normalized;
+  }
+}
+).hasMatch(host)) {
+      return null;
+    }
+    return host.endsWith('.') ? host.substring(0, host.length - 1) : host;
+  }
+
+  static bool _matches(String host, String rule) {
+    final normalized = rule.toLowerCase().trim();
+    if (normalized.startsWith('*.')) {
+      final suffix = normalized.substring(2);
+      return host != suffix && host.endsWith('.$suffix');
+    }
+    return host == normalized;
+  }
+}
+).hasMatch(host) || host.contains(':')) continue;
         (outSection ? excluded : allowed).add(host);
       }
     }
