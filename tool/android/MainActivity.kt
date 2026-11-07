@@ -114,8 +114,8 @@ class MainActivity : FlutterActivity() {
         }
 
         val executionId = TermuxRunRegistry.nextId()
-        val pendingIntentFlags = PendingIntent.FLAG_ONE_SHOT or
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+        val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
+        val pendingIntentFlags = PendingIntent.FLAG_ONE_SHOT or mutableFlag
         val callbackIntent = Intent(this, TermuxResultReceiver::class.java).apply {
             putExtra(TermuxResultReceiver.EXTRA_EXECUTION_ID, executionId)
         }
