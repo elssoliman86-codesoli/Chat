@@ -466,6 +466,820 @@ class ChatEngine implements ToolHost {
           return 'Install command completed. Verified: ${verified.join(', ')}. Not verified: ${packages.where((id) => !verified.contains(id)).join(', ')}.\n${result['stdout'] ?? ''}';
         } catch (e) { return 'Could not install the approved batch: $e'; }
       }
+      case 'run_python_tool': {
+        final name = (args['name'] ?? '').toString().trim();
+        final target = (args['target'] ?? '').toString().trim();
+        final slug = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '_').replaceAll(RegExp(r'^_+|_+
+        final name = (args['name'] ?? 'custom_tool').toString().trim();
+        final code = (args['code'] ?? '').toString();
+        final testCode = (args['test_code'] ?? '').toString();
+        if (code.trim().isEmpty || code.length > 60000) return 'Python source must be non-empty and at most 60 KB.';
+        final slug = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
+        if (slug.isEmpty) return 'Invalid Python helper name.';
+        final encodedCode = base64Encode(utf8.encode(code));
+        final encodedTests = base64Encode(utf8.encode(testCode));
+        final testProgram = "import base64\nsource=base64.b64decode('$encodedCode').decode('utf-8')\nnamespace={'__name__':'__omni_custom_tool_test__'}\nexec(compile(source, '$slug.py', 'exec'), namespace, namespace)\ntests=base64.b64decode('$encodedTests').decode('utf-8')\nif tests.strip(): exec(compile(tests, '<omni-tests>', 'exec'), namespace, namespace)\nprint('OMNI_TESTS_PASSED')";
+        final testResult = await PythonRuntime.instance.run(testProgram, timeout: const Duration(seconds: 45));
+        if (!testResult.contains('OMNI_TESTS_PASSED')) return 'Python helper was not saved because sandbox validation failed:\n$testResult';
+        final base = await getApplicationDocumentsDirectory();
+        final dir = Directory('${base.path}/agent_tools');
+        await dir.create(recursive: true);
+        final file = File('${dir.path}/$slug.py');
+        await file.writeAsString(code, flush: true);
+        store.toolRegistry.register(RegisteredTool(id: 'custom:$slug', name: name, source: 'Omni Chat Pyodide sandbox', version: '1', executablePath: file.path, description: (args['description'] ?? '').toString(), capabilities: <String>['python-helper'], status: ToolInstallStatus.verified, verifiedAt: DateTime.now().millisecondsSinceEpoch));
+        await store.saveAgentState();
+        deliver('$slug.py', file.path);
+        store.changed();
+        return 'Created and sandbox-tested $slug.py. The file is stored locally at ${file.path}. It has NOT been executed in Termux or against any target; a separate explicit approval is required before transferring or running it externally.\n$testResult';
+      }
+      default: return 'Unknown agent action: $action';
+    }
+  }
+
+  List<String> _toolCapabilities(String name) {
+    if (const {'nmap', 'httpx', 'subfinder', 'amass', 'nuclei', 'ffuf', 'feroxbuster', 'nikto'}.contains(name)) return const <String>['network-recon'];
+    if (const {'curl', 'wget', 'mitmproxy'}.contains(name)) return const <String>['http-client'];
+    if (const {'python', 'python3', 'pip', 'pip3'}.contains(name)) return const <String>['python-runtime'];
+    if (name == 'git') return const <String>['version-control'];
+    if (const {'dig', 'whois'}.contains(name)) return const <String>['dns-recon'];
+    return const <String>['cli'];
+  }
+
+  @override
+  Future<String> runTermuxCommand(String command, {String? workdir, int timeoutSeconds = 60, String target = ''}) async {
+    final clean = command.trim();
+    if (clean.isEmpty) return 'No command was provided.';
+    if (!store.settings.termuxTools) return 'Termux tools are disabled in Settings.';
+    if (!await TermuxService.instance.isInstalled()) return 'Termux is not installed or the Android native bridge is unavailable.';
+    if (!await TermuxService.instance.hasPermission()) {
+      final ask = await confirm('Omni Chat needs the Android “Run commands in Termux environment” permission. Request it now?');
+      if (!ask || !await TermuxService.instance.requestPermission()) return 'Termux permission was not granted.';
+    }
+    final networkPattern = RegExp(r'\b(nmap|subfinder|amass|httpx|nuclei|ffuf|feroxbuster|nikto|sqlmap|curl|wget|dig|whois|ping|traceroute|mitmproxy|nc|netcat)\b', caseSensitive: false);
+    final contactsTarget = networkPattern.hasMatch(clean);
+    if (contactsTarget) {
+      if (RegExp(r'[;|&`$<>\n]').hasMatch(clean)) return 'Blocked: target-facing commands cannot contain shell chaining, redirection, command substitution or pipelines. Run one reviewed command at a time.';
+      if (RegExp(r'\b(?:\d{1,3}\.){3}\d{1,3}\b').hasMatch(clean)) return 'Blocked: IP literals are not accepted by this hostname-only scope gate. Use an explicitly listed hostname.';
+      if (target.trim().isEmpty) return 'Blocked: supply the exact target hostname and review the current program policy with agent_set_scope first.';
+      final risk = RegExp(r'\b(nmap|subfinder|amass|nuclei|ffuf|feroxbuster|nikto|sqlmap)\b', caseSensitive: false).hasMatch(clean) ||
+          RegExp(r'\b(-X|--request)\s*(POST|PUT|PATCH|DELETE)\b|--data(?:-raw|-binary)?\b|\s-d\s|\s-F\s', caseSensitive: false).hasMatch(clean)
+        ? AgentOperationRisk.active : AgentOperationRisk.passive;
+      final declared = Uri.tryParse(target.contains('://') ? target : 'https://$target')?.host.toLowerCase();
+      if (declared == null || declared.isEmpty) return 'Blocked: target must be a valid hostname.';
+      final decision = agent.authorizeOperation(target: declared, risk: risk);
+      if (decision.decision != ScopeDecision.allow) return 'Blocked by scope policy: ${decision.reason}';
+      final hostPattern = RegExp(r'(?<![a-z0-9-])(?:https?://)?([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,})(?::\d+)?', caseSensitive: false);
+      final commandHosts = hostPattern.allMatches(clean).map((match) => match.group(1)!.toLowerCase()).toSet();
+      if (commandHosts.isEmpty) return 'Blocked: the command must visibly include its target hostname so it can be checked against scope.';
+      for (final host in commandHosts) {
+        final hostDecision = agent.authorizeOperation(target: host, risk: risk);
+        if (hostDecision.decision != ScopeDecision.allow) return 'Blocked: command target $host is not authorized. ${hostDecision.reason}';
+      }
+    }
+    final packageInstall = RegExp(r'^\s*(pkg|apt|pip|pip3|npm|gem|cargo)\s+install\b', caseSensitive: false).hasMatch(clean);
+    if (packageInstall) return 'Package installation must use termux_install_batch so the package allowlist and one batch approval are enforced.';
+    final approved = await confirm('Run this real command on your device in Termux?\n\n$clean\n\n${contactsTarget ? 'Target: $target\nScope policy check: passed.\n' : ''}This can read or modify files in your Termux home.');
+    if (!approved) return 'Command was not approved and was not executed.';
+    try {
+      final result = await TermuxService.instance.run(clean, workdir: workdir, timeout: Duration(seconds: timeoutSeconds.clamp(1, 300)));
+      final stdout = (result['stdout'] ?? '').toString();
+      final stderr = (result['stderr'] ?? '').toString();
+      final exitCode = result['exitCode'];
+      final error = (result['errmsg'] ?? '').toString();
+      final b = StringBuffer('exit code: $exitCode');
+      if (error.isNotEmpty) b.write('\nTermux error: $error');
+      if (stdout.trim().isNotEmpty) b.write('\n\nstdout:\n${stdout.trim()}');
+      if (stderr.trim().isNotEmpty) b.write('\n\nstderr:\n${stderr.trim()}');
+      return b.toString();
+    } on PlatformException catch (e) { return e.code == 'timeout' ? 'Termux command timed out after $timeoutSeconds seconds.' : 'Termux failed: ${e.message ?? e.code}'; }
+    catch (e) { return 'Termux execution failed: $e'; }
+  }
+
+  Future<void> send(Conversation c, String text, List<Attachment> attachments) async {
+    if (busy) return;
+    final clean = text.trim();
+    if (clean.isEmpty && attachments.isEmpty) return;
+    for (final a in attachments) {
+      final m = RegExp(r'^\[\[project:([^\]]+)\]\]').firstMatch(a.text);
+      if (m != null) c.projectId = m.group(1)!;
+    }
+    c.messages.add(ChatMessage(role: 'user', text: clean, attachments: List<Attachment>.of(attachments)));
+    if (c.title == 'New chat') {
+      final basis = clean.isNotEmpty ? clean : attachments.first.name;
+      final oneLine = basis.replaceAll(RegExp(r'\s+'), ' ');
+      c.title = oneLine.length > 42 ? '${oneLine.substring(0, 42)}…' : oneLine;
+    }
+    store.scheduleSave(c);
+    store.changed();
+    await _run(c);
+  }
+
+  Future<void> regenerate(Conversation c) async {
+    if (busy) return;
+    var last = -1;
+    for (var i = 0; i < c.messages.length; i++) {
+      if (c.messages[i].role == 'user') last = i;
+    }
+    if (last < 0) return;
+    c.messages.removeRange(last + 1, c.messages.length);
+    store.scheduleSave(c);
+    store.changed();
+    await _run(c);
+  }
+
+  /// Replaces one of the person's messages with new text and answers again from there.
+  Future<void> editAndResend(Conversation c, String messageId, String text) async {
+    if (busy) return;
+    final i = c.messages.indexWhere((m) => m.id == messageId);
+    if (i < 0) return;
+    final old = c.messages[i];
+    final files = List<Attachment>.of(old.attachments);
+    c.messages.removeRange(i, c.messages.length);
+    await send(c, text, files);
+  }
+
+  /// Removes [messageId] and everything after it. Returns the removed user message.
+  ChatMessage? truncateFrom(Conversation c, String messageId) {
+    if (busy) return null;
+    final i = c.messages.indexWhere((m) => m.id == messageId);
+    if (i < 0) return null;
+    final removed = c.messages[i];
+    c.messages.removeRange(i, c.messages.length);
+    store.scheduleSave(c);
+    store.changed();
+    return removed;
+  }
+
+  void stop() => _abort?.abort();
+
+  /// Searches the web for the last question and returns text to put in front of it.
+  Future<String?> _webContext(Conversation c, ChatMessage reply) async {
+    if (!c.web || !store.settings.webTools) return null;
+    ChatMessage? last;
+    for (final m in c.messages) {
+      if (m.role == 'user') last = m;
+    }
+    final query = (last?.text ?? '').trim();
+    if (query.length < 8 || query.split(RegExp(r'\s+')).length < 2) return null;
+    final short = query.length > 200 ? query.substring(0, 200) : query;
+    final hits = await WebTools.results(short);
+    if (hits.isEmpty) return null;
+    final top = hits.take(3).toList();
+    final pages = await Future.wait(top.map((h) => WebTools.fetchText(h['url'] ?? '', maxChars: 3500)));
+    final b = StringBuffer();
+    final d = DateTime.now();
+    b.writeln('[Web results fetched just now, ${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}. '
+        'Prefer them over your memory for anything that changes. Say which source you used and its date when known.]');
+    var n = 0;
+    for (final h in hits.take(7)) {
+      n++;
+      b.writeln('$n. ${h['title']} - ${h['url']}\n   ${h['snippet'] ?? ''}');
+    }
+    for (var i = 0; i < top.length; i++) {
+      final text = pages[i];
+      if (text.startsWith('Could not open') || text.startsWith('The page had no')) continue;
+      b.writeln('\n--- ${top[i]['title']} (${top[i]['url']}) ---\n$text');
+      reply.sources.add('${top[i]['title']}\t${top[i]['url']}');
+    }
+    for (final h in hits.skip(top.length).take(3)) {
+      reply.sources.add('${h['title']}\t${h['url']}');
+    }
+    return b.toString();
+  }
+
+  /// A copy of [history] where the last user message carries [context] in front of the question.
+  List<ChatMessage> _withContext(List<ChatMessage> history, String? context) {
+    if (context == null) return history;
+    final copy = List<ChatMessage>.of(history);
+    for (var i = copy.length - 1; i >= 0; i--) {
+      final m = copy[i];
+      if (m.role == 'user') {
+        copy[i] = ChatMessage(
+          id: m.id,
+          role: 'user',
+          text: '$context\n\nUser question:\n${m.text}',
+          attachments: m.attachments,
+          at: m.at,
+        );
+        break;
+      }
+    }
+    return copy;
+  }
+
+  /// Reads the text of images for a model that cannot see, using the helper model or Google Lens.
+  Future<void> _readImages(Conversation c, ChatMessage reply, ProviderConfig provider) async {
+    final mode = store.settings.imageReader;
+    if (mode == 'off') return;
+    final todo = <Attachment>[];
+    for (final m in c.messages) {
+      if (m.role != 'user') continue;
+      for (final a in m.attachments) {
+        if (a.kind == AttachmentKind.image && a.text.trim().isEmpty) todo.add(a);
+      }
+    }
+    if (todo.isEmpty) return;
+    final note = StringBuffer();
+    for (final a in todo.take(12)) {
+      String text = '';
+      try {
+        if (mode == 'lens') {
+          text = await ImageReader.viaLens(a, this);
+        }
+        if (text.trim().isEmpty) {
+          final hp = store.providerById(store.settings.helperProviderId);
+          final hm = store.settings.helperModel;
+          if (hp != null && hm.isNotEmpty && !hp.noVision.contains(hm)) {
+            text = await ImageReader.viaHelper(a, hp, hm);
+          }
+        }
+      } catch (e) {
+        text = '';
+      }
+      if (text.trim().isEmpty) continue;
+      a.text = text.length > 12000 ? text.substring(0, 12000) : text;
+      note.writeln('${a.name}\n${a.text}\n');
+    }
+    if (note.isNotEmpty) {
+      reply.note = note.toString().trim();
+      reply.touch();
+      store.scheduleSave(c);
+    }
+  }
+
+  bool _looksLikeNoVision(Object e) {
+    final t = e.toString().toLowerCase();
+    return t.contains('multimodal') ||
+        t.contains('image input') ||
+        t.contains('does not support image') ||
+        t.contains('vision') ||
+        t.contains('image_url') ||
+        t.contains('modalit');
+  }
+
+  final Map<String, int> _seenCalls = <String, int>{};
+  int _browserEpoch = 0;
+
+  /// Runs a tool call, but stops the model from repeating the same call when nothing changed.
+  Future<String> _runOnce(ToolCall call) async {
+    final name = call.name;
+    final changesPage = name == 'browser_open' ||
+        name == 'browser_click' ||
+        name == 'browser_type' ||
+        name == 'browser_scroll' ||
+        name == 'browser_back';
+    final repeatable = name == 'ask_user' || name == 'current_time' || name == 'browser_scroll' || name.startsWith('project_write') || name == 'project_edit';
+    if (!repeatable) {
+      final sig = '$name|${jsonEncode(call.args)}|$_browserEpoch';
+      final n = (_seenCalls[sig] ?? 0) + 1;
+      _seenCalls[sig] = n;
+      if (n >= 2) {
+        return 'You already made this exact call and nothing changed since. Do not repeat it. Use the earlier result, '
+            'try a different approach, or finish and answer the person.';
+      }
+    }
+    if (name == 'browser_back') {
+      final backs = (_seenCalls['#back'] ?? 0) + 1;
+      _seenCalls['#back'] = backs;
+      if (backs > 3) return 'You went back several times already. Stop going back: open the address you need directly with browser_open, or answer.';
+    }
+    final out = await runTool(call, this);
+    if (changesPage) _browserEpoch++;
+    return out;
+  }
+
+  Future<void> _run(Conversation c) async {
+    final provider = store.providerById(c.providerId) ?? store.defaultProvider;
+    _running = c;
+    _seenCalls.clear();
+    _browserEpoch = 0;
+    BrowserService.instance.showWhileWorking = store.settings.browserVisible;
+    if (store.settings.keepAlive) await BackgroundWork.start();
+    store.changed();
+    try {
+      if (provider == null) {
+        throw LlmException('Add a provider first: menu > Providers.');
+      }
+      if (c.model.isEmpty) c.model = provider.model;
+      if (c.model.isEmpty) throw LlmException('Pick a model for ${provider.name}.');
+      final client = createClient(provider);
+      final maxSteps = store.settings.maxToolSteps.clamp(1, 100);
+      String? context;
+      var contextDone = false;
+      var step = 0;
+      while (step < maxSteps) {
+        final reply = ChatMessage(role: 'assistant', model: c.model);
+        _currentReply = reply;
+        final history = List<ChatMessage>.of(c.messages);
+        c.messages.add(reply);
+        store.changed();
+        if (!contextDone) {
+          contextDone = true;
+          try {
+            context = await _webContext(c, reply);
+          } catch (_) {
+            context = null;
+          }
+          store.changed();
+        }
+        if (provider.noVision.contains(c.model)) {
+          try {
+            await _readImages(c, reply, provider);
+          } catch (_) {}
+        }
+        final request = LlmRequest(
+          system: buildSystem(c),
+          messages: _withContext(history, context),
+          model: c.model,
+          tools: buildTools(c, provider),
+          temperature: store.settings.temperature,
+          pdfNative: provider.pdfNative,
+          vision: !provider.noVision.contains(c.model),
+        );
+        final abort = AbortHandle();
+        _abort = abort;
+        try {
+          await for (final event in client.stream(request, abort)) {
+            if (event is TextDelta) {
+              reply.text += event.text;
+              _notifySoon(reply);
+            } else if (event is ToolCallDone) {
+              reply.toolCalls.add(event.call);
+              store.changed();
+            }
+          }
+        } catch (e) {
+          final hadImages = history.any((m) => m.attachments.any((a) => a.kind == AttachmentKind.image));
+          if (!abort.aborted && hadImages && request.vision && reply.text.isEmpty && _looksLikeNoVision(e)) {
+            // This model cannot see images: remember that and try again without them.
+            provider.noVision.add(c.model);
+            store.saveProviders();
+            c.messages.remove(reply);
+            continue;
+          }
+          if (!abort.aborted) {
+            reply.error = true;
+            reply.text = reply.text.isEmpty ? e.toString() : '${reply.text}\n\n⚠️ $e';
+          }
+        }
+        if (abort.aborted || reply.error) break;
+        if (reply.toolCalls.isEmpty) {
+          if (reply.text.trim().isEmpty && reply.sources.isEmpty) c.messages.remove(reply);
+          break;
+        }
+        for (final call in reply.toolCalls) {
+          final result = await _runOnce(call);
+          c.messages.add(ChatMessage(role: 'tool', text: result, toolCallId: call.id, toolName: call.name));
+          store.changed();
+          if (_abort?.aborted ?? false) break;
+        }
+        if (_abort?.aborted ?? false) break;
+        step++;
+        if (step == maxSteps) {
+          c.messages.add(ChatMessage(
+              role: 'assistant', error: true, text: 'Stopped after $maxSteps tool steps. Ask me to continue.'));
+        }
+      }
+    } catch (e) {
+      c.messages.add(ChatMessage(role: 'assistant', error: true, text: e.toString()));
+    } finally {
+      await BackgroundWork.stop();
+      _currentReply = null;
+      _running = null;
+      _abort = null;
+      _notifyTimer?.cancel();
+      _streaming?.touch();
+      _streaming = null;
+      store.scheduleSave(c);
+      store.changed();
+      unawaited(_drainQueue(c));
+    }
+  }
+}
+), '');
+        if (slug.isEmpty || target.isEmpty) return 'A valid helper name and exact target hostname are required.';
+        final entry = store.toolRegistry.find('custom:$slug');
+        if (entry == null || entry.status != ToolInstallStatus.verified || entry.executablePath.isEmpty) {
+          return 'No sandbox-verified custom helper named $name was found.';
+        }
+        final decision = agent.authorizeOperation(target: target, risk: AgentOperationRisk.active);
+        if (decision.decision != ScopeDecision.allow) return 'Custom helper execution blocked by scope policy: ${decision.reason}';
+        final targetHost = Uri.tryParse(target.contains('://') ? target : 'https://$target')?.host.toLowerCase();
+        if (targetHost == null || !RegExp(r'^[a-z0-9.-]+
+        final name = (args['name'] ?? 'custom_tool').toString().trim();
+        final code = (args['code'] ?? '').toString();
+        final testCode = (args['test_code'] ?? '').toString();
+        if (code.trim().isEmpty || code.length > 60000) return 'Python source must be non-empty and at most 60 KB.';
+        final slug = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
+        if (slug.isEmpty) return 'Invalid Python helper name.';
+        final encodedCode = base64Encode(utf8.encode(code));
+        final encodedTests = base64Encode(utf8.encode(testCode));
+        final testProgram = "import base64\nsource=base64.b64decode('$encodedCode').decode('utf-8')\nnamespace={'__name__':'__omni_custom_tool_test__'}\nexec(compile(source, '$slug.py', 'exec'), namespace, namespace)\ntests=base64.b64decode('$encodedTests').decode('utf-8')\nif tests.strip(): exec(compile(tests, '<omni-tests>', 'exec'), namespace, namespace)\nprint('OMNI_TESTS_PASSED')";
+        final testResult = await PythonRuntime.instance.run(testProgram, timeout: const Duration(seconds: 45));
+        if (!testResult.contains('OMNI_TESTS_PASSED')) return 'Python helper was not saved because sandbox validation failed:\n$testResult';
+        final base = await getApplicationDocumentsDirectory();
+        final dir = Directory('${base.path}/agent_tools');
+        await dir.create(recursive: true);
+        final file = File('${dir.path}/$slug.py');
+        await file.writeAsString(code, flush: true);
+        store.toolRegistry.register(RegisteredTool(id: 'custom:$slug', name: name, source: 'Omni Chat Pyodide sandbox', version: '1', executablePath: file.path, description: (args['description'] ?? '').toString(), capabilities: <String>['python-helper'], status: ToolInstallStatus.verified, verifiedAt: DateTime.now().millisecondsSinceEpoch));
+        await store.saveAgentState();
+        deliver('$slug.py', file.path);
+        store.changed();
+        return 'Created and sandbox-tested $slug.py. The file is stored locally at ${file.path}. It has NOT been executed in Termux or against any target; a separate explicit approval is required before transferring or running it externally.\n$testResult';
+      }
+      default: return 'Unknown agent action: $action';
+    }
+  }
+
+  List<String> _toolCapabilities(String name) {
+    if (const {'nmap', 'httpx', 'subfinder', 'amass', 'nuclei', 'ffuf', 'feroxbuster', 'nikto'}.contains(name)) return const <String>['network-recon'];
+    if (const {'curl', 'wget', 'mitmproxy'}.contains(name)) return const <String>['http-client'];
+    if (const {'python', 'python3', 'pip', 'pip3'}.contains(name)) return const <String>['python-runtime'];
+    if (name == 'git') return const <String>['version-control'];
+    if (const {'dig', 'whois'}.contains(name)) return const <String>['dns-recon'];
+    return const <String>['cli'];
+  }
+
+  @override
+  Future<String> runTermuxCommand(String command, {String? workdir, int timeoutSeconds = 60, String target = ''}) async {
+    final clean = command.trim();
+    if (clean.isEmpty) return 'No command was provided.';
+    if (!store.settings.termuxTools) return 'Termux tools are disabled in Settings.';
+    if (!await TermuxService.instance.isInstalled()) return 'Termux is not installed or the Android native bridge is unavailable.';
+    if (!await TermuxService.instance.hasPermission()) {
+      final ask = await confirm('Omni Chat needs the Android “Run commands in Termux environment” permission. Request it now?');
+      if (!ask || !await TermuxService.instance.requestPermission()) return 'Termux permission was not granted.';
+    }
+    final networkPattern = RegExp(r'\b(nmap|subfinder|amass|httpx|nuclei|ffuf|feroxbuster|nikto|sqlmap|curl|wget|dig|whois|ping|traceroute|mitmproxy|nc|netcat)\b', caseSensitive: false);
+    final contactsTarget = networkPattern.hasMatch(clean);
+    if (contactsTarget) {
+      if (RegExp(r'[;|&`$<>\n]').hasMatch(clean)) return 'Blocked: target-facing commands cannot contain shell chaining, redirection, command substitution or pipelines. Run one reviewed command at a time.';
+      if (RegExp(r'\b(?:\d{1,3}\.){3}\d{1,3}\b').hasMatch(clean)) return 'Blocked: IP literals are not accepted by this hostname-only scope gate. Use an explicitly listed hostname.';
+      if (target.trim().isEmpty) return 'Blocked: supply the exact target hostname and review the current program policy with agent_set_scope first.';
+      final risk = RegExp(r'\b(nmap|subfinder|amass|nuclei|ffuf|feroxbuster|nikto|sqlmap)\b', caseSensitive: false).hasMatch(clean) ||
+          RegExp(r'\b(-X|--request)\s*(POST|PUT|PATCH|DELETE)\b|--data(?:-raw|-binary)?\b|\s-d\s|\s-F\s', caseSensitive: false).hasMatch(clean)
+        ? AgentOperationRisk.active : AgentOperationRisk.passive;
+      final declared = Uri.tryParse(target.contains('://') ? target : 'https://$target')?.host.toLowerCase();
+      if (declared == null || declared.isEmpty) return 'Blocked: target must be a valid hostname.';
+      final decision = agent.authorizeOperation(target: declared, risk: risk);
+      if (decision.decision != ScopeDecision.allow) return 'Blocked by scope policy: ${decision.reason}';
+      final hostPattern = RegExp(r'(?<![a-z0-9-])(?:https?://)?([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,})(?::\d+)?', caseSensitive: false);
+      final commandHosts = hostPattern.allMatches(clean).map((match) => match.group(1)!.toLowerCase()).toSet();
+      if (commandHosts.isEmpty) return 'Blocked: the command must visibly include its target hostname so it can be checked against scope.';
+      for (final host in commandHosts) {
+        final hostDecision = agent.authorizeOperation(target: host, risk: risk);
+        if (hostDecision.decision != ScopeDecision.allow) return 'Blocked: command target $host is not authorized. ${hostDecision.reason}';
+      }
+    }
+    final packageInstall = RegExp(r'^\s*(pkg|apt|pip|pip3|npm|gem|cargo)\s+install\b', caseSensitive: false).hasMatch(clean);
+    if (packageInstall) return 'Package installation must use termux_install_batch so the package allowlist and one batch approval are enforced.';
+    final approved = await confirm('Run this real command on your device in Termux?\n\n$clean\n\n${contactsTarget ? 'Target: $target\nScope policy check: passed.\n' : ''}This can read or modify files in your Termux home.');
+    if (!approved) return 'Command was not approved and was not executed.';
+    try {
+      final result = await TermuxService.instance.run(clean, workdir: workdir, timeout: Duration(seconds: timeoutSeconds.clamp(1, 300)));
+      final stdout = (result['stdout'] ?? '').toString();
+      final stderr = (result['stderr'] ?? '').toString();
+      final exitCode = result['exitCode'];
+      final error = (result['errmsg'] ?? '').toString();
+      final b = StringBuffer('exit code: $exitCode');
+      if (error.isNotEmpty) b.write('\nTermux error: $error');
+      if (stdout.trim().isNotEmpty) b.write('\n\nstdout:\n${stdout.trim()}');
+      if (stderr.trim().isNotEmpty) b.write('\n\nstderr:\n${stderr.trim()}');
+      return b.toString();
+    } on PlatformException catch (e) { return e.code == 'timeout' ? 'Termux command timed out after $timeoutSeconds seconds.' : 'Termux failed: ${e.message ?? e.code}'; }
+    catch (e) { return 'Termux execution failed: $e'; }
+  }
+
+  Future<void> send(Conversation c, String text, List<Attachment> attachments) async {
+    if (busy) return;
+    final clean = text.trim();
+    if (clean.isEmpty && attachments.isEmpty) return;
+    for (final a in attachments) {
+      final m = RegExp(r'^\[\[project:([^\]]+)\]\]').firstMatch(a.text);
+      if (m != null) c.projectId = m.group(1)!;
+    }
+    c.messages.add(ChatMessage(role: 'user', text: clean, attachments: List<Attachment>.of(attachments)));
+    if (c.title == 'New chat') {
+      final basis = clean.isNotEmpty ? clean : attachments.first.name;
+      final oneLine = basis.replaceAll(RegExp(r'\s+'), ' ');
+      c.title = oneLine.length > 42 ? '${oneLine.substring(0, 42)}…' : oneLine;
+    }
+    store.scheduleSave(c);
+    store.changed();
+    await _run(c);
+  }
+
+  Future<void> regenerate(Conversation c) async {
+    if (busy) return;
+    var last = -1;
+    for (var i = 0; i < c.messages.length; i++) {
+      if (c.messages[i].role == 'user') last = i;
+    }
+    if (last < 0) return;
+    c.messages.removeRange(last + 1, c.messages.length);
+    store.scheduleSave(c);
+    store.changed();
+    await _run(c);
+  }
+
+  /// Replaces one of the person's messages with new text and answers again from there.
+  Future<void> editAndResend(Conversation c, String messageId, String text) async {
+    if (busy) return;
+    final i = c.messages.indexWhere((m) => m.id == messageId);
+    if (i < 0) return;
+    final old = c.messages[i];
+    final files = List<Attachment>.of(old.attachments);
+    c.messages.removeRange(i, c.messages.length);
+    await send(c, text, files);
+  }
+
+  /// Removes [messageId] and everything after it. Returns the removed user message.
+  ChatMessage? truncateFrom(Conversation c, String messageId) {
+    if (busy) return null;
+    final i = c.messages.indexWhere((m) => m.id == messageId);
+    if (i < 0) return null;
+    final removed = c.messages[i];
+    c.messages.removeRange(i, c.messages.length);
+    store.scheduleSave(c);
+    store.changed();
+    return removed;
+  }
+
+  void stop() => _abort?.abort();
+
+  /// Searches the web for the last question and returns text to put in front of it.
+  Future<String?> _webContext(Conversation c, ChatMessage reply) async {
+    if (!c.web || !store.settings.webTools) return null;
+    ChatMessage? last;
+    for (final m in c.messages) {
+      if (m.role == 'user') last = m;
+    }
+    final query = (last?.text ?? '').trim();
+    if (query.length < 8 || query.split(RegExp(r'\s+')).length < 2) return null;
+    final short = query.length > 200 ? query.substring(0, 200) : query;
+    final hits = await WebTools.results(short);
+    if (hits.isEmpty) return null;
+    final top = hits.take(3).toList();
+    final pages = await Future.wait(top.map((h) => WebTools.fetchText(h['url'] ?? '', maxChars: 3500)));
+    final b = StringBuffer();
+    final d = DateTime.now();
+    b.writeln('[Web results fetched just now, ${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}. '
+        'Prefer them over your memory for anything that changes. Say which source you used and its date when known.]');
+    var n = 0;
+    for (final h in hits.take(7)) {
+      n++;
+      b.writeln('$n. ${h['title']} - ${h['url']}\n   ${h['snippet'] ?? ''}');
+    }
+    for (var i = 0; i < top.length; i++) {
+      final text = pages[i];
+      if (text.startsWith('Could not open') || text.startsWith('The page had no')) continue;
+      b.writeln('\n--- ${top[i]['title']} (${top[i]['url']}) ---\n$text');
+      reply.sources.add('${top[i]['title']}\t${top[i]['url']}');
+    }
+    for (final h in hits.skip(top.length).take(3)) {
+      reply.sources.add('${h['title']}\t${h['url']}');
+    }
+    return b.toString();
+  }
+
+  /// A copy of [history] where the last user message carries [context] in front of the question.
+  List<ChatMessage> _withContext(List<ChatMessage> history, String? context) {
+    if (context == null) return history;
+    final copy = List<ChatMessage>.of(history);
+    for (var i = copy.length - 1; i >= 0; i--) {
+      final m = copy[i];
+      if (m.role == 'user') {
+        copy[i] = ChatMessage(
+          id: m.id,
+          role: 'user',
+          text: '$context\n\nUser question:\n${m.text}',
+          attachments: m.attachments,
+          at: m.at,
+        );
+        break;
+      }
+    }
+    return copy;
+  }
+
+  /// Reads the text of images for a model that cannot see, using the helper model or Google Lens.
+  Future<void> _readImages(Conversation c, ChatMessage reply, ProviderConfig provider) async {
+    final mode = store.settings.imageReader;
+    if (mode == 'off') return;
+    final todo = <Attachment>[];
+    for (final m in c.messages) {
+      if (m.role != 'user') continue;
+      for (final a in m.attachments) {
+        if (a.kind == AttachmentKind.image && a.text.trim().isEmpty) todo.add(a);
+      }
+    }
+    if (todo.isEmpty) return;
+    final note = StringBuffer();
+    for (final a in todo.take(12)) {
+      String text = '';
+      try {
+        if (mode == 'lens') {
+          text = await ImageReader.viaLens(a, this);
+        }
+        if (text.trim().isEmpty) {
+          final hp = store.providerById(store.settings.helperProviderId);
+          final hm = store.settings.helperModel;
+          if (hp != null && hm.isNotEmpty && !hp.noVision.contains(hm)) {
+            text = await ImageReader.viaHelper(a, hp, hm);
+          }
+        }
+      } catch (e) {
+        text = '';
+      }
+      if (text.trim().isEmpty) continue;
+      a.text = text.length > 12000 ? text.substring(0, 12000) : text;
+      note.writeln('${a.name}\n${a.text}\n');
+    }
+    if (note.isNotEmpty) {
+      reply.note = note.toString().trim();
+      reply.touch();
+      store.scheduleSave(c);
+    }
+  }
+
+  bool _looksLikeNoVision(Object e) {
+    final t = e.toString().toLowerCase();
+    return t.contains('multimodal') ||
+        t.contains('image input') ||
+        t.contains('does not support image') ||
+        t.contains('vision') ||
+        t.contains('image_url') ||
+        t.contains('modalit');
+  }
+
+  final Map<String, int> _seenCalls = <String, int>{};
+  int _browserEpoch = 0;
+
+  /// Runs a tool call, but stops the model from repeating the same call when nothing changed.
+  Future<String> _runOnce(ToolCall call) async {
+    final name = call.name;
+    final changesPage = name == 'browser_open' ||
+        name == 'browser_click' ||
+        name == 'browser_type' ||
+        name == 'browser_scroll' ||
+        name == 'browser_back';
+    final repeatable = name == 'ask_user' || name == 'current_time' || name == 'browser_scroll' || name.startsWith('project_write') || name == 'project_edit';
+    if (!repeatable) {
+      final sig = '$name|${jsonEncode(call.args)}|$_browserEpoch';
+      final n = (_seenCalls[sig] ?? 0) + 1;
+      _seenCalls[sig] = n;
+      if (n >= 2) {
+        return 'You already made this exact call and nothing changed since. Do not repeat it. Use the earlier result, '
+            'try a different approach, or finish and answer the person.';
+      }
+    }
+    if (name == 'browser_back') {
+      final backs = (_seenCalls['#back'] ?? 0) + 1;
+      _seenCalls['#back'] = backs;
+      if (backs > 3) return 'You went back several times already. Stop going back: open the address you need directly with browser_open, or answer.';
+    }
+    final out = await runTool(call, this);
+    if (changesPage) _browserEpoch++;
+    return out;
+  }
+
+  Future<void> _run(Conversation c) async {
+    final provider = store.providerById(c.providerId) ?? store.defaultProvider;
+    _running = c;
+    _seenCalls.clear();
+    _browserEpoch = 0;
+    BrowserService.instance.showWhileWorking = store.settings.browserVisible;
+    if (store.settings.keepAlive) await BackgroundWork.start();
+    store.changed();
+    try {
+      if (provider == null) {
+        throw LlmException('Add a provider first: menu > Providers.');
+      }
+      if (c.model.isEmpty) c.model = provider.model;
+      if (c.model.isEmpty) throw LlmException('Pick a model for ${provider.name}.');
+      final client = createClient(provider);
+      final maxSteps = store.settings.maxToolSteps.clamp(1, 100);
+      String? context;
+      var contextDone = false;
+      var step = 0;
+      while (step < maxSteps) {
+        final reply = ChatMessage(role: 'assistant', model: c.model);
+        _currentReply = reply;
+        final history = List<ChatMessage>.of(c.messages);
+        c.messages.add(reply);
+        store.changed();
+        if (!contextDone) {
+          contextDone = true;
+          try {
+            context = await _webContext(c, reply);
+          } catch (_) {
+            context = null;
+          }
+          store.changed();
+        }
+        if (provider.noVision.contains(c.model)) {
+          try {
+            await _readImages(c, reply, provider);
+          } catch (_) {}
+        }
+        final request = LlmRequest(
+          system: buildSystem(c),
+          messages: _withContext(history, context),
+          model: c.model,
+          tools: buildTools(c, provider),
+          temperature: store.settings.temperature,
+          pdfNative: provider.pdfNative,
+          vision: !provider.noVision.contains(c.model),
+        );
+        final abort = AbortHandle();
+        _abort = abort;
+        try {
+          await for (final event in client.stream(request, abort)) {
+            if (event is TextDelta) {
+              reply.text += event.text;
+              _notifySoon(reply);
+            } else if (event is ToolCallDone) {
+              reply.toolCalls.add(event.call);
+              store.changed();
+            }
+          }
+        } catch (e) {
+          final hadImages = history.any((m) => m.attachments.any((a) => a.kind == AttachmentKind.image));
+          if (!abort.aborted && hadImages && request.vision && reply.text.isEmpty && _looksLikeNoVision(e)) {
+            // This model cannot see images: remember that and try again without them.
+            provider.noVision.add(c.model);
+            store.saveProviders();
+            c.messages.remove(reply);
+            continue;
+          }
+          if (!abort.aborted) {
+            reply.error = true;
+            reply.text = reply.text.isEmpty ? e.toString() : '${reply.text}\n\n⚠️ $e';
+          }
+        }
+        if (abort.aborted || reply.error) break;
+        if (reply.toolCalls.isEmpty) {
+          if (reply.text.trim().isEmpty && reply.sources.isEmpty) c.messages.remove(reply);
+          break;
+        }
+        for (final call in reply.toolCalls) {
+          final result = await _runOnce(call);
+          c.messages.add(ChatMessage(role: 'tool', text: result, toolCallId: call.id, toolName: call.name));
+          store.changed();
+          if (_abort?.aborted ?? false) break;
+        }
+        if (_abort?.aborted ?? false) break;
+        step++;
+        if (step == maxSteps) {
+          c.messages.add(ChatMessage(
+              role: 'assistant', error: true, text: 'Stopped after $maxSteps tool steps. Ask me to continue.'));
+        }
+      }
+    } catch (e) {
+      c.messages.add(ChatMessage(role: 'assistant', error: true, text: e.toString()));
+    } finally {
+      await BackgroundWork.stop();
+      _currentReply = null;
+      _running = null;
+      _abort = null;
+      _notifyTimer?.cancel();
+      _streaming?.touch();
+      _streaming = null;
+      store.scheduleSave(c);
+      store.changed();
+      unawaited(_drainQueue(c));
+    }
+  }
+}
+).hasMatch(targetHost)) return 'Invalid target hostname.';
+        final file = File(entry.executablePath);
+        if (!await file.exists()) return 'The saved Python helper file is missing from local storage.';
+        final code = await file.readAsString();
+        if (code.length > 12000) return 'This helper is larger than the safe approval preview limit (12 KB). Reduce it before running.';
+        if (!await TermuxService.instance.isInstalled()) return 'Termux is not installed or the Android native bridge is unavailable.';
+        if (!await TermuxService.instance.hasPermission()) {
+          final askPermission = await confirm('Omni Chat needs the Android “Run commands in Termux environment” permission before it can run this helper. Request it now?');
+          if (!askPermission || !await TermuxService.instance.requestPermission()) return 'Termux permission was not granted.';
+        }
+        final approved = await confirm('Review and approve this sandbox-tested Python helper before running it against $targetHost.\\n\\nFile: $slug.py\\nTarget: $targetHost\\n\\nComplete source code:\\n\\n$code\\n\\nThis will copy the file into Termux and execute it with --target $targetHost. Only proceed if the program policy explicitly permits this test.');
+        if (!approved) return 'Custom helper was not transferred or executed.';
+        final encoded = base64Encode(utf8.encode(code));
+        final transfer = 'python -c "import base64,pathlib; p=pathlib.Path.home()/\\'omni_agent_tools\\'/'$slug.py'; p.parent.mkdir(parents=True,exist_ok=True); p.write_bytes(base64.b64decode(\\'$encoded\\'))"';
+        try {
+          final copied = await TermuxService.instance.run(transfer, timeout: const Duration(seconds: 45));
+          final copyCode = copied['exitCode'];
+          if (copyCode is num && copyCode.toInt() != 0) return 'Could not transfer the approved helper to Termux: ${copied['stderr'] ?? copied['errmsg'] ?? copied['stdout'] ?? ''}';
+          final executed = await TermuxService.instance.run('python ~/omni_agent_tools/$slug.py --target $targetHost',
+            timeout: const Duration(minutes: 5));
+          final exitCode = executed['exitCode'];
+          final stdout = (executed['stdout'] ?? '').toString();
+          final stderr = (executed['stderr'] ?? '').toString();
+          return 'Custom helper execution finished. Exit code: $exitCode\\n\\nstdout:\\n$stdout\\n\\nstderr:\\n$stderr';
+        } catch (e) {
+          return 'Custom helper execution failed: $e';
+        }
+      }
       case 'create_python_tool': {
         final name = (args['name'] ?? 'custom_tool').toString().trim();
         final code = (args['code'] ?? '').toString();
