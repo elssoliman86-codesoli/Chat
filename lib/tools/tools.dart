@@ -558,6 +558,13 @@ final List<ToolDef> builtinTools = <ToolDef>[
   ),
 
   ToolDef(
+    id: 'agent_run_python_tool',
+    title: 'Run approved Python helper',
+    spec: ToolSpec(name: 'agent_run_python_tool', description: 'Run a previously created and sandbox-tested custom Python helper in Termux against one exact in-scope target. The app checks scope and shows the complete script for explicit approval before transferring or executing it.',
+      parameters: _obj(<String, dynamic>{'name': _str('The helper name used when it was created'), 'target': _str('Exact hostname listed in the confirmed program scope')}, <String>['name', 'target'])),
+    run: (a, host) => host.agentAction('run_python_tool', a),
+  ),
+  ToolDef(
     id: 'termux_run',
     title: 'Run a shell command (Termux)',
     group: 'termux',
