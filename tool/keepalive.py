@@ -146,99 +146,127 @@ import android.os.Looper
 import androidx.core.content.ContextCompat
 import io.flutter.plugin.common.MethodChannel
 
-// Talks to the separately installed Termux app over its own RUN_COMMAND intent API, so the assistant
-// can run a real shell command on the user's device (see https://github.com/termux/termux-app/wiki/RUN_COMMAND-Intent).
-// Requires: Termux installed, this app granted the RUN_COMMAND permission, and Termux's own
-// ~/.termux/termux.properties set to allow-external-apps = true (only settable from inside Termux).
+// Executes user-approved commands through Termux RUN_COMMAND. Termux remains a real device shell.
 object TermuxBridge {
     private const val PACKAGE = "com.termux"
     private const val SERVICE = "com.termux.app.RunCommandService"
     private const val ACTION_RUN_COMMAND = "com.termux.RUN_COMMAND"
+    private const val BASH = "/data/data/com.termux/files/usr/bin/bash"
+    private const val TIMEOUT = "/data/data/com.termux/files/usr/bin/timeout"
     const val PERMISSION = "com.termux.permission.RUN_COMMAND"
     const val PERMISSION_REQUEST_CODE = 812
 
     private var nextRequestCode = 9000
     private val pending = HashMap<Int, MethodChannel.Result>()
-    private var receiverRegistered = false
+    private val timeoutCallbacks = HashMap<Int, Runnable>()
+    private val mainHandler = Handler(Looper.getMainLooper())
+    @Volatile private var receiverRegistered = false
     var pendingPermissionResult: MethodChannel.Result? = null
 
     fun isInstalled(context: Context): Boolean = try {
-        context.packageManager.getPackageInfo(PACKAGE, 0)
+        if (Build.VERSION.SDK_INT >= 33) {
+            context.packageManager.getPackageInfo(PACKAGE, PackageManager.PackageInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(PACKAGE, 0)
+        }
         true
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         false
     }
 
     fun hasPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, PERMISSION) == PackageManager.PERMISSION_GRANTED
 
+    private fun shellQuote(value: String): String =
+        "'" + value.replace("'", "'\\\\''") + "'"
+
+    @Synchronized
     private fun ensureReceiver(context: Context) {
         if (receiverRegistered) return
-        receiverRegistered = true
+        val appContext = context.applicationContext
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
                 val code = intent.getIntExtra("request_code", -1)
                 val result = pending.remove(code) ?: return
+                timeoutCallbacks.remove(code)?.let { mainHandler.removeCallbacks(it) }
                 val bundle = intent.getBundleExtra("result")
                 if (bundle == null) {
-                    result.success(mapOf("stdout" to "", "stderr" to "", "exitCode" to -1, "errmsg" to "No result from Termux."))
+                    result.success(mapOf("stdout" to "", "stderr" to "", "exitCode" to -1,
+                        "errmsg" to "Termux returned no result bundle.", "err" to -1))
                     return
                 }
-                result.success(
-                    mapOf(
-                        "stdout" to (bundle.getString("stdout") ?: ""),
-                        "stderr" to (bundle.getString("stderr") ?: ""),
-                        "exitCode" to bundle.getInt("exitCode", -1),
-                        "errmsg" to (bundle.getString("errmsg") ?: "")
-                    )
-                )
+                result.success(mapOf(
+                    "stdout" to (bundle.getString("stdout") ?: ""),
+                    "stderr" to (bundle.getString("stderr") ?: ""),
+                    "exitCode" to bundle.getInt("exitCode", -1),
+                    "errmsg" to (bundle.getString("errmsg") ?: ""),
+                    "err" to bundle.getInt("err", 0)
+                ))
             }
         }
-        val filter = IntentFilter(context.packageName + ".TERMUX_RESULT")
+        val filter = IntentFilter(appContext.packageName + ".TERMUX_RESULT")
         if (Build.VERSION.SDK_INT >= 33) {
-            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            appContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
-            context.registerReceiver(receiver, filter)
+            appContext.registerReceiver(receiver, filter)
         }
+        receiverRegistered = true
     }
 
     fun run(context: Context, command: String, workdir: String?, timeoutMs: Long, result: MethodChannel.Result) {
+        if (command.isBlank()) {
+            result.error("invalid_command", "Command cannot be empty.", null)
+            return
+        }
         if (!isInstalled(context)) {
-            result.error("not_installed", "Termux is not installed", null)
+            result.error("not_installed", "Termux is not installed.", null)
             return
         }
         if (!hasPermission(context)) {
-            result.error("no_permission", "RUN_COMMAND permission not granted", null)
+            result.error("no_permission", "Grant the Run commands in Termux environment permission in Android settings.", null)
             return
         }
-        ensureReceiver(context)
+
+        val appContext = context.applicationContext
+        ensureReceiver(appContext)
         val code = nextRequestCode++
         pending[code] = result
 
-        val resultIntent = Intent(context.packageName + ".TERMUX_RESULT").setPackage(context.packageName)
-        resultIntent.putExtra("request_code", code)
-        val piFlags = (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0) or PendingIntent.FLAG_UPDATE_CURRENT
-        val pi = PendingIntent.getBroadcast(context, code, resultIntent, piFlags)
+        val safeTimeoutMs = timeoutMs.coerceIn(1_000L, 300_000L)
+        val timeoutSeconds = ((safeTimeoutMs + 999L) / 1_000L).coerceIn(1L, 300L)
+        val wrappedCommand = "$TIMEOUT --signal=TERM --kill-after=5s ${timeoutSeconds}s $BASH -lc ${shellQuote(command)}"
 
-        val intent = Intent()
-        intent.setClassName(PACKAGE, SERVICE)
-        intent.action = ACTION_RUN_COMMAND
-        intent.putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
-        intent.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", command))
-        if (!workdir.isNullOrBlank()) intent.putExtra("com.termux.RUN_COMMAND_WORKDIR", workdir)
-        intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
-        intent.putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pi)
+        val resultIntent = Intent(appContext.packageName + ".TERMUX_RESULT").setPackage(appContext.packageName)
+        resultIntent.putExtra("request_code", code)
+        val mutableFlag = if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0
+        val piFlags = mutableFlag or PendingIntent.FLAG_UPDATE_CURRENT
+        val pi = PendingIntent.getBroadcast(appContext, code, resultIntent, piFlags)
+
+        val intent = Intent(ACTION_RUN_COMMAND).apply {
+            setClassName(PACKAGE, SERVICE)
+            putExtra("com.termux.RUN_COMMAND_PATH", BASH)
+            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", wrappedCommand))
+            if (!workdir.isNullOrBlank()) putExtra("com.termux.RUN_COMMAND_WORKDIR", workdir)
+            putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
+            putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pi)
+        }
+
+        val timeoutCallback = Runnable {
+            val pendingResult = pending.remove(code)
+            timeoutCallbacks.remove(code)
+            pendingResult?.error("timeout", "Termux command exceeded the ${timeoutSeconds}s execution limit.", null)
+        }
+        timeoutCallbacks[code] = timeoutCallback
+        mainHandler.postDelayed(timeoutCallback, safeTimeoutMs + 10_000L)
+
         try {
-            context.startService(intent)
+            appContext.startService(intent)
         } catch (e: Exception) {
             pending.remove(code)
-            result.error("start_failed", "Could not start Termux: " + e.message, null)
-            return
+            timeoutCallbacks.remove(code)?.let { mainHandler.removeCallbacks(it) }
+            result.error("start_failed", "Could not start Termux: " + (e.message ?: e.toString()), null)
         }
-        Handler(Looper.getMainLooper()).postDelayed({
-            val r = pending.remove(code)
-            r?.error("timeout", "Termux command timed out", null)
-        }, timeoutMs)
     }
 }
 """
