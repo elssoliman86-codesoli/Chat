@@ -876,7 +876,18 @@ class ChatEngine implements ToolHost {
       }
     } catch (e) {
       c.messages.add(ChatMessage(role: 'assistant', error: true, text: e.toString()));
+      if (store.agentTask != null && store.agentTask!.conversationId == c.id) {
+        agent.failTask();
+      }
     } finally {
+      if (store.agentTask != null && store.agentTask!.conversationId == c.id) {
+        if (_abort?.aborted ?? false) {
+          agent.cancelTask();
+        } else if (store.agentTask!.status != AgentTaskStatus.failed &&
+            store.agentTask!.status != AgentTaskStatus.awaitingApproval) {
+          agent.completeTask();
+        }
+      }
       await BackgroundWork.stop();
       _currentReply = null;
       _running = null;
