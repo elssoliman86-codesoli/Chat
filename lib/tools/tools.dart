@@ -559,9 +559,11 @@ final List<ToolDef> builtinTools = <ToolDef>[
       final recursive = a['recursive'] == true;
       final includeHidden = a['include_hidden'] != false;
       final depth = _i(a, 'max_depth').clamp(1, 4);
+      final hiddenFilter = includeHidden ? '' : " -not -name '.*'";
+      final listFlags = includeHidden ? '-la' : '-l';
       final command = recursive
-          ? 'printf "Termux directory: "; pwd; find $target -maxdepth $depth ${includeHidden ? '' : "-not -name \\".*\\""} -print 2>&1 | head -n 300'
-          : 'printf "Termux directory: "; pwd; ls ${includeHidden ? '-la' : '-l'} -- $target 2>&1';
+          ? 'printf "Termux directory: "; pwd; find $target -maxdepth $depth$hiddenFilter -print 2>&1 | head -n 300'
+          : 'printf "Termux directory: "; pwd; ls $listFlags -- $target 2>&1';
       return _runTermuxCommand(command, timeoutSeconds: 45);
     },
   ),
