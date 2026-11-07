@@ -86,14 +86,14 @@ class AgentController {
     if (risk == AgentOperationRisk.destructive) {
       return const ScopeEvaluation(ScopeDecision.deny, 'Destructive testing is not permitted by this agent.');
     }
-    if (risk == AgentOperationRisk.readOnly || risk == AgentOperationRisk.passive) {
-      return const ScopeEvaluation(ScopeDecision.allow, 'This operation is classified as read-only/passive.');
+    if (risk == AgentOperationRisk.readOnly) {
+      return const ScopeEvaluation(ScopeDecision.allow, 'This operation does not contact a target.');
     }
     final policy = _policy;
     if (policy == null) {
-      return const ScopeEvaluation(ScopeDecision.needsReview, 'Load and review the program policy before active testing.');
+      return const ScopeEvaluation(ScopeDecision.needsReview, 'Load and review the program policy before target interaction.');
     }
-    return policy.evaluate(target, activeOperation: true);
+    return policy.evaluate(target, activeOperation: risk == AgentOperationRisk.active);
   }
 
   void startStep(String stepId, {required String target, required AgentOperationRisk risk}) {
@@ -102,7 +102,7 @@ class AgentController {
     if (decision.decision != ScopeDecision.allow) {
       throw StateError(decision.reason);
     }
-    final step = task.steps.where((item) => item.id == stepId).firstOrNull;
+    final step = _findStep(task, stepId);
     if (step == null) throw ArgumentError.value(stepId, 'stepId', 'Unknown agent step.');
     step.status = AgentStepStatus.running;
     task.status = AgentTaskStatus.running;
@@ -111,7 +111,7 @@ class AgentController {
 
   void finishStep(String stepId, {String output = '', bool failed = false}) {
     final task = _requireTask();
-    final step = task.steps.where((item) => item.id == stepId).firstOrNull;
+    final step = _findStep(task, stepId);
     if (step == null) throw ArgumentError.value(stepId, 'stepId', 'Unknown agent step.');
     step
       ..status = failed ? AgentStepStatus.failed : AgentStepStatus.completed
@@ -124,6 +124,13 @@ class AgentController {
     final task = _requireTask();
     task.status = AgentTaskStatus.completed;
     task.touch();
+  }
+
+  AgentStep? _findStep(AgentTask task, String id) {
+    for (final step in task.steps) {
+      if (step.id == id) return step;
+    }
+    return null;
   }
 
   AgentTask _requireTask() {
