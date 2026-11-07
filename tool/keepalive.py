@@ -172,16 +172,20 @@ object TermuxBridge {
     fun hasPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, PERMISSION) == PackageManager.PERMISSION_GRANTED
 
+    // Registered once per process on the application context (not the activity), so it keeps working
+    // across activity recreation (rotation, the system recreating the activity, ...) instead of being
+    // tied to an activity instance that can be destroyed while a command is still running.
     private fun ensureReceiver(context: Context) {
         if (receiverRegistered) return
         receiverRegistered = true
+        val appCtx = context.applicationContext
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
                 val code = intent.getIntExtra("request_code", -1)
                 val result = pending.remove(code) ?: return
                 val bundle = intent.getBundleExtra("result")
                 if (bundle == null) {
-                    result.success(mapOf("stdout" to "", "stderr" to "", "exitCode" to -1, "errmsg" to "No result from Termux."))
+                    result.success(mapOf("stdout" to "", "stderr" to "", "exitCode" to -1, "err" to 1, "errmsg" to "No result from Termux."))
                     return
                 }
                 result.success(
@@ -189,16 +193,17 @@ object TermuxBridge {
                         "stdout" to (bundle.getString("stdout") ?: ""),
                         "stderr" to (bundle.getString("stderr") ?: ""),
                         "exitCode" to bundle.getInt("exitCode", -1),
+                        "err" to bundle.getInt("err", 0),
                         "errmsg" to (bundle.getString("errmsg") ?: "")
                     )
                 )
             }
         }
-        val filter = IntentFilter(context.packageName + ".TERMUX_RESULT")
+        val filter = IntentFilter(appCtx.packageName + ".TERMUX_RESULT")
         if (Build.VERSION.SDK_INT >= 33) {
-            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            appCtx.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
-            context.registerReceiver(receiver, filter)
+            appCtx.registerReceiver(receiver, filter)
         }
     }
 
@@ -211,14 +216,15 @@ object TermuxBridge {
             result.error("no_permission", "RUN_COMMAND permission not granted", null)
             return
         }
-        ensureReceiver(context)
+        val appCtx = context.applicationContext
+        ensureReceiver(appCtx)
         val code = nextRequestCode++
         pending[code] = result
 
-        val resultIntent = Intent(context.packageName + ".TERMUX_RESULT").setPackage(context.packageName)
+        val resultIntent = Intent(appCtx.packageName + ".TERMUX_RESULT").setPackage(appCtx.packageName)
         resultIntent.putExtra("request_code", code)
         val piFlags = (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0) or PendingIntent.FLAG_UPDATE_CURRENT
-        val pi = PendingIntent.getBroadcast(context, code, resultIntent, piFlags)
+        val pi = PendingIntent.getBroadcast(appCtx, code, resultIntent, piFlags)
 
         val intent = Intent()
         intent.setClassName(PACKAGE, SERVICE)
@@ -229,7 +235,7 @@ object TermuxBridge {
         intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
         intent.putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pi)
         try {
-            context.startService(intent)
+            appCtx.startService(intent)
         } catch (e: Exception) {
             pending.remove(code)
             result.error("start_failed", "Could not start Termux: " + e.message, null)

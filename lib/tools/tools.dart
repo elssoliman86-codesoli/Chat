@@ -73,6 +73,14 @@ Future<String> _runTermuxCommand(String command, {String? workdir, int timeoutSe
     final stderr = (result['stderr'] ?? '').toString();
     final exitCode = result['exitCode'];
     final error = (result['errmsg'] ?? '').toString();
+    final err = result['err'] is int ? result['err'] as int : int.tryParse('${result['err']}') ?? 0;
+    if (err != 0 && exitCode == -1) {
+      // Termux itself failed to run the command at all (not installed/permitted/set up), rather than
+      // the command running and returning a non-zero exit — don't report a fake exit code for that.
+      return 'Termux could not run the command${error.isNotEmpty ? ': $error' : ' (no further detail given).'}'
+          '\n\nThis usually means `allow-external-apps = true` is missing from ~/.termux/termux.properties inside '
+          'Termux (a one-time setup only the user can do there).';
+    }
     final out = StringBuffer('exit code: $exitCode');
     if (error.isNotEmpty) out.write('\nTermux error: $error');
     if (stdout.trim().isNotEmpty) out.write('\n\nstdout:\n${stdout.trim()}');

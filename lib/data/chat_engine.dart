@@ -594,7 +594,7 @@ class ChatEngine implements ToolHost {
         final request = LlmRequest(
           system: buildSystem(c) + (provider.supportsTools
               ? ''
-              : '\\nThis provider has tool/function calling disabled. Do not claim to have used Termux, the browser, web search or any other tool. Do not print a command as if it was executed. Tell the user that tool calling must be enabled for this provider to perform device actions.'),
+              : '\nThis provider has tool/function calling disabled. Do not claim to have used Termux, the browser, web search or any other tool. Do not print a command as if it was executed. Tell the user that tool calling must be enabled for this provider to perform device actions.'),
           messages: _withContext(history, context),
           model: c.model,
           tools: buildTools(c, provider),
