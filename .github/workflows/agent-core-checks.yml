@@ -14,16 +14,29 @@ permissions:
 jobs:
   flutter-checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
+      - name: Generate Android host and install native Termux bridge
+        run: |
+          flutter create --platforms=android --org com.codesoli --project-name omni_chat --no-pub .
+          for p in lib pubspec.yaml analysis_options.yaml test; do
+            git checkout -- "$p" || true
+          done
+          bash tool/patch_android.sh
       - name: Install dependencies
         run: flutter pub get
       - name: Analyze
         run: flutter analyze --no-fatal-infos
       - name: Test
         run: flutter test
+      - name: Compile Android debug APK
+        run: flutter build apk --debug
