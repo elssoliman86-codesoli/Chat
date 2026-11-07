@@ -24,6 +24,27 @@ class TermuxService {
     'make': 'Build utility', 'proot-distro': 'Debian/Ubuntu userspace manager',
   };
 
+  static const Map<String, List<String>> packageExecutables = <String, List<String>>{
+    'python': <String>['python', 'python3'],
+    'git': <String>['git'],
+    'curl': <String>['curl'],
+    'wget': <String>['wget'],
+    'jq': <String>['jq'],
+    'nmap': <String>['nmap'],
+    'whois': <String>['whois'],
+    'dnsutils': <String>['dig'],
+    'openssl': <String>['openssl'],
+    'netcat-openbsd': <String>['nc', 'netcat'],
+    'rust': <String>['rustc'],
+    'golang': <String>['go'],
+    'nodejs-lts': <String>['node', 'npm'],
+    'php': <String>['php'],
+    'ruby': <String>['ruby'],
+    'clang': <String>['clang'],
+    'make': <String>['make'],
+    'proot-distro': <String>['proot-distro'],
+  };
+
   Future<bool> isInstalled() async {
     try {
       return await _channel.invokeMethod<bool>('isInstalled') ?? false;
