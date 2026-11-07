@@ -57,10 +57,13 @@ class ScopePolicy {
       } else if (lower.contains('in scope') || lower.contains('eligible assets')) {
         outSection = false;
       }
-      final candidate = line
-        .replaceFirst(RegExp(r'^[\s>*+\-•]+'), '')
-        .replaceAll(RegExp(r'[`*_]'), '')
+      var candidate = line
+        .replaceFirst(RegExp(r'^[\s>+\-•]+'), '')
         .trim();
+      candidate = candidate.replaceFirst(RegExp(r'^\*\s+'), '').replaceAll('`', '');
+      if (candidate.startsWith('**') && candidate.endsWith('**') && candidate.length > 4) {
+        candidate = candidate.substring(2, candidate.length - 2);
+      }
       final match = RegExp(r'^(\*\.)?[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::\d+)?/?$', caseSensitive: false)
         .firstMatch(candidate);
       if (match == null) continue;
