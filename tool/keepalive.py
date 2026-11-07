@@ -17,6 +17,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -138,7 +139,6 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
@@ -160,7 +160,6 @@ object TermuxBridge {
     private val pending = HashMap<Int, MethodChannel.Result>()
     private val timeoutCallbacks = HashMap<Int, Runnable>()
     private val mainHandler = Handler(Looper.getMainLooper())
-    @Volatile private var receiverRegistered = false
     var pendingPermissionResult: MethodChannel.Result? = null
 
     fun isInstalled(context: Context): Boolean = try {
@@ -181,37 +180,21 @@ object TermuxBridge {
     private fun shellQuote(value: String): String =
         "'" + value.replace("'", "'\\\\''") + "'"
 
-    @Synchronized
-    private fun ensureReceiver(context: Context) {
-        if (receiverRegistered) return
-        val appContext = context.applicationContext
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context, intent: Intent) {
-                val code = intent.getIntExtra("request_code", -1)
-                val result = pending.remove(code) ?: return
-                timeoutCallbacks.remove(code)?.let { mainHandler.removeCallbacks(it) }
-                val bundle = intent.getBundleExtra("result")
-                if (bundle == null) {
-                    result.success(mapOf("stdout" to "", "stderr" to "", "exitCode" to -1,
-                        "errmsg" to "Termux returned no result bundle.", "err" to -1))
-                    return
-                }
-                result.success(mapOf(
-                    "stdout" to (bundle.getString("stdout") ?: ""),
-                    "stderr" to (bundle.getString("stderr") ?: ""),
-                    "exitCode" to bundle.getInt("exitCode", -1),
-                    "errmsg" to (bundle.getString("errmsg") ?: ""),
-                    "err" to bundle.getInt("err", 0)
-                ))
-            }
+    fun complete(code: Int, bundle: Bundle?) {
+        val result = pending.remove(code) ?: return
+        timeoutCallbacks.remove(code)?.let { mainHandler.removeCallbacks(it) }
+        if (bundle == null) {
+            result.success(mapOf("stdout" to "", "stderr" to "", "exitCode" to -1,
+                "errmsg" to "Termux returned no result bundle.", "err" to -1))
+            return
         }
-        val filter = IntentFilter(appContext.packageName + ".TERMUX_RESULT")
-        if (Build.VERSION.SDK_INT >= 33) {
-            appContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            appContext.registerReceiver(receiver, filter)
-        }
-        receiverRegistered = true
+        result.success(mapOf(
+            "stdout" to (bundle.getString("stdout") ?: ""),
+            "stderr" to (bundle.getString("stderr") ?: ""),
+            "exitCode" to bundle.getInt("exitCode", -1),
+            "errmsg" to (bundle.getString("errmsg") ?: ""),
+            "err" to bundle.getInt("err", 0)
+        ))
     }
 
     fun run(context: Context, command: String, workdir: String?, timeoutMs: Long, result: MethodChannel.Result) {
@@ -233,7 +216,6 @@ object TermuxBridge {
         }
 
         val appContext = context.applicationContext
-        ensureReceiver(appContext)
         val code = nextRequestCode++
         pending[code] = result
 
@@ -241,7 +223,7 @@ object TermuxBridge {
         val timeoutSeconds = ((safeTimeoutMs + 999L) / 1_000L).coerceIn(1L, 300L)
         val wrappedCommand = "$TIMEOUT --signal=TERM --kill-after=5s ${timeoutSeconds}s $BASH -lc ${shellQuote(command)}"
 
-        val resultIntent = Intent(appContext.packageName + ".TERMUX_RESULT").setPackage(appContext.packageName)
+        val resultIntent = Intent(appContext, TermuxResultReceiver::class.java)
         resultIntent.putExtra("request_code", code)
         val mutableFlag = if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0
         val piFlags = mutableFlag or PendingIntent.FLAG_UPDATE_CURRENT
@@ -271,6 +253,14 @@ object TermuxBridge {
             timeoutCallbacks.remove(code)?.let { mainHandler.removeCallbacks(it) }
             result.error("start_failed", "Could not start Termux: " + (e.message ?: e.toString()), null)
         }
+    }
+}
+
+class TermuxResultReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val code = intent.getIntExtra("request_code", -1)
+        if (code < 0) return
+        TermuxBridge.complete(code, intent.getBundleExtra("result"))
     }
 }
 """
