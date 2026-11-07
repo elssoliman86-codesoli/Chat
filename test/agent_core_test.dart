@@ -52,6 +52,24 @@ Out of Scope
       expect(policy.evaluate('admin.example.com', activeOperation: false).decision, ScopeDecision.deny);
     });
 
+    test('parses explicit assets from markdown scope tables', () {
+      final policy = ScopePolicy.parse('''
+In Scope
+| Asset | Type |
+| --- | --- |
+| `www.example.com` | Website |
+| `*.api.example.com` | API |
+
+Out of Scope
+| Asset | Reason |
+| --- | --- |
+| `admin.example.com` | Internal |
+''');
+      expect(policy.inScope, containsAll({'www.example.com', '*.api.example.com'}));
+      expect(policy.outOfScope, contains('admin.example.com'));
+      expect(policy.evaluate('admin.example.com', activeOperation: false).decision, ScopeDecision.deny);
+    });
+
     test('policy JSON round trip preserves confirmation state', () {
       final policy = ScopePolicy(
         source: 'url',
