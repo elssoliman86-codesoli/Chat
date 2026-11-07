@@ -178,6 +178,18 @@ object TermuxBridge {
     fun hasPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, PERMISSION) == PackageManager.PERMISSION_GRANTED
 
+    fun version(context: Context): String = try {
+        if (Build.VERSION.SDK_INT >= 33) {
+            context.packageManager.getPackageInfo(PACKAGE, PackageManager.PackageInfoFlags.of(0)).versionName ?: ""
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(PACKAGE, 0).versionName ?: ""
+        }
+    } catch (_: Exception) {
+        ""
+    }
+
+
     private fun shellQuote(value: String): String =
         "'" + value.replace("'", "'\\\\''") + "'"
 
