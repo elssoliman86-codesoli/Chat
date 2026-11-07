@@ -48,7 +48,8 @@ Map<String, dynamic> _str(String description) => <String, dynamic>{'type': 'stri
 String _s(Map<String, dynamic> a, String k) => (a[k] ?? '').toString();
 int _i(Map<String, dynamic> a, String k) => int.tryParse((a[k] ?? '0').toString()) ?? 0;
 
-String _shellQuote(String value) => "'\${value.replaceAll("'", "'\\''")}'";
+
+String _shellQuote(String value) => "'${value.replaceAll("'", "'\\''")}'";
 
 Future<String> _runTermuxCommand(String command, {String? workdir, int timeoutSeconds = 60}) async {
   if (command.trim().isEmpty) return 'No command was given.';
@@ -61,7 +62,7 @@ Future<String> _runTermuxCommand(String command, {String? workdir, int timeoutSe
       return 'Termux permission was not granted. Enable "Run commands in Termux environment" for this app and set allow-external-apps = true in ~/.termux/termux.properties inside Termux.';
     }
   }
-  final seconds = timeoutSeconds.clamp(1, 300);
+  final seconds = timeoutSeconds < 1 ? 1 : (timeoutSeconds > 300 ? 300 : timeoutSeconds);
   try {
     final result = await TermuxService.instance.run(
       command,
@@ -73,14 +74,14 @@ Future<String> _runTermuxCommand(String command, {String? workdir, int timeoutSe
     final exitCode = result['exitCode'];
     final error = (result['errmsg'] ?? '').toString();
     final out = StringBuffer('exit code: $exitCode');
-    if (error.isNotEmpty) out.write('\\nTermux error: $error');
-    if (stdout.trim().isNotEmpty) out.write('\\n\\nstdout:\\n\${stdout.trim()}');
-    if (stderr.trim().isNotEmpty) out.write('\\n\\nstderr:\\n\${stderr.trim()}');
+    if (error.isNotEmpty) out.write('\nTermux error: $error');
+    if (stdout.trim().isNotEmpty) out.write('\n\nstdout:\n${stdout.trim()}');
+    if (stderr.trim().isNotEmpty) out.write('\n\nstderr:\n${stderr.trim()}');
     return out.toString();
   } on PlatformException catch (e) {
     return e.code == 'timeout'
-        ? 'Termux command timed out after \${seconds}s.'
-        : 'Could not run the command in Termux: \${e.message ?? e.code}';
+        ? 'Termux command timed out after ${seconds}s.'
+        : 'Could not run the command in Termux: ${e.message ?? e.code}';
   } catch (e) {
     return 'Could not reach Termux: $e';
   }
@@ -559,8 +560,8 @@ final List<ToolDef> builtinTools = <ToolDef>[
       final includeHidden = a['include_hidden'] != false;
       final depth = _i(a, 'max_depth').clamp(1, 4);
       final command = recursive
-          ? 'printf "Termux directory: "; pwd; find $target -maxdepth $depth \${includeHidden ? '' : "-not -name \\".*\\""} -print 2>&1 | head -n 300'
-          : 'printf "Termux directory: "; pwd; ls -la \${includeHidden ? '' : '-A'} -- $target 2>&1';
+          ? 'printf "Termux directory: "; pwd; find $target -maxdepth $depth ${includeHidden ? '' : "-not -name \\".*\\""} -print 2>&1 | head -n 300'
+          : 'printf "Termux directory: "; pwd; ls ${includeHidden ? '-la' : '-l'} -- $target 2>&1';
       return _runTermuxCommand(command, timeoutSeconds: 45);
     },
   ),
