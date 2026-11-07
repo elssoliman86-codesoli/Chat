@@ -48,6 +48,7 @@ class MainActivity : FlutterActivity() {
             try {
                 when (call.method) {
                     "isInstalled" -> result.success(TermuxBridge.isInstalled(this))
+                    "getVersion" -> result.success(TermuxBridge.version(this))
                     "hasPermission" -> result.success(TermuxBridge.hasPermission(this))
                     "requestPermission" -> {
                         if (TermuxBridge.hasPermission(this)) {
