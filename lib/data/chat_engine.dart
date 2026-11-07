@@ -430,7 +430,10 @@ class ChatEngine implements ToolHost {
           store.toolRegistry.register(RegisteredTool(id: name, name: name, source: 'Termux', version: item['version'] ?? '', executablePath: item['path'] ?? '', capabilities: _toolCapabilities(name), status: ToolInstallStatus.verified, verifiedAt: DateTime.now().millisecondsSinceEpoch));
         }
         await store.saveAgentState();
-        final missing = TermuxService.installablePackages.keys.where((id) => !found.any((item) => item['name'] == id)).toList();
+        final missing = TermuxService.installablePackages.keys.where((id) {
+          final aliases = TermuxService.packageExecutables[id] ?? <String>[id];
+          return !found.any((item) => aliases.contains(item['name']));
+        }).toList();
         store.changed();
         return 'Discovered ${found.length} installed tools:\n${found.map((item) => '${item['name']} — ${item['version']}').join('\n')}\n\nSupported packages not detected: ${missing.join(', ')}';
       }
