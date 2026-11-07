@@ -37,10 +37,10 @@ s = s.replace('<application', lines + '    <application', 1)
 if 'usesCleartextTraffic' not in s:
     s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
 if 'KeepAliveService' not in s:
-    svc = '        <service android:name=".KeepAliveService" android:foregroundServiceType="dataSync" android:exported="false" />\\n    '
+    svc = '        <service android:name=".KeepAliveService" android:foregroundServiceType="dataSync" android:exported="false" />\n    '
     s = s.replace('</application>', svc + '</application>', 1)
 if 'TermuxResultReceiver' not in s:
-    receiver = '        <receiver android:name=".TermuxResultReceiver" android:exported="false" />\\n    '
+    receiver = '        <receiver android:name=".TermuxResultReceiver" android:exported="false" />\n    '
     s = s.replace('</application>', receiver + '</application>', 1)
 p.write_text(s)
 PY
