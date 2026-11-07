@@ -129,6 +129,24 @@ Out of Scope
         ScopeDecision.needsReview,
       );
       expect(
+        controller.authorizeOperation(target: 'app.example.com', risk: AgentOperationRisk.passive).decision,
+        ScopeDecision.needsReview,
+      );
+      controller.setPolicy(ScopePolicy(
+        source: 'policy',
+        inScope: {'app.example.com'},
+        reviewed: true,
+        userConfirmed: true,
+      ));
+      expect(
+        controller.authorizeOperation(target: 'app.example.com', risk: AgentOperationRisk.passive).allowed,
+        isTrue,
+      );
+      expect(
+        controller.authorizeOperation(target: 'outside.example.net', risk: AgentOperationRisk.passive).decision,
+        ScopeDecision.deny,
+      );
+      expect(
         controller.authorizeOperation(target: 'app.example.com', risk: AgentOperationRisk.destructive).decision,
         ScopeDecision.deny,
       );
