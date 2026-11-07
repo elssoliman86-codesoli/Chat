@@ -194,7 +194,9 @@ object TermuxBridge {
             "stderr" to (bundle.getString("stderr") ?: ""),
             "exitCode" to bundle.getInt("exitCode", -1),
             "errmsg" to (bundle.getString("errmsg") ?: ""),
-            "err" to bundle.getInt("err", 0)
+            "err" to bundle.getInt("err", -1),
+            "stdoutOriginalLength" to (bundle.getString("stdout_original_length") ?: ""),
+            "stderrOriginalLength" to (bundle.getString("stderr_original_length") ?: "")
         ))
     }
 
