@@ -56,9 +56,9 @@ class TermuxService {
       'clang', 'make', 'subfinder', 'amass', 'httpx', 'nuclei', 'ffuf', 'feroxbuster', 'nikto', 'sqlmap',
       'proot-distro', 'mitmproxy', 'mitmdump', 'mitmweb'];
     final quoted = names.map((name) => "'$name'").join(' ');
-    final command = 'for t in $quoted; do p=$(command -v "$t" 2>/dev/null || true); '
-        'if [ -n "$p" ]; then v=$("$p" --version 2>&1 | head -n 1); '
-        "printf '%s\\t%s\\t%s\\n' \"$t\" \"$p\" \"$v\"; fi; done";
+    final command = 'for t in $quoted; do p=$(command -v "\$t" 2>/dev/null || true); '
+        'if [ -n "\$p" ]; then v=$("\$p" --version 2>&1 | head -n 1); '
+        "printf '%s\\t%s\\t%s\\n' \"\$t\" \"\$p\" \"\$v\"; fi; done";
     final result = await run(command, timeout: const Duration(seconds: 45));
     final stdout = (result['stdout'] ?? '').toString();
     final tools = <Map<String, String>>[];
