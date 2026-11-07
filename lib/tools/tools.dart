@@ -528,7 +528,7 @@ final List<ToolDef> builtinTools = <ToolDef>[
     id: 'agent_set_scope',
     title: 'Review target scope',
     spec: ToolSpec(name: 'agent_set_scope', description: 'Submit the program policy text and exact target. The app extracts explicit in-scope and out-of-scope hosts and asks the user to review and confirm them before active testing.',
-      parameters: _obj(<String, dynamic>{'target': _str('Exact target hostname'), 'policy_text': _str('Full program policy or scope section'), 'source': _str('Policy URL or program name')}, <String>['target', 'policy_text'])),
+      parameters: _obj(<String, dynamic>{'target': _str('Exact target hostname'), 'policy_text': _str('Full program policy or scope section'), 'source': _str('Policy URL or program name'), 'policy_summary': _str('Important rules, prohibited tests, rate limits and automation restrictions')}, <String>['target', 'policy_text', 'policy_summary'])),
     run: (a, host) => host.agentAction('scope', a),
   ),
   ToolDef(
