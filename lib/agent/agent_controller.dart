@@ -160,6 +160,20 @@ class AgentController {
     _emit();
   }
 
+  void cancelTask() {
+    final task = _requireTask();
+    task.status = AgentTaskStatus.cancelled;
+    task.touch();
+    _emit();
+  }
+
+  void failTask() {
+    final task = _requireTask();
+    task.status = AgentTaskStatus.failed;
+    task.touch();
+    _emit();
+  }
+
   void completeTask() {
     final task = _requireTask();
     task.status = AgentTaskStatus.completed;
