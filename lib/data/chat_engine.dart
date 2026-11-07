@@ -486,10 +486,10 @@ class ChatEngine implements ToolHost {
           final askPermission = await confirm('Omni Chat needs the Android “Run commands in Termux environment” permission before it can run this helper. Request it now?');
           if (!askPermission || !await TermuxService.instance.requestPermission()) return 'Termux permission was not granted.';
         }
-        final approved = await confirm('Review and approve this sandbox-tested Python helper before running it against $targetHost.\\n\\nFile: $slug.py\\nTarget: $targetHost\\n\\nComplete source code:\\n\\n$code\\n\\nThis will copy the file into Termux and execute it with --target $targetHost. Only proceed if the program policy explicitly permits this test.');
+        final approved = await confirm('Review and approve this sandbox-tested Python helper before running it against $targetHost.\n\nFile: $slug.py\nTarget: $targetHost\n\nComplete source code:\n\n$code\n\nThis will copy the file into Termux and execute it with --target $targetHost. Only proceed if the program policy explicitly permits this test.');
         if (!approved) return 'Custom helper was not transferred or executed.';
         final encoded = base64Encode(utf8.encode(code));
-        final transfer = 'python -c "import base64,pathlib; p=pathlib.Path.home()/\\'omni_agent_tools\\'/' + "'$slug.py'" + '; p.parent.mkdir(parents=True,exist_ok=True); p.write_bytes(base64.b64decode(\\'' + encoded + '\\'))"';
+        final transfer = "python -c 'import base64,pathlib; p=pathlib.Path.home()/\"omni_agent_tools\"/\"$slug.py\"; p.parent.mkdir(parents=True,exist_ok=True); p.write_bytes(base64.b64decode(\"$encoded\"))'";
         try {
           final copied = await TermuxService.instance.run(transfer, timeout: const Duration(seconds: 45));
           final copyCode = copied['exitCode'];
@@ -498,7 +498,7 @@ class ChatEngine implements ToolHost {
           final exitCode = executed['exitCode'];
           final stdout = (executed['stdout'] ?? '').toString();
           final stderr = (executed['stderr'] ?? '').toString();
-          return 'Custom helper execution finished. Exit code: $exitCode\\n\\nstdout:\\n$stdout\\n\\nstderr:\\n$stderr';
+          return 'Custom helper execution finished. Exit code: $exitCode\n\nstdout:\n$stdout\n\nstderr:\n$stderr';
         } catch (e) {
           return 'Custom helper execution failed: $e';
         }
