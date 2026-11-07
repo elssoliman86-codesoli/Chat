@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../data/services.dart';
+import '../files/code_export.dart';
 import '../projects/project_store.dart';
 import '../projects/projects.dart';
 import 'theme.dart';
@@ -147,17 +148,31 @@ class _ProjectPreviewScreenState extends State<ProjectPreviewScreen> {
       _pages = files.where((f) => f.path.toLowerCase().endsWith('.html')).map((f) => f.path).toList();
       var page = widget.page;
       if (page.isEmpty) page = _pages.contains('index.html') ? 'index.html' : (_pages.isEmpty ? '' : _pages.first);
-      if (page.isEmpty) {
-        setState(() => _error = 'This project has no HTML page to run yet.');
-        return;
-      }
-      final url = await projectServer.urlFor(widget.projectId, page);
       final c = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..setNavigationDelegate(NavigationDelegate(onProgress: (p) {
           if (mounted) setState(() => _progress = p);
         }));
-      await c.loadRequest(Uri.parse(url));
+      if (page.isNotEmpty) {
+        final url = await projectServer.urlFor(widget.projectId, page);
+        await c.loadRequest(Uri.parse(url));
+      } else {
+        // Source-only projects can still be previewed without manufacturing an index.html.
+        final candidates = files.where((f) {
+          final ext = f.path.split('.').last.toLowerCase();
+          return const {'py','python','md','markdown','json','csv','css','js','javascript','jsx','tsx','react','svg'}.contains(ext);
+        }).toList();
+        if (candidates.isEmpty) {
+          setState(() => _error = 'No runnable HTML page or supported source file was found. Add index.html for a full web-app preview.');
+          return;
+        }
+        final chosen = candidates.first;
+        final source = await projects.readText(widget.projectId, chosen.path);
+        if (source == null) throw Exception('Could not read ${chosen.path}');
+        final ext = chosen.path.split('.').last.toLowerCase();
+        await c.loadHtmlString(previewDocument(ext, source));
+        page = chosen.path;
+      }
       if (!mounted) return;
       setState(() {
         _web = c;

@@ -134,13 +134,14 @@ void main() {
     expect(previewDocument('css', 'body{color:red}'), contains('<style>body{color:red}</style>'));
   });
 
-  test('a new skill defaults to always active, and that survives a JSON round trip', () {
+  test('a skill is on-demand by default, and alwaysOn survives a JSON round trip', () {
     final s = Skill(id: 's1', name: 'Test');
-    expect(s.alwaysOn, true);
+    expect(s.alwaysOn, false);
+    s.alwaysOn = true; // what ChatEngine.loadSkill flips once the assistant has loaded a skill
     final back = Skill.fromJson(s.toJson());
     expect(back.alwaysOn, true);
-    final off = Skill.fromJson(<String, dynamic>{'id': 's2', 'name': 'T2', 'alwaysOn': false});
-    expect(off.alwaysOn, false);
+    final onByDefault = Skill.fromJson(<String, dynamic>{'id': 's2', 'name': 'T2'});
+    expect(onByDefault.alwaysOn, false);
   });
 
   test('messages typed while busy are held in order and are not lost on a stop', () {

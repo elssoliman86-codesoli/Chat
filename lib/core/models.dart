@@ -418,7 +418,7 @@ class Skill {
     List<String>? tools,
     this.autoUse = true,
     this.enabled = true,
-    this.alwaysOn = true,
+    this.alwaysOn = false,
   }) : tools = tools ?? <String>[];
 
   final String id;
@@ -433,9 +433,10 @@ class Skill {
   bool autoUse;
   bool enabled;
 
-  /// Always put the full instructions in the prompt, every message, instead of waiting for the
-  /// assistant to decide to load it. This is what makes an installed skill feel like a fixed part of
-  /// how the assistant behaves rather than something that only kicks in when asked for by name.
+  /// Always put the full instructions in every conversation's prompt, instead of waiting for the
+  /// assistant to decide to load it that turn. Set once by the person, or automatically the first
+  /// time the assistant loads this skill with use_skill (see ChatEngine.loadSkill), so a skill the
+  /// assistant has actually found useful once becomes a fixed part of how it behaves from then on.
   bool alwaysOn;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -457,7 +458,7 @@ class Skill {
         tools: (j['tools'] as List?)?.whereType<String>().toList(),
         autoUse: j['autoUse'] as bool? ?? true,
         enabled: j['enabled'] as bool? ?? true,
-        alwaysOn: j['alwaysOn'] as bool? ?? true,
+        alwaysOn: j['alwaysOn'] as bool? ?? false,
       );
 }
 
@@ -482,7 +483,7 @@ class AppSettings {
     this.webTools = true,
     this.memoryEnabled = true,
     this.maxAttachments = 20,
-    this.maxToolSteps = 30,
+    this.maxToolSteps = 100,
     this.defaultProviderId = '',
     this.webAlways = true,
     this.pluginGithub = true,
@@ -586,6 +587,6 @@ class AppSettings {
 }
 
 /// The old defaults of 8 and 20 steps are too small for agent and project tasks, so they become 30.
-int _steps(int? saved) => (saved == null || saved == 8 || saved == 20) ? 30 : saved;
+int _steps(int? saved) => (saved == null || saved == 8 || saved == 20 || saved == 30) ? 100 : saved;
 
 String prettyJson(Object? value) => const JsonEncoder.withIndent('  ').convert(value);

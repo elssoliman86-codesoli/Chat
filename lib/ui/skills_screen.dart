@@ -96,7 +96,7 @@ class SkillsScreen extends StatelessWidget {
             for (final s in store.skills)
               Cell(
                 title: s.name,
-                subtitle: '${s.description}${s.tools.isEmpty ? '' : '\nTools: ${s.tools.join(', ')}'}',
+                subtitle: '${s.alwaysOn ? 'Always active in every conversation · ' : (s.autoUse ? 'Available for automatic activation · ' : '')}${s.description}${s.tools.isEmpty ? '' : '\nTools: ${s.tools.join(', ')}'}',
                 onTap: () => _edit(context, s),
                 trailing: Switch(
                   value: s.enabled,
@@ -203,10 +203,11 @@ class _SkillEditScreenState extends State<SkillEditScreen> {
         ]),
         Group(
           footer: _always
-              ? 'Always on: the full instructions go to the assistant with every message, so this behaves like a '
-                  'fixed part of it instead of something it has to decide to use.'
-              : 'Not always on: the assistant only sees the name and description unless it decides to load the full '
-                  'instructions itself (if "load automatically" is on below), or you switch it on in a chat (the bolt).',
+              ? 'Always active: the full instructions go to the assistant with every message in every conversation, '
+                  'so this behaves like a fixed part of it instead of something it has to decide to use.'
+              : 'Not always active: the assistant only sees the name and description unless it decides to load the '
+                  'full instructions itself (if "load automatically" is on below) — which also switches this on '
+                  'for good, from then on — or you switch it on in a chat (the bolt).',
           children: [
             SwitchCell(
               title: 'Always active',

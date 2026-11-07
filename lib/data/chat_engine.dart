@@ -29,9 +29,6 @@ class ChatEngine implements ToolHost {
   AbortHandle? _abort;
   Timer? _notifyTimer;
   Conversation? _running;
-  // Skills loaded with the use_skill tool, kept for the rest of that conversation (not just one turn),
-  // so the model does not have to re-load the same skill on every single message.
-  final Map<String, Set<String>> _loadedSkillsByConv = <String, Set<String>>{};
   final Map<String, List<QueuedMessage>> _queues = <String, List<QueuedMessage>>{};
 
   bool get busy => _running != null;
@@ -76,9 +73,12 @@ class ChatEngine implements ToolHost {
 
   @override
   void loadSkill(Skill skill) {
-    final c = _running;
-    if (c == null) return;
-    (_loadedSkillsByConv[c.id] ??= <String>{}).add(skill.id);
+    // A skill the assistant has found worth loading once is kept on for every future message and
+    // conversation too, instead of needing use_skill again every time (toggle it off in Skills if not
+    // wanted).
+    skill.alwaysOn = true;
+    unawaited(store.saveSkills());
+    store.changed();
   }
 
   @override
@@ -277,7 +277,7 @@ class ChatEngine implements ToolHost {
     b.writeln('\nProjects: you have a workspace of real files on the phone. For anything bigger than one small file (websites, apps, '
         'scripts, multi-file code) do NOT paste code in the chat: call project_create, then project_write with SEVERAL complete files per call '
         '(no placeholders), linked by real relative paths (index.html uses css/style.css and js/app.js, and so on). Create every file the project needs '
-        'plus a README. Work in the background and keep going until the project is complete. For a web project, call project_check after writing: it '
+        'plus a README. Before project work, inspect the available auto-use skill descriptions and call use_skill for every skill that materially applies; do not wait for the user to activate project skills manually. Work in the background and keep going until the project is complete. For a web project, call project_check after writing: it '
         'runs the project on the local server in a hidden phone-sized browser and reports the text, layout, overflow, broken images and script errors. '
         'Read the report, judge whether the page is right (is the content there, is it readable, does it fit the screen, any errors), fix problems '
         'with project_edit or project_write and check again (at most 3 rounds) before saying it works. When finished call project_export so the person '
@@ -300,11 +300,8 @@ class ChatEngine implements ToolHost {
     return b.toString();
   }
 
-  List<Skill> _activeSkills(Conversation c) => store.skills
-      .where((k) =>
-          k.enabled &&
-          (k.alwaysOn || c.activeSkillIds.contains(k.id) || (_loadedSkillsByConv[c.id]?.contains(k.id) ?? false)))
-      .toList();
+  List<Skill> _activeSkills(Conversation c) =>
+      store.skills.where((k) => k.enabled && (k.alwaysOn || c.activeSkillIds.contains(k.id))).toList();
 
   List<ToolSpec> buildTools(Conversation c, ProviderConfig provider) {
     if (!provider.supportsTools) return const <ToolSpec>[];
@@ -536,8 +533,6 @@ class ChatEngine implements ToolHost {
   Future<void> _run(Conversation c) async {
     final provider = store.providerById(c.providerId) ?? store.defaultProvider;
     _running = c;
-    // Skills loaded earlier in this conversation (via use_skill) stay loaded; only the per-run call
-    // dedupe resets each send, so the model is not forced to reload the same skill every message.
     _seenCalls.clear();
     _browserEpoch = 0;
     BrowserService.instance.showWhileWorking = store.settings.browserVisible;
