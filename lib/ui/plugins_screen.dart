@@ -447,8 +447,11 @@ class _PluginsScreenState extends State<PluginsScreen> {
   }
 
   static const String _termuxHelpText =
-      '1. Install Termux from F-Droid or its GitHub releases page (not the Play Store version — it is outdated and no '
-      'longer works for this).\n\n'
+      '0. If you already have "Termux" installed from the Play Store, uninstall it first — that build is abandoned '
+      '(its own package repos are broken, so even its own pkg/apt stops working) and it is signed differently from '
+      'the real one, so the F-Droid/GitHub version below cannot just "update" over it; they have to be fully removed '
+      'first or the new install will fail or silently create a second, separate Termux with its own empty home folder.\n\n'
+      '1. Install Termux from F-Droid or its GitHub releases page — that is the real, maintained, latest build.\n\n'
       '2. Open Termux once so it finishes setting itself up.\n\n'
       '3. In Termux, run:\n'
       '   echo "allow-external-apps = true" >> ~/.termux/termux.properties\n'
@@ -456,7 +459,12 @@ class _PluginsScreenState extends State<PluginsScreen> {
       '4. Come back here, turn on "Real shell commands", and tap "Grant permission" when asked — this lets Omni Chat run '
       'commands inside Termux.\n\n'
       'Once set up, the assistant can run real shell commands on your device through Termux (python, pip, git, curl, '
-      'whatever you have installed there) — this is your actual device, not a sandbox, so only turn it on if you want that.';
+      'whatever you have installed there) — this is your actual device, not a sandbox, so only turn it on if you want that.\n\n'
+      'To let the assistant also work on a remote Linux machine over SSH, run "pkg install openssh" once in Termux, then '
+      'set up your own key/access to that server as you normally would (ssh-keygen, ssh-copy-id, or an entry in '
+      '~/.ssh/config) — once that works from inside Termux by hand, just ask the assistant to run things on that server '
+      'and it will use the same ssh connection through Termux; it never connects to a server on its own without a key or '
+      'login you already set up yourself.';
 
   Future<void> _termuxHelp() async {
     await showDialog<void>(

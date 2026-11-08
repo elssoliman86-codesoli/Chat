@@ -359,8 +359,13 @@ class ChatEngine implements ToolHost {
           'Do not claim a command ran unless a Termux tool result confirms it. If a Termux tool returns a permission or connection error, report that exact '
           'blocker and stop; do not silently switch to a website or invent output. Keep the current project, working directory and previous command results '
           'in context across follow-up messages. Termux is a real device shell: use read-only commands freely for inspection; ask before destructive file '
-          'changes or package installation. For security work, use only explicitly authorized targets and obey the reviewed scope and program restrictions; '
-          'never attack unrelated systems.');
+          'changes or package installation.\n'
+          'A remote Linux machine the user has their own access to works the same way: once openssh is installed in Termux (pkg install openssh) and the '
+          'user has their own key or login already set up for that host (their ~/.ssh/config, a key made with ssh-keygen/ssh-copy-id, or similar), treat '
+          '"run this on my server" as just another termux_run command — ssh the-host \'the command\' — and keep looping on it exactly like a local command: '
+          'read the real output, decide the next step, continue. Only ever use a host and login the user has already configured themselves; never try a '
+          'password, guess a host, or attempt to reach any machine the user has not already given you working, pre-set-up access to. '
+          'For security work, use only explicitly authorized targets and obey the reviewed scope and program restrictions; never attack unrelated systems.');
     } else {
       b.writeln('\nTermux integration is currently disabled in Settings > Plugins > Shell (Termux). '
           'If the user asks for local Termux actions, do not use web search or a browser and do not pretend to execute commands. '

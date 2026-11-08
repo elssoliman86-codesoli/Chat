@@ -203,6 +203,8 @@ void main() {
     expect(prompt, contains('DEFAULT'));
     expect(prompt, contains('Never wait for the word "Termux"'));
     expect(prompt, contains('Work in a loop, not one shot'));
+    expect(prompt, contains('pkg install openssh'));
+    expect(prompt, contains('never try a password, guess a host'));
   });
 
   test('the system prompt asks for plain replies without emoji, decoration or re-pasted code', () {
