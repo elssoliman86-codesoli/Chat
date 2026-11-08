@@ -49,7 +49,10 @@ class _MarkdownTextState extends State<MarkdownText> {
           code: TextStyle(fontFamily: 'monospace', fontSize: 14.5, backgroundColor: pal.bubble),
           blockquoteDecoration: BoxDecoration(border: Border(left: BorderSide(color: pal.separator, width: 3))),
           tableBorder: TableBorder.all(color: pal.separator, width: 0.5),
-          tableColumnWidth: const MaxColumnWidth(IntrinsicColumnWidth(), FixedColumnWidth(260)),
+          // Columns share the available width equally and wrap their text, instead of each being
+          // sized toward its own content — a phone-width bubble can't grow to fit a wide table, and
+          // an unbounded/near-fixed column width used to push text off-screen or clip it.
+          tableColumnWidth: const FlexColumnWidth(),
           tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           tableHead: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
           tableBody: const TextStyle(fontSize: 15, height: 1.35),

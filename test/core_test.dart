@@ -9,6 +9,7 @@ import 'package:omni_chat/tools/registry.dart';
 import 'package:omni_chat/files/attachment_service.dart';
 import 'package:omni_chat/files/code_export.dart';
 import 'package:omni_chat/llm/llm.dart';
+import 'package:omni_chat/ui/skills_screen.dart';
 
 List<int> _zip(Map<String, String> files) {
   final a = Archive();
@@ -180,6 +181,20 @@ void main() {
     expect(Skill.fromJson(<String, dynamic>{'id': 's5', 'name': 'T5'}).source, '');
   });
 
+  test('skills are grouped into one folder per repo, Built-in first and Manual last', () {
+    final skills = [
+      Skill(id: '1', name: 'Researcher', source: 'Built-in'),
+      Skill(id: '2', name: 'Manual one'),
+      Skill(id: '3', name: 'From zeta repo', source: 'zeta/repo'),
+      Skill(id: '4', name: 'From alpha repo', source: 'alpha/repo'),
+      Skill(id: '5', name: 'Also from alpha', source: 'alpha/repo'),
+    ];
+    final folders = groupSkillsByFolder(skills);
+    expect(folders.keys.toList(), ['Built-in', 'alpha/repo', 'zeta/repo', 'Manual']);
+    expect(folders['alpha/repo']!.map((s) => s.name), ['From alpha repo', 'Also from alpha']);
+    expect(folders['Manual']!.single.name, 'Manual one');
+  });
+
   test('Termux guidance defaults to acting without the word "Termux" and keeps looping until done', () {
     final engine = ChatEngine(AppStore());
     final c = Conversation(id: 'termux-prompt-test');
@@ -188,6 +203,12 @@ void main() {
     expect(prompt, contains('DEFAULT'));
     expect(prompt, contains('Never wait for the word "Termux"'));
     expect(prompt, contains('Work in a loop, not one shot'));
+  });
+
+  test('the system prompt asks for plain replies without emoji, decoration or re-pasted code', () {
+    final prompt = ChatEngine(AppStore()).buildSystem(Conversation(id: 'tone-prompt-test'));
+    expect(prompt, contains('no emoji and no decorative symbols'));
+    expect(prompt, contains('do not also paste the full code again'));
   });
 
   test('messages typed while busy are held in order and are not lost on a stop', () {

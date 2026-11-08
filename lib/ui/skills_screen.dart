@@ -12,6 +12,24 @@ import '../tools/tools.dart';
 import 'kit.dart';
 import 'theme.dart';
 
+/// Groups skills into folders: "Built-in" first, then one folder per GitHub repo (or site) a skill
+/// was installed from, then a single "Manual" folder last for anything written or pasted by hand.
+/// Shared by the Skills management screen and the per-chat skill picker so both show the same folders.
+Map<String, List<Skill>> groupSkillsByFolder(List<Skill> skills) {
+  final folders = <String, List<Skill>>{};
+  for (final s in skills) {
+    final key = s.source.trim().isEmpty ? 'Manual' : s.source.trim();
+    folders.putIfAbsent(key, () => <Skill>[]).add(s);
+  }
+  int rank(String key) => key == 'Built-in' ? 0 : (key == 'Manual' ? 2 : 1);
+  return Map.fromEntries(folders.entries.toList()
+    ..sort((a, b) {
+      final r = rank(a.key).compareTo(rank(b.key));
+      if (r != 0) return r;
+      return a.key.toLowerCase().compareTo(b.key.toLowerCase());
+    }));
+}
+
 class SkillsScreen extends StatelessWidget {
   const SkillsScreen({super.key});
 
@@ -68,29 +86,12 @@ class SkillsScreen extends StatelessWidget {
     if (context.mounted) _edit(context, skill, isNew: true);
   }
 
-  /// Groups skills into folders: "Built-in" first, then one folder per GitHub repo (or site) a skill
-  /// was installed from, then a single "Manual" folder last for anything written or pasted by hand.
-  Map<String, List<Skill>> _folders(List<Skill> skills) {
-    final folders = <String, List<Skill>>{};
-    for (final s in skills) {
-      final key = s.source.trim().isEmpty ? 'Manual' : s.source.trim();
-      folders.putIfAbsent(key, () => <Skill>[]).add(s);
-    }
-    int rank(String key) => key == 'Built-in' ? 0 : (key == 'Manual' ? 2 : 1);
-    return Map.fromEntries(folders.entries.toList()
-      ..sort((a, b) {
-        final r = rank(a.key).compareTo(rank(b.key));
-        if (r != 0) return r;
-        return a.key.toLowerCase().compareTo(b.key.toLowerCase());
-      }));
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: store,
       builder: (context, _) {
-        final folders = _folders(store.skills);
+        final folders = groupSkillsByFolder(store.skills);
         return GroupedPage(
           title: 'Skills',
           actions: [

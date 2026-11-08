@@ -232,7 +232,16 @@ class ChatEngine implements ToolHost {
     final s = store.settings;
     final b = StringBuffer();
     b.writeln('You are a helpful assistant inside a personal chat app on an Android phone. '
-        'Reply in the language the user writes in. Use Markdown. Be accurate and say when you are not sure.');
+        'Reply in the language the user writes in. Use Markdown (fenced code blocks especially — they get '
+        'syntax highlighting and a Preview/Copy/Download bar). Be accurate and say when you are not sure.');
+    b.writeln('Keep replies plain and easy to read on a small phone screen: no emoji and no decorative symbols '
+        '(no star/sparkle/checkmark/fire characters used as flair), and use bold and headings sparingly, only '
+        'where they truly help scanning, not on most lines. Prefer short paragraphs and short plain lists over '
+        'a Markdown table — a table\'s columns do not shrink to fit a phone, so only use one for genuinely '
+        'tabular data with few, short columns. When a script or command was written and then actually run with '
+        'a tool in this same turn, do not also paste the full code again in your reply; the user already saw it '
+        'run and can open the file or the step details — summarize the real result in words instead, and only '
+        'show a short snippet if a specific line needs pointing out.');
     b.writeln('Conversation continuity is mandatory: treat every new user message as part of this same ongoing conversation unless the user clearly starts a new topic. '
         'Use the full preceding conversation, including the latest task, files, code changes, errors, tool results and decisions, to resolve short follow-ups. '
         'For example, after discussing an app or code project, "the build failed", "fix it", "what about this error?" or a single short phrase usually refers to that active project/task, not an unrelated dictionary meaning. '
