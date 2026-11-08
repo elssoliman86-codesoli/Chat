@@ -37,6 +37,8 @@ import 'theme.dart';
       return (title: 'Loaded skill ${arg('name')}', detail: '');
     case 'remember':
       return (title: 'Saved to memory', detail: arg('fact'));
+    case 'forget':
+      return (title: 'Removed from memory', detail: arg('fact'));
     case 'project_create':
       return (title: 'Created project ${arg('name')}', detail: '');
     case 'project_write':

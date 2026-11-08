@@ -46,6 +46,7 @@ class LlmRequest {
     this.temperature,
     this.pdfNative = false,
     this.vision = true,
+    this.reasoningEffort = '',
   });
 
   final String system;
@@ -54,6 +55,9 @@ class LlmRequest {
   final List<ToolSpec> tools;
   final double? temperature;
   final bool pdfNative;
+
+  /// '', 'low', 'high' or 'max' — extra thinking/reasoning effort for this model, if it supports one.
+  final String reasoningEffort;
 
   /// False when the model cannot read images: they are replaced by a short note.
   final bool vision;
@@ -172,7 +176,10 @@ Future<http.StreamedResponse> postStream(
   req.headers.addAll(headers);
   req.headers['Content-Type'] = 'application/json';
   req.body = await compute(_encodeBody, body);
-  final res = await client.send(req).timeout(const Duration(seconds: 90));
+  // Only covers getting the response headers/first byte, not reading the rest of the stream — a slow
+  // "thinking"/reasoning model can sit silently for minutes before its first token, so this has to be
+  // generous rather than a normal request timeout.
+  final res = await client.send(req).timeout(const Duration(minutes: 10));
   if (res.statusCode < 200 || res.statusCode >= 300) {
     final text = await res.stream.bytesToString();
     throw LlmException(errorMessage(res.statusCode, text));

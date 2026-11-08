@@ -45,13 +45,24 @@ class MemoryScreen extends StatelessWidget {
             ),
         ],
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 14),
+            child: Text(
+              store.memory.isEmpty
+                  ? 'Nothing remembered yet. These are lasting facts about you (your name, job, preferences) — not '
+                      'the current chat or project, which the assistant already keeps in context on its own. Say '
+                      '"remember that…" in any chat and the assistant may save one, or add one yourself with +. Every '
+                      'fact here is sent with every future chat (never a temporary one) until you remove it.'
+                  : 'Lasting facts about you, sent with every future chat (never a temporary one). Remove one with the '
+                      'X, or say "forget that…" in a chat.',
+              style: TextStyle(fontSize: 13.5, color: paletteOf(context).secondary),
+            ),
+          ),
           if (store.memory.isEmpty)
             Padding(
-              padding: const EdgeInsets.all(28),
-              child: Text(
-                'Nothing remembered yet.\nSay "remember that…" in a chat, or add facts with +. Temporary chats never use memory.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: paletteOf(context).secondary),
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Icon(CupertinoIcons.lightbulb, size: 36, color: paletteOf(context).secondary.withValues(alpha: 0.5)),
               ),
             )
           else

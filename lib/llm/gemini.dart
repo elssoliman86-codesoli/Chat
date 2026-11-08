@@ -77,6 +77,9 @@ class GeminiClient implements LlmClient {
     final client = http.Client();
     abort.client = client;
     try {
+      // -1 asks Gemini to decide its own thinking budget ("dynamic thinking"); low/high use a fixed
+      // token budget instead.
+      final thinkingBudget = const {'low': 1024, 'high': 8192, 'max': -1}[request.reasoningEffort];
       final body = <String, dynamic>{
         'contents': await encodeContents(request),
         if (request.system.trim().isNotEmpty)
@@ -85,8 +88,11 @@ class GeminiClient implements LlmClient {
               <String, dynamic>{'text': request.system},
             ],
           },
-        if (request.temperature != null)
-          'generationConfig': <String, dynamic>{'temperature': request.temperature},
+        if (request.temperature != null || thinkingBudget != null)
+          'generationConfig': <String, dynamic>{
+            if (request.temperature != null) 'temperature': request.temperature,
+            if (thinkingBudget != null) 'thinkingConfig': <String, dynamic>{'thinkingBudget': thinkingBudget},
+          },
       };
       if (request.tools.isNotEmpty && config.supportsTools) {
         body['tools'] = <Map<String, dynamic>>[

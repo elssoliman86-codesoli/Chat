@@ -15,6 +15,9 @@ import 'web_tools.dart';
 abstract class ToolHost {
   List<Skill> get skills;
   void addMemory(String text);
+  /// Removes every remembered fact whose text contains [query] (case-insensitive); returns how many.
+  int forgetMemory(String query);
+  List<MemoryFact> get memory;
   void loadSkill(Skill skill);
   bool get memoryAllowed;
   String get githubToken;
@@ -658,6 +661,28 @@ final List<ToolDef> builtinTools = <ToolDef>[
       if (fact.isEmpty) return 'Nothing to save.';
       host.addMemory(fact);
       return 'Saved.';
+    },
+  ),
+  ToolDef(
+    id: 'forget',
+    title: 'Forget a remembered fact',
+    spec: ToolSpec(
+      name: 'forget',
+      description: 'Remove a previously remembered fact about the user. Only when the user asks to forget, '
+          'delete or correct something that was saved with remember. Give a short phrase matching the fact '
+          '(or part of it) as it was saved — check the "Things you know about the user" list in your own '
+          'instructions for the exact wording first.',
+      parameters: _schema(<String, Map<String, String>>{
+        'fact': <String, String>{'type': 'string', 'description': 'Text matching the fact to remove (or part of it)'},
+      }, <String>['fact']),
+    ),
+    run: (args, host) async {
+      if (!host.memoryAllowed) return 'Memory is off for this chat.';
+      final query = (args['fact'] ?? '').toString().trim();
+      if (query.isEmpty) return 'Nothing to forget.';
+      final removed = host.forgetMemory(query);
+      if (removed == 0) return 'Nothing saved matched "$query". Saved facts: ${host.memory.map((m) => m.text).join(' | ')}';
+      return 'Removed $removed fact${removed == 1 ? '' : 's'}.';
     },
   ),
 ];

@@ -43,31 +43,36 @@ class _SkillSheetState extends State<_SkillSheet> {
                 style: TextStyle(fontSize: 13, color: pal.secondary)),
           ),
           if (skills.isEmpty) const Padding(padding: EdgeInsets.all(20), child: Text('No skills yet.')),
-          for (final folder in folders.keys) ...[
+          for (final folder in folders.keys)
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 2),
-              child: Text(folder, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: pal.secondary)),
-            ),
-            for (final s in folders[folder]!)
-              SwitchListTile(
-                title: Text(s.name),
-                subtitle: Text(
-                  s.alwaysOn ? 'Always active in every conversation · ${s.description}' : s.description,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                value: s.alwaysOn || widget.chat.activeSkillIds.contains(s.id),
-                onChanged: (on) async {
-                  setState(() {
-                    s.alwaysOn = on;
-                    widget.chat.activeSkillIds.remove(s.id);
-                  });
-                  await store.saveSkills();
-                  store.scheduleSave(widget.chat);
-                  store.changed();
-                },
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: FolderGroup(
+                title: folder,
+                count: folders[folder]!.length,
+                dense: true,
+                children: [
+                  for (final s in folders[folder]!)
+                    SwitchListTile(
+                      title: Text(s.name),
+                      subtitle: Text(
+                        s.alwaysOn ? 'Always active in every conversation · ${s.description}' : s.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      value: s.alwaysOn || widget.chat.activeSkillIds.contains(s.id),
+                      onChanged: (on) async {
+                        setState(() {
+                          s.alwaysOn = on;
+                          widget.chat.activeSkillIds.remove(s.id);
+                        });
+                        await store.saveSkills();
+                        store.scheduleSave(widget.chat);
+                        store.changed();
+                      },
+                    ),
+                ],
               ),
-          ],
+            ),
           ListTile(
             leading: const Icon(CupertinoIcons.slider_horizontal_3),
             title: const Text('Manage skills'),

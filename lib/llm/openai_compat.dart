@@ -99,6 +99,7 @@ class OpenAiCompatClient implements LlmClient {
         'messages': await encodeMessages(request),
         'stream': true,
         if (request.temperature != null) 'temperature': request.temperature,
+        if (request.reasoningEffort.isNotEmpty) 'reasoning_effort': request.reasoningEffort,
       };
       if (request.tools.isNotEmpty && config.supportsTools) {
         body['tools'] = request.tools

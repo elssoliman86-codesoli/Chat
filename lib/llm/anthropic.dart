@@ -82,13 +82,19 @@ class AnthropicClient implements LlmClient {
     final client = http.Client();
     abort.client = client;
     try {
+      // Extended thinking needs its own token budget on top of the actual reply, and the API rejects
+      // temperature/top_p/top_k while it is enabled, so those two are mutually exclusive here.
+      final budget = const {'low': 4096, 'high': 16000, 'max': 32000}[request.reasoningEffort];
       final body = <String, dynamic>{
         'model': request.model,
-        'max_tokens': config.maxTokens,
+        'max_tokens': budget == null ? config.maxTokens : (budget + 4096).clamp(config.maxTokens, 1 << 20),
         'stream': true,
         'messages': await encodeMessages(request),
         if (request.system.trim().isNotEmpty) 'system': request.system,
-        if (request.temperature != null) 'temperature': request.temperature!.clamp(0.0, 1.0),
+        if (budget != null)
+          'thinking': <String, dynamic>{'type': 'enabled', 'budget_tokens': budget}
+        else if (request.temperature != null)
+          'temperature': request.temperature!.clamp(0.0, 1.0),
       };
       if (request.tools.isNotEmpty && config.supportsTools) {
         body['tools'] = request.tools

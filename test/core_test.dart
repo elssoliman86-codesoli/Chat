@@ -213,6 +213,26 @@ void main() {
     expect(prompt, contains('do not also paste the full code again'));
   });
 
+  test('memoryMatching finds facts by a case-insensitive substring, forgetMemory\'s rule', () {
+    final facts = [
+      MemoryFact(id: '1', text: 'Lives in Cairo'),
+      MemoryFact(id: '2', text: 'Likes strong coffee'),
+      MemoryFact(id: '3', text: 'Works as a teacher'),
+    ];
+    expect(memoryMatching(facts, 'COFFEE').map((m) => m.id), ['2']);
+    expect(memoryMatching(facts, 'nothing like this'), isEmpty);
+    expect(memoryMatching(facts, '   '), isEmpty);
+  });
+
+  test('a provider keeps its per-model reasoning effort across a JSON round trip', () {
+    final p = ProviderConfig(id: 'p1', name: 'N', kind: ProviderKind.openai, baseUrl: 'u');
+    expect(p.reasoningEffort, isEmpty);
+    p.reasoningEffort['gpt-5'] = 'high';
+    final back = ProviderConfig.fromJson(p.toJson());
+    expect(back.reasoningEffort['gpt-5'], 'high');
+    expect(LlmRequest(system: '', messages: const [], model: 'm').reasoningEffort, '');
+  });
+
   test('messages typed while busy are held in order and are not lost on a stop', () {
     final engine = ChatEngine(AppStore());
     final c = Conversation(id: 'c1');

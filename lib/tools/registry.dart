@@ -30,9 +30,10 @@ class ToolRegistry {
       if (on) availableIds.add(t.id);
     }
 
-    // 2. Memory tool - only if memory is enabled and not temporary
+    // 2. Memory tools - only if memory is enabled and not temporary
     if (!(st.memoryEnabled && !c.temporary)) {
       availableIds.remove('remember');
+      availableIds.remove('forget');
     }
 
     // 3. Skill tools - add tools required by active skills (but only if their group is enabled)
@@ -114,7 +115,7 @@ class ToolRegistry {
         _ => true,
       };
       if (!on) return false;
-      if (toolId == 'remember' && !(st.memoryEnabled && !c.temporary)) return false;
+      if ((toolId == 'remember' || toolId == 'forget') && !(st.memoryEnabled && !c.temporary)) return false;
       return true;
     }
 

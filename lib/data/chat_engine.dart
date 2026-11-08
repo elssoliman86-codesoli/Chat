@@ -89,6 +89,12 @@ class ChatEngine implements ToolHost {
   void addMemory(String text) => store.addMemory(text);
 
   @override
+  int forgetMemory(String query) => store.forgetMemory(query);
+
+  @override
+  List<MemoryFact> get memory => store.memory;
+
+  @override
   void loadSkill(Skill skill) {
     // A skill the assistant has found worth loading once is kept on for every future message and
     // conversation too, instead of needing use_skill again every time (toggle it off in Skills if not
@@ -631,6 +637,7 @@ class ChatEngine implements ToolHost {
           temperature: store.settings.temperature,
           pdfNative: provider.pdfNative,
           vision: !provider.noVision.contains(c.model),
+          reasoningEffort: provider.reasoningEffort[c.model] ?? '',
         );
         final abort = AbortHandle();
         _abort = abort;

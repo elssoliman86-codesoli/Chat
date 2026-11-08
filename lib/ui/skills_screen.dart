@@ -30,6 +30,65 @@ Map<String, List<Skill>> groupSkillsByFolder(List<Skill> skills) {
     }));
 }
 
+/// One collapsible folder: a tappable header (name, count, chevron) that drops down to reveal its
+/// cells, closed by default — used for both the Skills screen and the per-chat skill picker so a
+/// folder with many skills in it does not take over the whole list.
+class FolderGroup extends StatefulWidget {
+  const FolderGroup({super.key, required this.title, required this.count, required this.children, this.dense = false});
+
+  final String title;
+  final int count;
+  final List<Widget> children;
+
+  /// A lighter header (used in the chat skill-picker sheet) without the rounded card background.
+  final bool dense;
+
+  @override
+  State<FolderGroup> createState() => _FolderGroupState();
+}
+
+class _FolderGroupState extends State<FolderGroup> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = paletteOf(context);
+    final rows = <Widget>[];
+    for (var i = 0; i < widget.children.length; i++) {
+      rows.add(widget.children[i]);
+      if (i < widget.children.length - 1) {
+        rows.add(Divider(height: 0.5, thickness: 0.5, indent: 16, color: p.separator));
+      }
+    }
+    final header = InkWell(
+      onTap: () => setState(() => _open = !_open),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, widget.dense ? 8 : 0, 16, 6),
+        child: Row(children: [
+          Icon(_open ? CupertinoIcons.chevron_down : CupertinoIcons.chevron_right, size: 13, color: p.secondary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(widget.title.toUpperCase(),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: p.secondary)),
+          ),
+          Text('${widget.count}', style: TextStyle(fontSize: 12, color: p.secondary)),
+        ]),
+      ),
+    );
+    if (!_open) return Padding(padding: const EdgeInsets.only(bottom: 4), child: header);
+    final body = widget.dense
+        ? Column(children: widget.children)
+        : ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Container(color: p.cell, child: Column(children: rows)),
+          );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 22),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [header, body]),
+    );
+  }
+}
+
 class SkillsScreen extends StatelessWidget {
   const SkillsScreen({super.key});
 
@@ -109,13 +168,14 @@ class SkillsScreen extends StatelessWidget {
                 'A skill is a set of instructions plus the tools it may use. "Always active" skills are included with '
                 'every message. Others only apply when switched on inside a chat (the bolt) or loaded by the '
                 'assistant itself when it decides one fits. Skills are grouped into a folder per repo they came '
-                'from, plus a Manual folder for the ones written or pasted by hand.',
+                'from, plus a Manual folder for the ones written or pasted by hand — tap a folder to open it.',
                 style: TextStyle(fontSize: 13.5, color: paletteOf(context).secondary),
               ),
             ),
             for (final folder in folders.keys)
-              Group(
-                header: folder == 'Manual' ? 'Manual' : folder,
+              FolderGroup(
+                title: folder,
+                count: folders[folder]!.length,
                 children: [
                   for (final s in folders[folder]!)
                     Cell(

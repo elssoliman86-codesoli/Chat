@@ -129,9 +129,11 @@ class ProviderConfig {
     this.maxTokens = 8192,
     List<String>? noVision,
     Map<String, int>? health,
+    Map<String, String>? reasoningEffort,
   })  : models = models ?? <String>[],
         noVision = noVision ?? <String>[],
-        health = health ?? <String, int>{};
+        health = health ?? <String, int>{},
+        reasoningEffort = reasoningEffort ?? <String, String>{};
 
   final String id;
   String name;
@@ -150,6 +152,11 @@ class ProviderConfig {
   /// Last test result per model: the HTTP status, or 0 for no answer.
   Map<String, int> health;
 
+  /// Extra "thinking"/reasoning effort per model name: '' (off/default), 'low', 'high' or 'max'.
+  /// Only models that support it use it; sent as the provider's own equivalent (reasoning_effort for
+  /// OpenAI-compatible, a thinking token budget for Anthropic and Gemini).
+  Map<String, String> reasoningEffort;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'name': name,
@@ -163,6 +170,7 @@ class ProviderConfig {
         'maxTokens': maxTokens,
         'noVision': noVision,
         'health': health,
+        'reasoningEffort': reasoningEffort,
       };
 
   factory ProviderConfig.fromJson(Map<String, dynamic> j) => ProviderConfig(
@@ -178,6 +186,7 @@ class ProviderConfig {
         maxTokens: (j['maxTokens'] as num?)?.toInt() ?? 8192,
         noVision: (j['noVision'] as List?)?.whereType<String>().toList(),
         health: (j['health'] as Map?)?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
+        reasoningEffort: (j['reasoningEffort'] as Map?)?.map((k, v) => MapEntry(k.toString(), v.toString())),
       );
 }
 

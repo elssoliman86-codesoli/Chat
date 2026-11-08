@@ -11,6 +11,14 @@ import '../plugins/plugin.dart';
 
 String _encodeChat(Map<String, dynamic> json) => jsonEncode(json);
 
+/// The facts in [memory] whose text contains [query] (case-insensitive) — what forgetMemory() removes.
+/// A free function so the matching rule can be tested without touching SharedPreferences.
+List<MemoryFact> memoryMatching(List<MemoryFact> memory, String query) {
+  final needle = query.trim().toLowerCase();
+  if (needle.isEmpty) return const <MemoryFact>[];
+  return memory.where((m) => m.text.toLowerCase().contains(needle)).toList();
+}
+
 /// Everything the app remembers, kept on this phone.
 class AppStore extends ChangeNotifier {
   SharedPreferences? _prefs;
@@ -169,6 +177,15 @@ class AppStore extends ChangeNotifier {
     if (memory.any((m) => m.text.toLowerCase() == clean.toLowerCase())) return;
     memory.add(MemoryFact(id: newId(), text: clean));
     saveMemory();
+  }
+
+  /// Removes every remembered fact whose text contains [query] (case-insensitive); returns how many.
+  int forgetMemory(String query) {
+    final matches = memoryMatching(memory, query);
+    if (matches.isEmpty) return 0;
+    memory.removeWhere(matches.contains);
+    saveMemory();
+    return matches.length;
   }
 
   // ------------------------------------------------------ providers

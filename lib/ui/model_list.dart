@@ -6,6 +6,8 @@ import '../data/model_checker.dart';
 import '../data/services.dart';
 import 'theme.dart';
 
+const Map<String, String> reasoningEffortLabels = {'': 'Off', 'low': 'Low', 'high': 'High', 'max': 'Max'};
+
 String shortModelName(String model) {
   final i = model.lastIndexOf('/');
   return i < 0 ? model : model.substring(i + 1);
@@ -251,6 +253,7 @@ class _ModelListState extends State<ModelList> {
                           ]),
                         ),
                         _badge(m.provider.health[m.model], pal),
+                        _effortButton(m.provider, m.model, pal),
                         if (selected) Icon(CupertinoIcons.checkmark_alt, color: pal.accent, size: 22),
                         IconButton(
                           visualDensity: VisualDensity.compact,
@@ -277,6 +280,47 @@ class _ModelListState extends State<ModelList> {
       decoration: BoxDecoration(color: color.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(8)),
       child: Text(status == 0 ? 'no reply' : '$status',
           style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: color)),
+    );
+  }
+
+  /// Lets the user pick extra "thinking"/reasoning effort for this one model (off/low/high/max),
+  /// remembered per model. Not every model or provider honors it — it is sent as that provider's own
+  /// equivalent (reasoning_effort, or a thinking token budget) and ignored by ones that don't support it.
+  Widget _effortButton(ProviderConfig provider, String model, Palette pal) {
+    final current = provider.reasoningEffort[model] ?? '';
+    return PopupMenuButton<String>(
+      tooltip: 'Thinking effort',
+      initialValue: current,
+      onSelected: (v) {
+        setState(() {
+          if (v.isEmpty) {
+            provider.reasoningEffort.remove(model);
+          } else {
+            provider.reasoningEffort[model] = v;
+          }
+        });
+        store.saveProviders();
+      },
+      itemBuilder: (context) => [
+        for (final e in reasoningEffortLabels.entries)
+          CheckedPopupMenuItem<String>(value: e.key, checked: e.key == current, child: Text(e.value)),
+      ],
+      child: Container(
+        margin: const EdgeInsets.only(right: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          color: (current.isEmpty ? pal.secondary : iosOrange).withValues(alpha: 0.16),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.psychology, size: 13, color: current.isEmpty ? pal.secondary : iosOrange),
+          if (current.isNotEmpty) ...[
+            const SizedBox(width: 2),
+            Text(reasoningEffortLabels[current] ?? current,
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: iosOrange)),
+          ],
+        ]),
+      ),
     );
   }
 
