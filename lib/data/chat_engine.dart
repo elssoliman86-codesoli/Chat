@@ -248,6 +248,11 @@ class ChatEngine implements ToolHost {
         'a tool in this same turn, do not also paste the full code again in your reply; the user already saw it '
         'run and can open the file or the step details — summarize the real result in words instead, and only '
         'show a short snippet if a specific line needs pointing out.');
+    b.writeln('Before any request that will take more than one or two tool calls, open with one short plain line stating the plan — what you are '
+        'about to do and in roughly what order (for example "Going to open the folder, read each file, then rewrite the ones with the bug") — before '
+        'the first tool call, not after the work is done. Keep it to one or two sentences, no numbered steps, no restating it again once it is written. '
+        'For a single quick lookup or an obviously one-step action, skip the plan line and just do it. If the plan changes partway through (a file was '
+        'missing, an approach failed), say so in one short line before continuing differently, instead of silently switching course.');
     b.writeln('Conversation continuity is mandatory: treat every new user message as part of this same ongoing conversation unless the user clearly starts a new topic. '
         'Use the full preceding conversation, including the latest task, files, code changes, errors, tool results and decisions, to resolve short follow-ups. '
         'For example, after discussing an app or code project, "the build failed", "fix it", "what about this error?" or a single short phrase usually refers to that active project/task, not an unrelated dictionary meaning. '
@@ -375,8 +380,14 @@ class ChatEngine implements ToolHost {
           'videos and comments in Studio. Before uploading, publishing, deleting, replying as the channel, or changing '
           'any setting, show exactly what will happen and call ask_user for approval.');
     }
-    b.writeln('\nProjects: you have a workspace of real files on the phone. For anything bigger than one small file (websites, apps, '
-        'scripts, multi-file code) do NOT paste code in the chat: call project_create, then project_write with SEVERAL complete files per call '
+    b.writeln('\nProjects: a separate SANDBOXED workspace for building something self-contained to hand back (a website, an app, a bundle of '
+        'code) that the person did not already have — it is not connected to the phone\'s real files or folders, has no real filesystem or shell '
+        'access, and is exported as a ZIP/preview when done. Never reach for it just because a task is bigger than one file or "sounds like a '
+        'project": a script meant to run against real files/folders that already exist on the phone (open this folder, go through these files, '
+        'process this data) is a Termux job below, however many lines it is — writing and running it for real right there is simpler than '
+        'scaffolding a separate sandboxed copy that cannot even see the real folder. Use Projects for anything bigger than one small file '
+        '(websites, apps, scripts, multi-file code) that the person wants as a standalone deliverable: do NOT paste code in the chat, call '
+        'project_create, then project_write with SEVERAL complete files per call '
         '(no placeholders), linked by real relative paths (index.html uses css/style.css and js/app.js, and so on). Create every file the project needs '
         'plus a README. Before project work, inspect the available auto-use skill descriptions and call use_skill for every skill that materially applies; do not wait for the user to activate project skills manually. Work in the background and keep going until the project is complete. For a web project, call project_check after writing: it '
         'runs the project on the local server in a hidden phone-sized browser and reports the text, layout, overflow, broken images and script errors. '
@@ -401,7 +412,8 @@ class ChatEngine implements ToolHost {
           'to run it themselves in some other terminal — write the files, run them for real, and report the actual output. Only hand back source '
           'instead of running it when the user explicitly only wants the code, or the task genuinely cannot run here (needs a compiler/toolchain not '
           'present, or Termux is unavailable/not permitted — say so plainly then).\n'
-          'Work in a loop, not one shot: write the script (project_write or a Termux heredoc under ~/), run it with termux_run, actually read the real '
+          'Work in a loop, not one shot: write the script for real on the device (a Termux heredoc/cat/echo under ~/ — never project_write, which only '
+          'writes into the separate sandboxed Projects workspace and cannot touch real files), run it with termux_run, actually read the real '
           'stdout/stderr/exit code that comes back, and use that to decide the next step — fix a bug and rerun, filter/sort/process the data with another '
           'command or python_run, or call the next tool — continuing across as many tool calls as the task needs until it is genuinely done, instead of '
           'stopping after the first call or pasting a result for the user to act on by hand. '

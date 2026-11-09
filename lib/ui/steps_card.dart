@@ -130,7 +130,7 @@ class _StepsCardState extends State<StepsCard> {
           borderRadius: BorderRadius.circular(14),
           onTap: () => setState(() => _open = !_open),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(children: [
               if (working)
                 const SizedBox(width: 16, height: 16, child: CupertinoActivityIndicator(radius: 7))
@@ -146,16 +146,32 @@ class _StepsCardState extends State<StepsCard> {
         ),
         if (_open)
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              for (var i = 0; i < calls.length; i++) ...[
-                _step(context, i, calls[i]),
-                if (i < calls.length - 1 && widget.resultOf(calls[i].id) != null) _NeonArrowDown(color: pal.accent),
-              ],
-            ]),
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+            child: ConstrainedBox(
+              // Cap the expanded list so a long run of steps scrolls inside the card instead of
+              // pushing the rest of the chat off-screen.
+              constraints: BoxConstraints(maxHeight: calls.length <= 4 ? double.infinity : 320),
+              child: calls.length <= 4
+                  ? Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: _stepRows(context, calls))
+                  : Scrollbar(
+                      child: SingleChildScrollView(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: _stepRows(context, calls)),
+                      ),
+                    ),
+            ),
           ),
       ]),
     );
+  }
+
+  List<Widget> _stepRows(BuildContext context, List<ToolCall> calls) {
+    final pal = paletteOf(context);
+    return [
+      for (var i = 0; i < calls.length; i++) ...[
+        _step(context, i, calls[i]),
+        if (i < calls.length - 1 && widget.resultOf(calls[i].id) != null) _NeonArrowDown(color: pal.accent),
+      ],
+    ];
   }
 
   Widget _step(BuildContext context, int i, ToolCall c) {
@@ -168,20 +184,20 @@ class _StepsCardState extends State<StepsCard> {
       InkWell(
         onTap: result == null ? null : () => setState(() => open ? _expanded.remove(c.id) : _expanded.add(c.id)),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
+          padding: const EdgeInsets.symmetric(vertical: 3),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(width: 22, child: Text('${i + 1}', style: TextStyle(fontSize: 12.5, color: pal.secondary))),
+            SizedBox(width: 20, child: Text('${i + 1}', style: TextStyle(fontSize: 12, color: pal.secondary))),
             Padding(
-              padding: const EdgeInsets.only(top: 1, right: 8),
+              padding: const EdgeInsets.only(top: 1, right: 7),
               child: running
-                  ? const SizedBox(width: 14, height: 14, child: CupertinoActivityIndicator(radius: 6))
-                  : Icon(_iconFor(c.name), size: 15, color: pal.secondary),
+                  ? const SizedBox(width: 13, height: 13, child: CupertinoActivityIndicator(radius: 6))
+                  : Icon(_iconFor(c.name), size: 14, color: pal.secondary),
             ),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(info.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                Text(info.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
                 if (info.detail.isNotEmpty)
-                  Text(info.detail, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: pal.secondary)),
+                  Text(info.detail, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: pal.secondary)),
               ]),
             ),
             if (result != null) Icon(open ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down, size: 13, color: pal.secondary),
@@ -247,10 +263,10 @@ class _NeonArrowDownState extends State<_NeonArrowDown> with SingleTickerProvide
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: 22),
+      padding: const EdgeInsets.only(left: 20),
       child: SizedBox(
-        width: 22,
-        height: 18,
+        width: 20,
+        height: 10,
         child: AnimatedBuilder(
           animation: _c,
           builder: (context, _) {
@@ -259,14 +275,14 @@ class _NeonArrowDownState extends State<_NeonArrowDown> with SingleTickerProvide
             return Opacity(
               opacity: 0.35 + 0.65 * pulse,
               child: Transform.translate(
-                offset: Offset(0, t * 7 - 1),
+                offset: Offset(0, t * 4 - 1),
                 child: Icon(
                   CupertinoIcons.chevron_down,
-                  size: 13,
+                  size: 10,
                   color: widget.color,
                   shadows: [
-                    Shadow(color: widget.color.withValues(alpha: 0.9), blurRadius: 8),
-                    Shadow(color: widget.color.withValues(alpha: 0.6), blurRadius: 16),
+                    Shadow(color: widget.color.withValues(alpha: 0.9), blurRadius: 6),
+                    Shadow(color: widget.color.withValues(alpha: 0.5), blurRadius: 10),
                   ],
                 ),
               ),

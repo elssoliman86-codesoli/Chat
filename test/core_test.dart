@@ -218,6 +218,23 @@ void main() {
     expect(prompt, contains('never try a password, guess a host'));
   });
 
+  test('Termux guidance never offers project_write (the sandboxed Projects tool) for real on-device scripts', () {
+    final engine = ChatEngine(AppStore());
+    final c = Conversation(id: 'termux-projects-prompt-test');
+    engine.store.settings.termuxTools = true;
+    final prompt = engine.buildSystem(c);
+    final termuxSection = prompt.substring(prompt.indexOf('Termux is the user'));
+    expect(termuxSection, isNot(contains('project_write')));
+    expect(prompt, contains('a script meant to run against real files/folders that already exist on the phone'));
+    expect(prompt, contains('Termux job below'));
+  });
+
+  test('the system prompt tells the model to state a short plan before multi-step tool work', () {
+    final prompt = ChatEngine(AppStore()).buildSystem(Conversation(id: 'plan-prompt-test'));
+    expect(prompt, contains('open with one short plain line stating the plan'));
+    expect(prompt, contains('skip the plan line and just do it'));
+  });
+
   test('the system prompt asks for plain replies without emoji, decoration or re-pasted code', () {
     final prompt = ChatEngine(AppStore()).buildSystem(Conversation(id: 'tone-prompt-test'));
     expect(prompt, contains('no emoji and no decorative symbols'));
