@@ -21,6 +21,7 @@ class MessageView extends StatefulWidget {
     required this.message,
     required this.streaming,
     this.onRegenerate,
+    this.onContinue,
     this.onEditUser,
     this.onEditReply,
     this.resultOf,
@@ -32,6 +33,9 @@ class MessageView extends StatefulWidget {
   final String? Function(String callId)? resultOf;
   final bool streaming;
   final VoidCallback? onRegenerate;
+
+  /// Shown instead of a cut-off reply: resumes it rather than starting over.
+  final VoidCallback? onContinue;
 
   /// Called with the new text when the person edits their own message and sends it again.
   final void Function(String text)? onEditUser;
@@ -58,10 +62,14 @@ class _MessageViewState extends State<MessageView> {
 
   @override
   Widget build(BuildContext context) {
-    // Only this message redraws while its text streams in.
-    return ListenableBuilder(
-      listenable: message,
-      builder: (context, _) => message.role == 'user' ? _user(context) : _assistant(context),
+    // Only this message redraws while its text streams in, and RepaintBoundary keeps that repaint from
+    // spilling into the rest of the scrolling list (most noticeable on the emerald theme, whose bubbles
+    // are no longer plain opaque fills).
+    return RepaintBoundary(
+      child: ListenableBuilder(
+        listenable: message,
+        builder: (context, _) => message.role == 'user' ? _user(context) : _assistant(context),
+      ),
     );
   }
 
@@ -251,6 +259,15 @@ class _MessageViewState extends State<MessageView> {
                 : streaming
                     ? MarkdownText(text: message.text, onLink: (u) => openLink(context, u))
                     : SelectionArea(child: MarkdownText(text: message.text, onLink: (u) => openLink(context, u))),
+          if (message.error && widget.onContinue != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: FilledButton.icon(
+                onPressed: widget.onContinue,
+                icon: const Icon(CupertinoIcons.arrow_turn_down_right, size: 16),
+                label: const Text('Continue'),
+              ),
+            ),
           if (!empty && !streaming)
             Padding(
               padding: const EdgeInsets.only(top: 6),

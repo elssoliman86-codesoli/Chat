@@ -278,6 +278,8 @@ class ChatMessage extends ChangeNotifier {
     List<String>? sources,
     this.note = '',
     List<String>? outputs,
+    this.thinking = '',
+    this.thinkingSignature = '',
   })  : id = id ?? newId(),
         sources = sources ?? <String>[],
         outputs = outputs ?? <String>[],
@@ -310,6 +312,12 @@ class ChatMessage extends ChangeNotifier {
   /// Files the assistant made for the person (a project ZIP, say), each as "name<TAB>path".
   final List<String> outputs;
 
+  /// Anthropic extended-thinking block for this reply (its text and signature), kept so it can be
+  /// replayed verbatim if the conversation continues with thinking still enabled — required for the
+  /// next request to that model to stay valid when the earlier turn used a tool.
+  String thinking;
+  String thinkingSignature;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'role': role,
@@ -324,6 +332,8 @@ class ChatMessage extends ChangeNotifier {
         'sources': sources,
         'note': note,
         'outputs': outputs,
+        'thinking': thinking,
+        'thinkingSignature': thinkingSignature,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
@@ -346,6 +356,8 @@ class ChatMessage extends ChangeNotifier {
         sources: (j['sources'] as List?)?.whereType<String>().toList(),
         note: j['note'] as String? ?? '',
         outputs: (j['outputs'] as List?)?.whereType<String>().toList(),
+        thinking: j['thinking'] as String? ?? '',
+        thinkingSignature: j['thinkingSignature'] as String? ?? '',
       );
 }
 
@@ -510,6 +522,9 @@ class AppSettings {
     this.githubToken = '',
     this.pluginGmail = false,
     this.pluginCanva = false,
+    this.pluginFacebook = false,
+    this.pluginInstagram = false,
+    this.pluginYoutube = false,
     this.imageReader = 'helper',
     this.helperProviderId = '',
     this.helperModel = '',
@@ -541,6 +556,11 @@ class AppSettings {
   String githubToken;
   bool pluginGmail;
   bool pluginCanva;
+
+  /// Facebook, Instagram and YouTube through the built-in browser, the same pattern as Gmail/Canva.
+  bool pluginFacebook;
+  bool pluginInstagram;
+  bool pluginYoutube;
 
   /// How images are read for models that cannot see: off, helper (another model) or lens (Google Lens in the browser).
   String imageReader;
@@ -576,6 +596,9 @@ class AppSettings {
         'githubToken': githubToken,
         'pluginGmail': pluginGmail,
         'pluginCanva': pluginCanva,
+        'pluginFacebook': pluginFacebook,
+        'pluginInstagram': pluginInstagram,
+        'pluginYoutube': pluginYoutube,
         'imageReader': imageReader,
         'helperProviderId': helperProviderId,
         'helperModel': helperModel,
@@ -601,6 +624,9 @@ class AppSettings {
         githubToken: j['githubToken'] as String? ?? '',
         pluginGmail: j['pluginGmail'] as bool? ?? false,
         pluginCanva: j['pluginCanva'] as bool? ?? false,
+        pluginFacebook: j['pluginFacebook'] as bool? ?? false,
+        pluginInstagram: j['pluginInstagram'] as bool? ?? false,
+        pluginYoutube: j['pluginYoutube'] as bool? ?? false,
         imageReader: j['imageReader'] as String? ?? 'helper',
         helperProviderId: j['helperProviderId'] as String? ?? '',
         helperModel: j['helperModel'] as String? ?? '',

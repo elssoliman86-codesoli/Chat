@@ -34,11 +34,15 @@ class Palette extends ThemeExtension<Palette> {
   /// Glass look: translucent surfaces over a gradient, glossy icon tiles.
   final bool glass;
 
+  // Opaque, not translucent: on a scrolling list every bubble/cell used to be alpha-blended over the
+  // gradient backdrop on every frame, which is far more GPU work than an opaque fill and is what made
+  // this theme feel noticeably heavier than the others while messages streamed in. These are the same
+  // colors pre-blended once (flattened over the gradient's tone) instead of blended live each frame.
   static const Palette emerald = Palette(
-    bubble: Color(0x3334D399),
-    field: Color(0x2EFFFFFF),
+    bubble: Color(0xFF105A43),
+    field: Color(0xFF345F53),
     grouped: Color(0x00000000),
-    cell: Color(0x24FFFFFF),
+    cell: Color(0xFF2A574A),
     separator: Color(0x2EFFFFFF),
     secondary: Color(0xFF9FD8C3),
     accent: Color(0xFF34D399),

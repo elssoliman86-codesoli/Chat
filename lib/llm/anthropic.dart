@@ -7,6 +7,15 @@ import '../core/models.dart';
 import '../files/attachment_io.dart';
 import 'llm.dart';
 
+/// Token budget per reasoning-effort level, and the only levels extended thinking accepts.
+const Map<String, int> anthropicThinkingBudgets = {'low': 4096, 'high': 16000, 'max': 32000};
+
+/// A pending (still streaming) extended-thinking block.
+class _PendingThinking {
+  final StringBuffer text = StringBuffer();
+  final StringBuffer signature = StringBuffer();
+}
+
 /// Anthropic Messages API.
 class AnthropicClient implements LlmClient {
   AnthropicClient(this.config);
@@ -63,6 +72,12 @@ class AnthropicClient implements LlmClient {
         out.add(<String, dynamic>{'role': 'user', 'content': blocks});
       } else if (m.role == 'assistant') {
         final blocks = <Map<String, dynamic>>[];
+        // A thinking block must come first and be replayed exactly as received, or the API rejects the
+        // next turn once thinking has been used alongside a tool call — only when thinking is still on
+        // for this very request, since the API does not want it otherwise.
+        if (anthropicThinkingBudgets.containsKey(r.reasoningEffort) && m.thinking.isNotEmpty) {
+          blocks.add(<String, dynamic>{'type': 'thinking', 'thinking': m.thinking, 'signature': m.thinkingSignature});
+        }
         if (m.text.isNotEmpty) blocks.add(<String, dynamic>{'type': 'text', 'text': m.text});
         for (final c in m.toolCalls) {
           blocks.add(<String, dynamic>{'type': 'tool_use', 'id': c.id, 'name': c.name, 'input': c.args});
@@ -84,7 +99,7 @@ class AnthropicClient implements LlmClient {
     try {
       // Extended thinking needs its own token budget on top of the actual reply, and the API rejects
       // temperature/top_p/top_k while it is enabled, so those two are mutually exclusive here.
-      final budget = const {'low': 4096, 'high': 16000, 'max': 32000}[request.reasoningEffort];
+      final budget = anthropicThinkingBudgets[request.reasoningEffort];
       final body = <String, dynamic>{
         'model': request.model,
         'max_tokens': budget == null ? config.maxTokens : (budget + 4096).clamp(config.maxTokens, 1 << 20),
@@ -107,6 +122,7 @@ class AnthropicClient implements LlmClient {
       }
       final res = await postStream(client, Uri.parse(joinUrl(config.baseUrl, '/v1/messages')), _headers, body);
       final pending = <int, PendingToolCall>{};
+      final pendingThinking = <int, _PendingThinking>{};
       await for (final data in sseData(res)) {
         if (data.isEmpty || data == '[DONE]') continue;
         Map<String, dynamic> j;
@@ -121,6 +137,8 @@ class AnthropicClient implements LlmClient {
           final block = j['content_block'];
           if (block is Map && block['type'] == 'tool_use') {
             pending[index] = PendingToolCall(block['id']?.toString() ?? '', block['name']?.toString() ?? '');
+          } else if (block is Map && block['type'] == 'thinking') {
+            pendingThinking[index] = _PendingThinking();
           }
         } else if (type == 'content_block_delta') {
           final d = j['delta'];
@@ -129,11 +147,17 @@ class AnthropicClient implements LlmClient {
               yield TextDelta(d['text'] as String);
             } else if (d['type'] == 'input_json_delta' && d['partial_json'] is String) {
               pending[index]?.args.write(d['partial_json'] as String);
+            } else if (d['type'] == 'thinking_delta' && d['thinking'] is String) {
+              pendingThinking[index]?.text.write(d['thinking'] as String);
+            } else if (d['type'] == 'signature_delta' && d['signature'] is String) {
+              pendingThinking[index]?.signature.write(d['signature'] as String);
             }
           }
         } else if (type == 'content_block_stop') {
           final p = pending.remove(index);
           if (p != null && p.name.isNotEmpty) yield ToolCallDone(p.build());
+          final t = pendingThinking.remove(index);
+          if (t != null) yield ThinkingDone(t.text.toString(), t.signature.toString());
         } else if (type == 'error') {
           final err = j['error'];
           throw LlmException(err is Map ? (err['message']?.toString() ?? 'Provider error') : 'Provider error');

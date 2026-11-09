@@ -186,6 +186,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           resultOf: (id) => results[id],
                           streaming: streaming,
                           onRegenerate: isLastAssistant && !running ? () => engine.regenerate(c) : null,
+                          onContinue: isLastAssistant && !running && m.error ? () => engine.continueReply(c) : null,
                           onEditUser: m.role == 'user' && !running ? (t) => engine.editAndResend(c, m.id, t) : null,
                           onEditReply: m.role == 'assistant' && !running && !m.error
                               ? (t) {

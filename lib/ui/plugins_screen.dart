@@ -24,8 +24,7 @@ class PluginsScreen extends StatefulWidget {
 class _PluginsScreenState extends State<PluginsScreen> {
   late final TextEditingController _token = TextEditingController(text: store.settings.githubToken);
   bool _show = false;
-  bool? _termuxInstalled;
-  bool? _termuxPermission;
+  TermuxDiagnosis? _termux;
 
   @override
   void initState() {
@@ -34,9 +33,8 @@ class _PluginsScreenState extends State<PluginsScreen> {
   }
 
   Future<void> _refreshTermux() async {
-    final installed = await TermuxService.instance.isInstalled();
-    final perm = installed ? await TermuxService.instance.hasPermission() : false;
-    if (mounted) setState(() { _termuxInstalled = installed; _termuxPermission = perm; });
+    final d = await TermuxService.instance.diagnose();
+    if (mounted) setState(() => _termux = d);
   }
 
   @override
@@ -115,12 +113,22 @@ class _PluginsScreenState extends State<PluginsScreen> {
       ),
       Group(
         header: 'Shell (Termux)',
-        footer: _termuxInstalled == false
-            ? 'Termux is not installed. It is a separate, free terminal app — install it, open it once, then come back here.'
-            : _termuxPermission == false
-                ? 'Termux is installed but has not granted this app permission to run commands in it yet.'
-                : 'Unlike every other tool, this reaches a real Linux shell on your own device — whatever you actually have '
-                    'installed there (python, git, pip, compilers, ...) — not a sandbox. Off by default on purpose.',
+        footer: _termux == null
+            ? 'Unlike every other tool, this reaches a real Linux shell on your own device — whatever you actually have '
+                'installed there (python, git, pip, compilers, ...) — not a sandbox. Off by default on purpose.'
+            : !_termux!.installed
+                ? 'Termux is not installed. It is a separate, free terminal app — install it, open it once, then come back here.'
+                : !_termux!.supportsAutomation
+                    ? 'This exact Termux app (${_termux!.versionName.isEmpty ? 'installed' : 'version ${_termux!.versionName}'}) '
+                        'does not support the connection this needs — it is missing even if you grant every permission, because '
+                        'that specific build predates it. Your Termux itself and its own packages still work completely fine for '
+                        'you to use by hand; this is only about this app being able to reach it automatically. Tap "How Termux '
+                        'setup works" below for exactly what to do.'
+                    : !_termux!.hasPermission
+                        ? 'Termux is installed and supports the connection, but has not granted this app permission to run '
+                            'commands in it yet.'
+                        : 'Unlike every other tool, this reaches a real Linux shell on your own device — whatever you actually '
+                            'have installed there (python, git, pip, compilers, ...) — not a sandbox. Off by default on purpose.',
         children: [
           SwitchCell(
             title: 'Real shell commands',
@@ -131,21 +139,27 @@ class _PluginsScreenState extends State<PluginsScreen> {
             onChanged: (v) => set(() => s.termuxTools = v),
           ),
           Cell(
-            title: _termuxInstalled == null
+            title: _termux == null
                 ? 'Checking Termux…'
-                : _termuxInstalled == false
+                : !_termux!.installed
                     ? 'Termux is not installed'
-                    : _termuxPermission == false
-                        ? 'Grant permission'
-                        : 'Termux is ready',
-            subtitle: _termuxInstalled == true && _termuxPermission == true ? null : 'Tap to check again',
-            icon: _termuxInstalled == true && _termuxPermission == true
+                    : !_termux!.supportsAutomation
+                        ? 'This Termux build is too old for this'
+                        : !_termux!.hasPermission
+                            ? 'Grant permission'
+                            : 'Termux is ready',
+            subtitle: _termux?.installed == true && _termux!.supportsAutomation && _termux!.hasPermission
+                ? null
+                : 'Tap to check again',
+            icon: _termux?.installed == true && _termux!.supportsAutomation && _termux!.hasPermission
                 ? CupertinoIcons.checkmark_circle
                 : CupertinoIcons.exclamationmark_circle,
-            color: _termuxInstalled == true && _termuxPermission == true ? iosGreen : iosOrange,
+            color: _termux?.installed == true && _termux!.supportsAutomation && _termux!.hasPermission
+                ? iosGreen
+                : iosOrange,
             chevron: true,
             onTap: () async {
-              if (_termuxInstalled == true && _termuxPermission == false) {
+              if ((_termux?.installed ?? false) && (_termux?.supportsAutomation ?? false) && !(_termux?.hasPermission ?? false)) {
                 await TermuxService.instance.requestPermission();
               }
               await _refreshTermux();
@@ -195,6 +209,59 @@ class _PluginsScreenState extends State<PluginsScreen> {
             color: iosGray,
             chevron: true,
             onTap: () => showBrowser(context, address: 'https://www.canva.com'),
+          ),
+        ],
+      ),
+      Group(
+        header: 'Social media',
+        footer: 'Also through the built-in browser: sign in once in the panel and the sign-in stays. Useful for posting, '
+            'scheduling, checking a page or channel, following up on comments, or researching a product or topic. The '
+            'assistant asks before publishing, following, messaging or anything else that is not just reading.',
+        children: [
+          SwitchCell(
+            title: 'Facebook',
+            subtitle: 'Pages, posts, groups, Marketplace',
+            icon: CupertinoIcons.person_2,
+            color: const Color(0xFF1877F2),
+            value: s.pluginFacebook,
+            onChanged: (v) => set(() => s.pluginFacebook = v),
+          ),
+          Cell(
+            title: 'Sign in to Facebook',
+            icon: CupertinoIcons.arrow_up_right_square,
+            color: iosGray,
+            chevron: true,
+            onTap: () => showBrowser(context, address: 'https://www.facebook.com'),
+          ),
+          SwitchCell(
+            title: 'Instagram',
+            subtitle: 'Posts, Stories, DMs, profiles',
+            icon: CupertinoIcons.camera,
+            color: const Color(0xFFE1306C),
+            value: s.pluginInstagram,
+            onChanged: (v) => set(() => s.pluginInstagram = v),
+          ),
+          Cell(
+            title: 'Sign in to Instagram',
+            icon: CupertinoIcons.arrow_up_right_square,
+            color: iosGray,
+            chevron: true,
+            onTap: () => showBrowser(context, address: 'https://www.instagram.com'),
+          ),
+          SwitchCell(
+            title: 'YouTube',
+            subtitle: 'Search, watch, manage your own channel/Studio',
+            icon: CupertinoIcons.play_rectangle,
+            color: const Color(0xFFFF0000),
+            value: s.pluginYoutube,
+            onChanged: (v) => set(() => s.pluginYoutube = v),
+          ),
+          Cell(
+            title: 'Sign in to YouTube',
+            icon: CupertinoIcons.arrow_up_right_square,
+            color: iosGray,
+            chevron: true,
+            onTap: () => showBrowser(context, address: 'https://www.youtube.com'),
           ),
         ],
       ),
@@ -447,10 +514,19 @@ class _PluginsScreenState extends State<PluginsScreen> {
   }
 
   static const String _termuxHelpText =
-      '0. If you already have "Termux" installed from the Play Store, uninstall it first — that build is abandoned '
-      '(its own package repos are broken, so even its own pkg/apt stops working) and it is signed differently from '
-      'the real one, so the F-Droid/GitHub version below cannot just "update" over it; they have to be fully removed '
-      'first or the new install will fail or silently create a second, separate Termux with its own empty home folder.\n\n'
+      'If Termux is on this phone from the Play Store: its own terminal and packages can keep working completely fine '
+      'for you by hand — that is not what\'s broken. What is missing is a specific piece (the "RUN_COMMAND" permission '
+      'and service) this app needs to reach Termux automatically, and the Play Store build is frozen at a version from '
+      'before that existed (Termux was removed from the Play Store years ago and never updated there again), so no '
+      'amount of granting permission adds it — it genuinely is not in that build. There is no way around this from this '
+      'app\'s side; the only fix is installing the real, current build.\n\n'
+      '0. First, back up what is already in Termux so nothing is lost: open Termux and run\n'
+      '   tar -czf /sdcard/termux-backup.tar.gz -C /data/data/com.termux/files home\n'
+      '   (or just "termux-backup ~/termux-backup.tar.gz" if that command exists on your version) — this saves it to '
+      'your phone\'s normal storage, outside Termux, so it survives the next step.\n\n'
+      'Then uninstall the Play Store Termux — it is signed differently from the real build, so the one below cannot '
+      '"update" over it; they have to be fully removed first or the new install will fail or silently create a second, '
+      'separate Termux with its own empty home folder.\n\n'
       '1. Install Termux from F-Droid or its GitHub releases page — that is the real, maintained, latest build.\n\n'
       '2. Open Termux once so it finishes setting itself up.\n\n'
       '3. In Termux, run:\n'
@@ -460,11 +536,17 @@ class _PluginsScreenState extends State<PluginsScreen> {
       'commands inside Termux.\n\n'
       'Once set up, the assistant can run real shell commands on your device through Termux (python, pip, git, curl, '
       'whatever you have installed there) — this is your actual device, not a sandbox, so only turn it on if you want that.\n\n'
-      'To let the assistant also work on a remote Linux machine over SSH, run "pkg install openssh" once in Termux, then '
-      'set up your own key/access to that server as you normally would (ssh-keygen, ssh-copy-id, or an entry in '
-      '~/.ssh/config) — once that works from inside Termux by hand, just ask the assistant to run things on that server '
-      'and it will use the same ssh connection through Termux; it never connects to a server on its own without a key or '
-      'login you already set up yourself.';
+      'Reaching another shell over SSH works the same way for any of these, once you have set up your own access to it '
+      'by hand first — run "pkg install openssh" once in Termux, then just ask the assistant to run things there and it '
+      'uses that same ssh connection:\n\n'
+      '• A Linux server or a Kali Linux machine: set up your key/access as usual (ssh-keygen, ssh-copy-id, or an entry '
+      'in ~/.ssh/config), then "ssh your-host \'command\'" is just another Termux command.\n\n'
+      '• Windows Command Prompt or PowerShell: install the "OpenSSH Server" optional Windows feature on that PC '
+      '(Settings > Apps > Optional features > Add a feature > OpenSSH Server), start the "OpenSSH SSH Server" service, '
+      'and add your own public key to that Windows account. "ssh user@that-pc cmd /c ..." runs a Command Prompt command; '
+      '"ssh user@that-pc powershell -command \'...\'" runs a PowerShell one.\n\n'
+      'In every case: it never connects to a server or PC on its own without a key or login you already set up yourself '
+      '— never a guessed host, never a password.';
 
   Future<void> _termuxHelp() async {
     await showDialog<void>(

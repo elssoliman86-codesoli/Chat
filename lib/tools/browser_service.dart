@@ -158,7 +158,8 @@ class BrowserService {
   var tag=e.tagName.toLowerCase();var type=e.getAttribute('type')||'';var extra='';
   if(tag==='a'){extra=' -> '+(e.getAttribute('href')||'').slice(0,70);}
   if((tag==='input'||tag==='textarea')&&e.value&&type!=='password'){extra=' value="'+String(e.value).slice(0,40)+'"';}
-  out.push('['+n+'] '+tag+(type?'('+type+')':'')+(t?' "'+t+'"':'')+extra);n++;}
+  var r=e.getBoundingClientRect();var box=' @'+Math.round(r.left)+','+Math.round(r.top)+' '+Math.round(r.width)+'x'+Math.round(r.height);
+  out.push('['+n+'] '+tag+(type?'('+type+')':'')+(t?' "'+t+'"':'')+extra+box);n++;}
  var text=(document.body?document.body.innerText:'').replace(/\n{3,}/g,'\n\n').slice(0,3500);
  return JSON.stringify({title:document.title,url:location.href,text:text,elements:out});
 })()
@@ -183,7 +184,8 @@ class BrowserService {
       final b = StringBuffer();
       b.writeln('Page: ${j['title']}\n${j['url']}\n');
       b.writeln('Visible text:\n${j['text']}\n');
-      b.writeln('Elements (use the number with browser_click / browser_type):');
+      b.writeln('Elements (use the number with browser_click / browser_type; "@x,y wxh" is its position and size on '
+          'screen in pixels — use it to tell whether two elements overlap):');
       for (final e in (j['elements'] as List)) {
         b.writeln(e);
       }

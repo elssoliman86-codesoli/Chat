@@ -146,7 +146,10 @@ class _StepsCardState extends State<StepsCard> {
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              for (var i = 0; i < calls.length; i++) _step(context, i, calls[i]),
+              for (var i = 0; i < calls.length; i++) ...[
+                _step(context, i, calls[i]),
+                if (i < calls.length - 1 && widget.resultOf(calls[i].id) != null) _NeonArrowDown(color: pal.accent),
+              ],
             ]),
           ),
       ]),
@@ -217,5 +220,58 @@ class _StepsCardState extends State<StepsCard> {
           ]),
         ),
     ]);
+  }
+}
+
+/// A small neon chevron that pulses and drifts downward between two finished steps, showing the plan
+/// is actively moving to the next one.
+class _NeonArrowDown extends StatefulWidget {
+  const _NeonArrowDown({required this.color});
+  final Color color;
+
+  @override
+  State<_NeonArrowDown> createState() => _NeonArrowDownState();
+}
+
+class _NeonArrowDownState extends State<_NeonArrowDown> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 22),
+      child: SizedBox(
+        width: 22,
+        height: 18,
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (context, _) {
+            final t = _c.value;
+            final pulse = 1 - (2 * t - 1).abs(); // 0 -> 1 -> 0 triangle wave
+            return Opacity(
+              opacity: 0.35 + 0.65 * pulse,
+              child: Transform.translate(
+                offset: Offset(0, t * 7 - 1),
+                child: Icon(
+                  CupertinoIcons.chevron_down,
+                  size: 13,
+                  color: widget.color,
+                  shadows: [
+                    Shadow(color: widget.color.withValues(alpha: 0.9), blurRadius: 8),
+                    Shadow(color: widget.color.withValues(alpha: 0.6), blurRadius: 16),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 }

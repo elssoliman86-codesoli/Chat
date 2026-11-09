@@ -37,6 +37,14 @@ class LlmDone extends LlmEvent {
   const LlmDone();
 }
 
+/// An Anthropic extended-thinking block finished. Kept on the reply and replayed in the next request
+/// (see ChatMessage.thinking) so a tool-calling conversation stays valid while thinking is enabled.
+class ThinkingDone extends LlmEvent {
+  const ThinkingDone(this.text, this.signature);
+  final String text;
+  final String signature;
+}
+
 class LlmRequest {
   const LlmRequest({
     required this.system,

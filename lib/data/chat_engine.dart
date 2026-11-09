@@ -322,7 +322,34 @@ class ChatEngine implements ToolHost {
     if (st.pluginCanva && st.pluginBrowser) {
       b.writeln('\nCanva: work in https://www.canva.com with the browser tools. Search templates, create the design, edit '
           'text, and use Share or Download only after the person approves. If Canva shows a sign-in page, call ask_user '
-          'so they sign in in the panel.');
+          'so they sign in in the panel. Canva is a visual canvas, not a plain web page: every new text box or element it '
+          'adds lands in roughly the same default spot (usually centered), on top of whatever is already there, until you '
+          'move it — the element list you get back includes each element\'s position and size (x, y, width, height) for '
+          'exactly this reason. After adding each piece of text or object, check its box against the ones already placed; '
+          'if two overlap, drag the new one clear (drag or arrow-key it, or use its position handles) before adding the '
+          'next piece, instead of adding everything first and hoping it is not stacked. When a template already has '
+          'labeled placeholder fields, edit those in place rather than adding new floating text boxes. Before telling the '
+          'person it is done, read the page once more and confirm nothing overlaps and the layout looks like an organized '
+          'invoice/poster/design, not text piled in one corner.');
+    }
+    if (st.pluginFacebook && st.pluginBrowser) {
+      b.writeln('\nFacebook: work in https://www.facebook.com with the browser tools. Read posts, pages, groups or '
+          'Marketplace listings, draft a post or comment, and search for people, pages or products when asked. Before '
+          'publishing a post/comment, sending a message or friending/following anyone, show exactly what will be posted '
+          'and call ask_user for approval. If it shows a sign-in or checkpoint page, call ask_user so the person handles '
+          'it in the panel.');
+    }
+    if (st.pluginInstagram && st.pluginBrowser) {
+      b.writeln('\nInstagram: work in https://www.instagram.com with the browser tools. Browse profiles, posts and '
+          'reels, and draft a caption or DM when asked. Before publishing a post/Story, sending a DM or following anyone, '
+          'show exactly what will happen and call ask_user for approval. If it shows a sign-in or checkpoint page, call '
+          'ask_user so the person handles it in the panel.');
+    }
+    if (st.pluginYoutube && st.pluginBrowser) {
+      b.writeln('\nYouTube: work in https://www.youtube.com (and https://studio.youtube.com for the person\'s own '
+          'channel) with the browser tools. Search and watch, read comments, and check the person\'s own channel stats, '
+          'videos and comments in Studio. Before uploading, publishing, deleting, replying as the channel, or changing '
+          'any setting, show exactly what will happen and call ask_user for approval.');
     }
     b.writeln('\nProjects: you have a workspace of real files on the phone. For anything bigger than one small file (websites, apps, '
         'scripts, multi-file code) do NOT paste code in the chat: call project_create, then project_write with SEVERAL complete files per call '
@@ -366,11 +393,13 @@ class ChatEngine implements ToolHost {
           'blocker and stop; do not silently switch to a website or invent output. Keep the current project, working directory and previous command results '
           'in context across follow-up messages. Termux is a real device shell: use read-only commands freely for inspection; ask before destructive file '
           'changes or package installation.\n'
-          'A remote Linux machine the user has their own access to works the same way: once openssh is installed in Termux (pkg install openssh) and the '
-          'user has their own key or login already set up for that host (their ~/.ssh/config, a key made with ssh-keygen/ssh-copy-id, or similar), treat '
-          '"run this on my server" as just another termux_run command — ssh the-host \'the command\' — and keep looping on it exactly like a local command: '
-          'read the real output, decide the next step, continue. Only ever use a host and login the user has already configured themselves; never try a '
-          'password, guess a host, or attempt to reach any machine the user has not already given you working, pre-set-up access to. '
+          'A remote machine the user has their own access to works the same way, whatever shell it runs — a Linux server, a Kali Linux box, or a Windows '
+          'PC\'s Command Prompt or PowerShell (via its OpenSSH Server feature): once openssh is installed in Termux (pkg install openssh) and the user '
+          'has their own key or login already set up for that host (their ~/.ssh/config, a key made with ssh-keygen/ssh-copy-id, or similar), treat '
+          '"run this on my server/PC" as just another termux_run command — ssh the-host \'the command\' for Linux/Kali, or ssh user@host cmd /c \'...\' / '
+          'ssh user@host powershell -command \'...\' for Windows — and keep looping on it exactly like a local command: read the real output, decide the '
+          'next step, continue. Only ever use a host and login the user has already configured themselves; never try a password, guess a host, or attempt '
+          'to reach any machine the user has not already given you working, pre-set-up access to. '
           'For security work, use only explicitly authorized targets and obey the reviewed scope and program restrictions; never attack unrelated systems.');
     } else {
       b.writeln('\nTermux integration is currently disabled in Settings > Plugins > Shell (Termux). '
@@ -420,6 +449,35 @@ class ChatEngine implements ToolHost {
     }
     if (last < 0) return;
     c.messages.removeRange(last + 1, c.messages.length);
+    store.scheduleSave(c);
+    store.changed();
+    await _run(c);
+  }
+
+  /// Resumes a reply that was cut off (a dropped connection, a timeout, a provider error) instead of
+  /// throwing it away: keeps whatever text it managed to produce and asks the model to pick up exactly
+  /// where it stopped, rather than regenerate() which restarts the whole answer from scratch.
+  Future<void> continueReply(Conversation c) async {
+    if (busy) return;
+    if (c.messages.isEmpty) return;
+    final last = c.messages.last;
+    if (last.role != 'assistant' || !last.error) return;
+    // The failed attempt appends "\n\n⚠️ <error>" to whatever text it had — strip that back off so the
+    // model continues from its real partial answer, not from a sentence ending in an error notice.
+    final markIdx = last.text.lastIndexOf('\n\n⚠️ ');
+    final partial = markIdx >= 0 ? last.text.substring(0, markIdx) : '';
+    if (partial.trim().isEmpty && last.toolCalls.isEmpty) {
+      // Nothing real was produced (the whole text was just the error) — drop the empty bubble instead
+      // of handing the raw exception back to the model as if it were its own prior reply.
+      c.messages.remove(last);
+    } else {
+      last.text = partial;
+      last.error = false;
+      last.touch();
+    }
+    c.messages.add(ChatMessage(
+        role: 'user',
+        text: 'Continue your previous answer exactly from where it was cut off. Do not repeat anything already said and do not restart.'));
     store.scheduleSave(c);
     store.changed();
     await _run(c);
@@ -649,6 +707,9 @@ class ChatEngine implements ToolHost {
             } else if (event is ToolCallDone) {
               reply.toolCalls.add(event.call);
               store.changed();
+            } else if (event is ThinkingDone) {
+              reply.thinking = event.text;
+              reply.thinkingSignature = event.signature;
             }
           }
         } catch (e) {

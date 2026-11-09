@@ -8,6 +8,7 @@ import 'package:omni_chat/data/chat_engine.dart';
 import 'package:omni_chat/tools/registry.dart';
 import 'package:omni_chat/files/attachment_service.dart';
 import 'package:omni_chat/files/code_export.dart';
+import 'package:omni_chat/llm/anthropic.dart';
 import 'package:omni_chat/llm/llm.dart';
 import 'package:omni_chat/ui/skills_screen.dart';
 
@@ -231,6 +232,48 @@ void main() {
     final back = ProviderConfig.fromJson(p.toJson());
     expect(back.reasoningEffort['gpt-5'], 'high');
     expect(LlmRequest(system: '', messages: const [], model: 'm').reasoningEffort, '');
+  });
+
+  test('Anthropic replays a reply\'s thinking block only while thinking is still enabled for the request', () async {
+    final client = AnthropicClient(ProviderConfig(id: 'p', name: 'N', kind: ProviderKind.anthropic, baseUrl: 'https://example.invalid'));
+    final reply = ChatMessage(role: 'assistant', text: 'The answer is 4.');
+    reply.thinking = '2+2 is 4 because...';
+    reply.thinkingSignature = 'sig123';
+    final history = [ChatMessage(role: 'user', text: 'What is 2+2?'), reply];
+
+    final on = await client.encodeMessages(LlmRequest(system: '', messages: history, model: 'claude', reasoningEffort: 'high'));
+    final onBlocks = (on.last['content'] as List).cast<Map<String, dynamic>>();
+    expect(onBlocks.first['type'], 'thinking');
+    expect(onBlocks.first['thinking'], '2+2 is 4 because...');
+    expect(onBlocks.first['signature'], 'sig123');
+    expect(onBlocks.last['type'], 'text');
+
+    final off = await client.encodeMessages(LlmRequest(system: '', messages: history, model: 'claude'));
+    final offBlocks = (off.last['content'] as List).cast<Map<String, dynamic>>();
+    expect(offBlocks.any((b) => b['type'] == 'thinking'), false);
+  });
+
+  test('continueReply resumes a cut-off answer in place instead of discarding it', () async {
+    final engine = ChatEngine(AppStore());
+    final c = Conversation(id: 'continue-test');
+    c.messages.add(ChatMessage(role: 'user', text: 'hi'));
+    c.messages.add(ChatMessage(role: 'assistant', text: 'Here is part of the answer...\n\n⚠️ Connection lost', error: true));
+    await engine.continueReply(c);
+    expect(c.messages[1].text, 'Here is part of the answer...');
+    expect(c.messages[1].error, false);
+    expect(c.messages[2].role, 'user');
+    expect(c.messages[2].text, contains('Continue your previous answer'));
+  });
+
+  test('continueReply drops the bubble instead of resuming when nothing real was produced', () async {
+    final engine = ChatEngine(AppStore());
+    final c = Conversation(id: 'continue-empty-test');
+    c.messages.add(ChatMessage(role: 'user', text: 'hi'));
+    c.messages.add(ChatMessage(role: 'assistant', text: 'Exception: timed out', error: true));
+    await engine.continueReply(c);
+    // The empty failed bubble is dropped; only the continue nudge (and whatever the retry itself adds) follows.
+    expect(c.messages[1].role, 'user');
+    expect(c.messages[1].text, contains('Continue your previous answer'));
   });
 
   test('messages typed while busy are held in order and are not lost on a stop', () {

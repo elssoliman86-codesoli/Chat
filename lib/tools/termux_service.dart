@@ -1,5 +1,34 @@
 import 'package:flutter/services.dart';
 
+/// What was found out about the installed Termux app: whether it is installed, which version, and
+/// whether that exact build can support the RUN_COMMAND automation this app needs at all (separate
+/// from whether permission has been granted yet).
+class TermuxDiagnosis {
+  const TermuxDiagnosis({
+    required this.installed,
+    required this.versionName,
+    required this.permissionDeclared,
+    required this.serviceExists,
+    required this.hasPermission,
+    required this.supportsAutomation,
+  });
+
+  final bool installed;
+  final String versionName;
+
+  /// False means this build is too old to even declare the RUN_COMMAND permission — a dead end no
+  /// matter how many times the permission is granted.
+  final bool permissionDeclared;
+
+  /// False means this build never shipped the RunCommandService component this app calls into.
+  final bool serviceExists;
+  final bool hasPermission;
+
+  /// True only when both the permission and the service exist in this exact build, i.e. it is at
+  /// least as new as the one Termux has shipped on F-Droid/GitHub since RUN_COMMAND was added.
+  final bool supportsAutomation;
+}
+
 /// Runs real shell commands on the phone through Termux (a separate, free terminal app the person
 /// installs themselves), using Termux's own RUN_COMMAND intent API. This is NOT a sandbox: it is the
 /// person's actual Linux environment on their own device, with whatever they have installed there
@@ -35,6 +64,34 @@ class TermuxService {
       return await _channel.invokeMethod<bool>('requestPermission') ?? false;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Distinguishes "Termux is installed but hasn't granted the permission yet" from "this exact
+  /// Termux build cannot support RUN_COMMAND at all" (old, long-unmaintained builds, most commonly the
+  /// one that used to be on the Play Store, predate the permission and service this needs entirely —
+  /// no amount of granting permission fixes that; the terminal itself still works fine by hand).
+  Future<TermuxDiagnosis> diagnose() async {
+    try {
+      final r = await _channel.invokeMethod<Map<Object?, Object?>>('diagnose');
+      final m = (r ?? const <Object?, Object?>{}).map((k, v) => MapEntry(k.toString(), v));
+      return TermuxDiagnosis(
+        installed: m['installed'] as bool? ?? false,
+        versionName: m['versionName'] as String? ?? '',
+        permissionDeclared: m['permissionDeclared'] as bool? ?? false,
+        serviceExists: m['serviceExists'] as bool? ?? false,
+        hasPermission: m['hasPermission'] as bool? ?? false,
+        supportsAutomation: m['supportsAutomation'] as bool? ?? false,
+      );
+    } catch (_) {
+      return const TermuxDiagnosis(
+        installed: false,
+        versionName: '',
+        permissionDeclared: false,
+        serviceExists: false,
+        hasPermission: false,
+        supportsAutomation: false,
+      );
     }
   }
 

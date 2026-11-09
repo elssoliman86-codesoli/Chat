@@ -48,6 +48,7 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "isInstalled" -> result.success(TermuxBridge.isInstalled(this))
                     "hasPermission" -> result.success(TermuxBridge.hasPermission(this))
+                    "diagnose" -> result.success(TermuxBridge.diagnose(this))
                     "requestPermission" -> {
                         if (TermuxBridge.hasPermission(this)) {
                             result.success(true)
@@ -171,6 +172,46 @@ object TermuxBridge {
 
     fun hasPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, PERMISSION) == PackageManager.PERMISSION_GRANTED
+
+    // Distinguishes "not granted yet" from "this exact Termux build cannot support RUN_COMMAND at all" —
+    // some very old builds (long unmaintained, e.g. stuck on Google Play before it was delisted there)
+    // predate RUN_COMMAND entirely, so they never declare its permission or service no matter how many
+    // times the user grants or re-grants anything. In that case the terminal itself can work fine for
+    // the person by hand while still never being reachable from this app.
+    fun diagnose(context: Context): Map<String, Any> {
+        val installed = isInstalled(context)
+        var versionName = ""
+        var versionCode = 0L
+        if (installed) {
+            try {
+                val info = context.packageManager.getPackageInfo(PACKAGE, 0)
+                versionName = info.versionName ?: ""
+                versionCode = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+            } catch (e: Exception) {
+            }
+        }
+        val permissionDeclared = try {
+            context.packageManager.getPermissionInfo(PERMISSION, 0)
+            true
+        } catch (e: Exception) {
+            false
+        }
+        val serviceExists = try {
+            context.packageManager.getServiceInfo(android.content.ComponentName(PACKAGE, SERVICE), 0)
+            true
+        } catch (e: Exception) {
+            false
+        }
+        return mapOf(
+            "installed" to installed,
+            "versionName" to versionName,
+            "versionCode" to versionCode,
+            "permissionDeclared" to permissionDeclared,
+            "serviceExists" to serviceExists,
+            "hasPermission" to hasPermission(context),
+            "supportsAutomation" to (permissionDeclared && serviceExists)
+        )
+    }
 
     // Registered once per process on the application context (not the activity), so it keeps working
     // across activity recreation (rotation, the system recreating the activity, ...) instead of being
