@@ -16,7 +16,9 @@ MAIN = """package PKG
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -62,6 +64,14 @@ class MainActivity : FlutterActivity() {
                         val workdir = call.argument<String>("workdir")
                         val timeoutMs = (call.argument<Any>("timeoutMs") as? Number)?.toLong() ?: 60000L
                         TermuxBridge.run(this, command, workdir, timeoutMs, result)
+                    }
+                    "openAppSettings" -> {
+                        // Android stops showing the runtime permission dialog after it has been denied enough
+                        // times, with no further signal to the app — the only way back in is this settings page.
+                        val i = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                        i.data = Uri.fromParts("package", packageName, null)
+                        startActivity(i)
+                        result.success(null)
                     }
                     else -> result.notImplemented()
                 }

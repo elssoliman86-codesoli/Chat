@@ -214,6 +214,12 @@ void main() {
     expect(prompt, contains('do not also paste the full code again'));
   });
 
+  test('the system prompt tells the model to save lasting facts on its own, not just when asked', () {
+    final prompt = ChatEngine(AppStore()).buildSystem(Conversation(id: 'memory-prompt-test'));
+    expect(prompt, contains('Keep building that list yourself as you go, without being asked'));
+    expect(prompt, contains('call remember right then'));
+  });
+
   test('memoryMatching finds facts by a case-insensitive substring, forgetMemory\'s rule', () {
     final facts = [
       MemoryFact(id: '1', text: 'Lives in Cairo'),

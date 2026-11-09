@@ -58,13 +58,24 @@ class TermuxService {
     }
   }
 
-  /// Shows the system permission dialog. Returns once answered (granted or denied).
+  /// Shows the system permission dialog. Returns once answered (granted or denied). Android stops
+  /// showing this dialog at all after a few denials, with no way for the app to tell — if tapping the
+  /// in-app button visibly does nothing, that is almost always this, and openAppSettings() below is the
+  /// only remaining way in.
   Future<bool> requestPermission() async {
     try {
       return await _channel.invokeMethod<bool>('requestPermission') ?? false;
     } catch (_) {
       return false;
     }
+  }
+
+  /// Opens this app's own system settings page, where the person can grant the permission by hand when
+  /// Android has stopped showing the request dialog.
+  Future<void> openAppSettings() async {
+    try {
+      await _channel.invokeMethod<void>('openAppSettings');
+    } catch (_) {}
   }
 
   /// Distinguishes "Termux is installed but hasn't granted the permission yet" from "this exact

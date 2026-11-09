@@ -280,11 +280,20 @@ class ChatEngine implements ToolHost {
     if (s.customInstructions.trim().isNotEmpty) {
       b.writeln('\nInstructions from the user:\n${s.customInstructions.trim()}');
     }
-    if (s.memoryEnabled && !c.temporary && store.memory.isNotEmpty) {
-      b.writeln('\nThings you know about the user:');
-      for (final m in store.memory) {
-        b.writeln('- ${m.text}');
+    if (s.memoryEnabled && !c.temporary) {
+      if (store.memory.isNotEmpty) {
+        b.writeln('\nThings you know about the user:');
+        for (final m in store.memory) {
+          b.writeln('- ${m.text}');
+        }
       }
+      b.writeln('\nKeep building that list yourself as you go, without being asked: the moment the user mentions a '
+          'lasting fact about themselves — their name, job, timezone, a device or setup they have, a recurring '
+          'project, a preference for how you work or reply — call remember right then, in the same turn, even if '
+          'answering something else is the main point of the message. This is what lets you understand a vague or '
+          'underspecified question later instead of asking the user to repeat context they already gave you once. '
+          'Do not save one-off details that only matter for this single message, and do not ask permission first — '
+          'just save it; the user can always tell you to forget something.');
     }
     final active = _activeSkills(c);
     for (final sk in active) {

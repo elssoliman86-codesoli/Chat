@@ -165,6 +165,18 @@ class _PluginsScreenState extends State<PluginsScreen> {
               await _refreshTermux();
             },
           ),
+          if ((_termux?.installed ?? false) && (_termux?.supportsAutomation ?? false) && !(_termux?.hasPermission ?? false))
+            Cell(
+              title: 'Nothing happened when you tapped above?',
+              subtitle: 'Open the permission by hand in system settings',
+              icon: CupertinoIcons.gear_alt,
+              color: iosGray,
+              chevron: true,
+              onTap: () async {
+                await TermuxService.instance.openAppSettings();
+                await _refreshTermux();
+              },
+            ),
           Cell(
             title: 'How Termux setup works',
             icon: CupertinoIcons.question_circle,
@@ -533,7 +545,9 @@ class _PluginsScreenState extends State<PluginsScreen> {
       '   echo "allow-external-apps = true" >> ~/.termux/termux.properties\n'
       '   termux-reload-settings\n\n'
       '4. Come back here, turn on "Real shell commands", and tap "Grant permission" when asked — this lets Omni Chat run '
-      'commands inside Termux.\n\n'
+      'commands inside Termux. If tapping it does not show any popup at all, Android has likely already stopped asking '
+      '(it does this after a couple of denials, with no way for an app to detect it) — use the "Open it by hand in '
+      'system settings" option that appears right under that button instead.\n\n'
       'Once set up, the assistant can run real shell commands on your device through Termux (python, pip, git, curl, '
       'whatever you have installed there) — this is your actual device, not a sandbox, so only turn it on if you want that.\n\n'
       'Reaching another shell over SSH works the same way for any of these, once you have set up your own access to it '

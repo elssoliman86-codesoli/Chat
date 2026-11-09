@@ -179,6 +179,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         }
                         final m = item as ChatMessage;
                         final isLastAssistant = m.role == 'assistant' && c.messages.indexOf(m) == lastAssistant;
+                        // lastAssistant above skips error/empty replies on purpose (nothing to regenerate from), so
+                        // it is never true for the one error bubble Continue needs — check the raw last message instead.
+                        final isLastMessage = c.messages.isNotEmpty && identical(m, c.messages.last);
                         final streaming = running && identical(m, c.messages.last);
                         return MessageView(
                           key: ValueKey(m.id),
@@ -186,7 +189,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           resultOf: (id) => results[id],
                           streaming: streaming,
                           onRegenerate: isLastAssistant && !running ? () => engine.regenerate(c) : null,
-                          onContinue: isLastAssistant && !running && m.error ? () => engine.continueReply(c) : null,
+                          onContinue: isLastMessage && !running && m.error ? () => engine.continueReply(c) : null,
                           onEditUser: m.role == 'user' && !running ? (t) => engine.editAndResend(c, m.id, t) : null,
                           onEditReply: m.role == 'assistant' && !running && !m.error
                               ? (t) {
