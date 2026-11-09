@@ -331,15 +331,30 @@ class ChatEngine implements ToolHost {
     if (st.pluginCanva && st.pluginBrowser) {
       b.writeln('\nCanva: work in https://www.canva.com with the browser tools. Search templates, create the design, edit '
           'text, and use Share or Download only after the person approves. If Canva shows a sign-in page, call ask_user '
-          'so they sign in in the panel. Canva is a visual canvas, not a plain web page: every new text box or element it '
-          'adds lands in roughly the same default spot (usually centered), on top of whatever is already there, until you '
-          'move it — the element list you get back includes each element\'s position and size (x, y, width, height) for '
-          'exactly this reason. After adding each piece of text or object, check its box against the ones already placed; '
-          'if two overlap, drag the new one clear (drag or arrow-key it, or use its position handles) before adding the '
-          'next piece, instead of adding everything first and hoping it is not stacked. When a template already has '
-          'labeled placeholder fields, edit those in place rather than adding new floating text boxes. Before telling the '
-          'person it is done, read the page once more and confirm nothing overlaps and the layout looks like an organized '
+          'so they sign in in the panel. Canva is a visual canvas, not a plain web page, and that changes how you must '
+          'work: every new text box or element lands in roughly the same default spot (usually centered), on top of '
+          'whatever is already there, until it is moved — the element list gives each visible element\'s position and '
+          'size (x, y, width, height) for exactly this reason, and browser_drag is what actually moves one (clicking or '
+          'typing alone cannot reposition anything). After adding each piece of text or object, check its box against '
+          'the ones already placed, and if two overlap, browser_drag the new one clear by roughly the overlap amount '
+          'before adding the next piece — do not add everything first and hope it is not stacked. Also important: once '
+          'a text box is deselected it usually stops appearing as its own numbered element (only the one actively being '
+          'edited does, since Canva only turns an element interactive in the DOM while it is open) — so reposition each '
+          'one right after creating it, while it is still addressable, not later. When a template already has labeled '
+          'placeholder fields, edit those in place rather than adding new floating text boxes — far more reliable than '
+          'positioning anything by hand. browser_drag is a simulated drag and some pages ignore script-driven drags '
+          'entirely; read the element\'s position again right after dragging it, and if it genuinely did not move, say '
+          'so plainly to the person instead of claiming it is fixed — do not report success you have not actually '
+          'confirmed by reading the position back. Before telling the person it is done, read the page once more and '
+          'confirm nothing overlaps and the layout looks like an organized '
           'invoice/poster/design, not text piled in one corner.');
+      if (st.termuxTools) {
+        b.writeln('If the person just needs an exact, organized document (an invoice, a flyer with precise numbers/table) '
+            'and does not specifically need it inside Canva, writing it with Python (e.g. Pillow or reportlab, drawing '
+            'every position yourself) through Termux and handing back the finished image/PDF is far more reliable than '
+            'fighting Canva\'s canvas through browser automation — prefer that route for anything that must be exactly '
+            'right, and save Canva for when the person wants to keep editing it visually themselves afterward.');
+      }
     }
     if (st.pluginFacebook && st.pluginBrowser) {
       b.writeln('\nFacebook: work in https://www.facebook.com with the browser tools. Read posts, pages, groups or '

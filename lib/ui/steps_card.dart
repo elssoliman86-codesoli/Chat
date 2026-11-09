@@ -27,6 +27,8 @@ import 'theme.dart';
       return (title: 'Clicked $what', detail: '');
     case 'browser_type':
       return (title: 'Typed into element ${arg('id')}', detail: arg('text'));
+    case 'browser_drag':
+      return (title: 'Dragged element ${arg('id')}', detail: '(${arg('dx')}, ${arg('dy')})');
     case 'browser_scroll':
       return (title: 'Scrolled ${arg('direction') == 'up' ? 'up' : 'down'}', detail: '');
     case 'browser_back':

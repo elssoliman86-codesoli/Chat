@@ -174,6 +174,15 @@ void main() {
     expect(names, contains('termux_run'));
   });
 
+  test('browser_drag is exposed only once the browser plugin is on, alongside the other browser tools', () {
+    final store = AppStore();
+    final conversation = Conversation(id: 'browser-drag-test');
+    final provider = ProviderConfig(id: 'p', name: 'Test', kind: ProviderKind.openai, baseUrl: 'https://example.invalid/v1');
+    expect(ToolRegistry.specsFor(conversation, store, provider).map((t) => t.name), isNot(contains('browser_drag')));
+    store.settings.pluginBrowser = true;
+    expect(ToolRegistry.specsFor(conversation, store, provider).map((t) => t.name), contains('browser_drag'));
+  });
+
   test('a skill installed from GitHub keeps its repo as a folder; a manual one has none', () {
     final fromRepo = Skill(id: 's3', name: 'From repo', source: 'octocat/hello-world');
     expect(Skill.fromJson(fromRepo.toJson()).source, 'octocat/hello-world');

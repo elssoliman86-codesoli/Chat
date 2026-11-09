@@ -524,6 +524,25 @@ final List<ToolDef> builtinTools = <ToolDef>[
     run: (a, host) => BrowserService.instance.type(_i(a, 'id'), _s(a, 'text'), a['submit'] == true),
   ),
   ToolDef(
+    id: 'browser_drag',
+    title: 'Browser: drag',
+    group: 'browser',
+    spec: ToolSpec(
+      name: 'browser_drag',
+      description: 'Drag the element with this number by dx, dy screen pixels (right/down positive). Use this to move '
+          'an object on a visual canvas (a design tool, a slider, a reorderable list) — click/type alone cannot '
+          'reposition anything. Read the element\'s position first (from browser_read\'s "@x,y wxh") to judge the '
+          'distance. May not work on pages that specifically reject script-driven drags; if the page looks unchanged '
+          'afterwards, say so instead of claiming it moved.',
+      parameters: _obj(<String, dynamic>{
+        'id': <String, dynamic>{'type': 'integer', 'description': 'Element number'},
+        'dx': <String, dynamic>{'type': 'integer', 'description': 'Horizontal distance in pixels, right is positive'},
+        'dy': <String, dynamic>{'type': 'integer', 'description': 'Vertical distance in pixels, down is positive'},
+      }, <String>['id', 'dx', 'dy']),
+    ),
+    run: (a, host) => BrowserService.instance.drag(_i(a, 'id'), _i(a, 'dx'), _i(a, 'dy')),
+  ),
+  ToolDef(
     id: 'browser_scroll',
     title: 'Browser: scroll',
     group: 'browser',

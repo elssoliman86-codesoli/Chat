@@ -236,6 +236,34 @@ class BrowserService {
         return '$r\n\n${await snapshot()}';
       });
 
+  /// Drags an element by (dx, dy) screen pixels — a real pointer-down, several pointer-moves, then
+  /// pointer-up, not a single jump, since most drag-based UIs (design canvases, sliders, reorderable
+  /// lists) only register movement that comes as a sequence of small steps. Note: because these are
+  /// script-dispatched events (not real touches), a page that specifically checks event.isTrusted before
+  /// accepting a drag will ignore this — that is a real limit of browser automation, not a bug here.
+  Future<String> drag(int id, int dx, int dy) => _serial(() async {
+        _revealIfWanted();
+        final r = await _eval('''
+(function(id,dx,dy){
+ var e=document.querySelector('[data-oid="'+id+'"]');if(!e)return 'Element '+id+' not found. Read the page again.';
+ e.scrollIntoView({block:'center'});
+ var r=e.getBoundingClientRect();var x0=r.left+r.width/2,y0=r.top+r.height/2;var steps=12;
+ function fire(type,x,y){
+  var mouseType=type.replace('pointer','mouse');
+  var opts={bubbles:true,cancelable:true,view:window,clientX:x,clientY:y,button:0,buttons:1};
+  try{e.dispatchEvent(new PointerEvent(type,Object.assign({pointerId:1,pointerType:'mouse',isPrimary:true},opts)));}catch(err){}
+  e.dispatchEvent(new MouseEvent(mouseType,opts));
+ }
+ fire('pointerdown',x0,y0);
+ for(var i=1;i<=steps;i++){fire('pointermove',x0+dx*i/steps,y0+dy*i/steps);}
+ fire('pointerup',x0+dx,y0+dy);
+ return 'Dragged element '+id+' by ('+dx+', '+dy+') pixels.';
+})($id,$dx,$dy)
+''');
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+        return '$r\n\n${await snapshot()}';
+      });
+
   Future<String> scroll(bool down) => _serial(() async {
         await _eval('window.scrollBy(0, ${down ? '' : '-'}Math.round(innerHeight*0.8)); "ok"');
         await Future<void>.delayed(const Duration(milliseconds: 600));
