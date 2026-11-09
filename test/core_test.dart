@@ -224,7 +224,10 @@ void main() {
     engine.store.settings.termuxTools = true;
     final prompt = engine.buildSystem(c);
     final termuxSection = prompt.substring(prompt.indexOf('Termux is the user'));
-    expect(termuxSection, isNot(contains('project_write')));
+    // The old wording offered project_write as an interchangeable option for a real on-device
+    // script; it must now only appear as an explicit warning not to use it here.
+    expect(termuxSection, isNot(contains('(project_write or a Termux heredoc')));
+    expect(termuxSection, contains('never project_write'));
     expect(prompt, contains('a script meant to run against real files/folders that already exist on the phone'));
     expect(prompt, contains('Termux job below'));
   });
