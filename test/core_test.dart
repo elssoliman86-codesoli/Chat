@@ -10,7 +10,9 @@ import 'package:omni_chat/files/attachment_service.dart';
 import 'package:omni_chat/files/code_export.dart';
 import 'package:omni_chat/llm/anthropic.dart';
 import 'package:omni_chat/llm/llm.dart';
+import 'package:omni_chat/ui/plan_banner.dart';
 import 'package:omni_chat/ui/skills_screen.dart';
+import 'package:omni_chat/ui/steps_card.dart';
 
 List<int> _zip(Map<String, String> files) {
   final a = Archive();
@@ -184,6 +186,51 @@ void main() {
     expect(ToolRegistry.specsFor(conversation, store, provider).map((t) => t.name), isNot(contains('browser_drag')));
   });
 
+  test('set_plan is always available, unlike the plugin-gated tools', () {
+    final store = AppStore();
+    final conversation = Conversation(id: 'set-plan-test');
+    final provider = ProviderConfig(id: 'p', name: 'Test', kind: ProviderKind.openai, baseUrl: 'https://example.invalid/v1');
+    final names = ToolRegistry.specsFor(conversation, store, provider).map((t) => t.name);
+    expect(names, contains('set_plan'));
+    store.settings.pluginBrowser = false;
+    store.settings.termuxTools = false;
+    store.settings.webTools = false;
+    expect(ToolRegistry.specsFor(conversation, store, provider).map((t) => t.name), contains('set_plan'));
+  });
+
+  test('stepsOnly keeps real steps for the Steps card but drops set_plan bookkeeping calls', () {
+    final calls = [
+      ToolCall(id: '1', name: 'web_search', args: {'query': 'x'}),
+      ToolCall(id: '2', name: 'set_plan', args: {
+        'steps': ['a', 'b'],
+        'current': 0,
+      }),
+      ToolCall(id: '3', name: 'use_skill', args: {'name': 'demo'}),
+    ];
+    final kept = stepsOnly(calls).map((c) => c.name);
+    expect(kept, containsAll(['web_search', 'use_skill']));
+    expect(kept, isNot(contains('set_plan')));
+  });
+
+  test('latestPlanAndSkill picks the most recent set_plan and use_skill calls across the turn', () {
+    final older = ChatMessage(role: 'assistant', text: '', toolCalls: [
+      ToolCall(id: '1', name: 'set_plan', args: {
+        'steps': ['a', 'b'],
+        'current': 0,
+      }),
+      ToolCall(id: '2', name: 'use_skill', args: {'name': 'first'}),
+    ]);
+    final newer = ChatMessage(role: 'assistant', text: '', toolCalls: [
+      ToolCall(id: '3', name: 'set_plan', args: {
+        'steps': ['a', 'b'],
+        'current': 1,
+      }),
+    ]);
+    final result = latestPlanAndSkill([older, newer]);
+    expect(result.plan!.id, '3');
+    expect(result.skill!.id, '2');
+  });
+
   test('a skill installed from GitHub keeps its repo as a folder; a manual one has none', () {
     final fromRepo = Skill(id: 's3', name: 'From repo', source: 'octocat/hello-world');
     expect(Skill.fromJson(fromRepo.toJson()).source, 'octocat/hello-world');
@@ -232,10 +279,10 @@ void main() {
     expect(prompt, contains('Termux job below'));
   });
 
-  test('the system prompt tells the model to state a short plan before multi-step tool work', () {
+  test('the system prompt tells the model to call set_plan before multi-step tool work and keep it updated', () {
     final prompt = ChatEngine(AppStore()).buildSystem(Conversation(id: 'plan-prompt-test'));
-    expect(prompt, contains('open with one short plain line stating the plan'));
-    expect(prompt, contains('skip the plan line and just do it'));
+    expect(prompt, contains('call set_plan first, before any other tool call'));
+    expect(prompt, contains('call it again with the same steps and an updated current every time a step actually finishes'));
   });
 
   test('the system prompt asks for plain replies without emoji, decoration or re-pasted code', () {

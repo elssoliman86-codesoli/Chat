@@ -11,6 +11,7 @@ import 'message_view.dart';
 import 'model_list.dart';
 import 'model_picker.dart';
 import '../tools/python_runtime.dart';
+import 'plan_banner.dart';
 import 'plugins_screen.dart';
 import 'project_screens.dart';
 import 'steps_card.dart';
@@ -90,6 +91,11 @@ class _ChatScreenState extends State<ChatScreen> {
         }
         final running = engine.running == c;
         final lastAssistant = c.messages.lastIndexWhere((m) => m.role == 'assistant' && !m.error && m.text.isNotEmpty);
+        // The plan and skill-load banners are pinned above the chat (not the Steps card at the bottom),
+        // and only reflect the current turn: everything since the person's last message.
+        final lastUserIdx = c.messages.lastIndexWhere((m) => m.role == 'user');
+        final turnMessages = lastUserIdx >= 0 ? c.messages.sublist(lastUserIdx + 1) : c.messages;
+        final planAndSkill = latestPlanAndSkill(turnMessages);
         return Scaffold(
           drawer: HistoryDrawer(onNewChat: _newChat),
           appBar: AppBar(
@@ -222,6 +228,24 @@ class _ChatScreenState extends State<ChatScreen> {
             ]),
             Positioned.fill(child: DockLayer(onAttach: (page) => _composer.currentState?.addPage(page))),
             const PythonRuntimeMount(),
+            if (planAndSkill.skill != null || planAndSkill.plan != null)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  if (planAndSkill.skill != null)
+                    SkillLoadBanner(
+                      key: ValueKey('skill-${planAndSkill.skill!.id}'),
+                      name: (planAndSkill.skill!.args['name'] ?? '').toString(),
+                      result: results[planAndSkill.skill!.id],
+                    ),
+                  if (planAndSkill.plan != null)
+                    // Keyed by the conversation, not the call id: set_plan is called again every time a
+                    // step finishes, and keying on that would reset the open/closed state on every update.
+                    PlanBanner(key: ValueKey('plan-${c.id}'), call: planAndSkill.plan!),
+                ]),
+              ),
           ]),
         );
       },
@@ -241,10 +265,14 @@ class _StepGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: Listenable.merge(messages),
-      builder: (context, _) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: StepsCard(calls: [for (final m in messages) ...m.toolCalls], resultOf: resultOf, live: live),
-      ),
+      builder: (context, _) {
+        final calls = stepsOnly([for (final m in messages) ...m.toolCalls]);
+        if (calls.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: StepsCard(calls: calls, resultOf: resultOf, live: live),
+        );
+      },
     );
   }
 }

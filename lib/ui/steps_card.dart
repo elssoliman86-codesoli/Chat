@@ -5,6 +5,12 @@ import 'package:flutter/services.dart';
 import '../core/models.dart';
 import 'theme.dart';
 
+/// Tool calls that are bookkeeping for other UI (the plan banner) rather than a real step the user
+/// did something with — keep these out of the Steps card so it only shows real work.
+const Set<String> _nonStepTools = {'set_plan'};
+
+List<ToolCall> stepsOnly(List<ToolCall> calls) => calls.where((c) => !_nonStepTools.contains(c.name)).toList();
+
 /// A plain-words title and detail for one tool call.
 ({String title, String detail}) describeCall(ToolCall c, String? result) {
   String arg(String k) => (c.args[k] ?? '').toString();

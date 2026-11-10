@@ -243,8 +243,8 @@ class _MessageViewState extends State<MessageView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (message.toolCalls.isNotEmpty)
-            StepsCard(calls: message.toolCalls, resultOf: widget.resultOf ?? (_) => null, live: streaming),
+          if (stepsOnly(message.toolCalls).isNotEmpty)
+            StepsCard(calls: stepsOnly(message.toolCalls), resultOf: widget.resultOf ?? (_) => null, live: streaming),
           for (final o in message.outputs) _OutputCard(entry: o),
           if (message.note.isNotEmpty) _NoteCard(note: message.note),
           if (message.sources.isNotEmpty) _sources(context),

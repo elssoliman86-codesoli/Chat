@@ -474,6 +474,35 @@ final List<ToolDef> builtinTools = <ToolDef>[
     run: (a, host) => host.askUser(_s(a, 'question')),
   ),
   ToolDef(
+    id: 'set_plan',
+    title: 'Show the plan',
+    group: 'core',
+    spec: ToolSpec(
+      name: 'set_plan',
+      description: 'Show the person a short structured plan for this task: a card above the chat listing the real steps, with a '
+          'checkmark on finished ones, a spinner on the one in progress, and the rest shown ahead — tap to open it. Call it once near '
+          'the start of a multi-step task with the full ordered list of steps and current set to 0, then call it again with the same '
+          'steps and an updated current every time a step actually finishes (current equal to the number of steps once everything is '
+          'done). Never use it for a single quick action, and never also narrate the plan in your reply text — this replaces that.',
+      parameters: _obj(<String, dynamic>{
+        'steps': <String, dynamic>{
+          'type': 'array',
+          'description': 'The ordered, real steps for this task, short (a few words each)',
+          'items': <String, dynamic>{'type': 'string'},
+        },
+        'current': <String, dynamic>{
+          'type': 'integer',
+          'description': '0-based index of the step actively in progress; steps before it are done, after it are still ahead. '
+              'Equal to the number of steps once every step is actually finished.',
+        },
+      }, <String>['steps', 'current']),
+    ),
+    run: (a, host) async {
+      final steps = (a['steps'] as List?)?.length ?? 0;
+      return steps == 0 ? 'No steps given.' : 'Plan shown to the person ($steps step${steps == 1 ? '' : 's'}).';
+    },
+  ),
+  ToolDef(
     id: 'browser_open',
     title: 'Browser: open a page',
     group: 'browser',

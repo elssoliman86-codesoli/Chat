@@ -248,11 +248,15 @@ class ChatEngine implements ToolHost {
         'a tool in this same turn, do not also paste the full code again in your reply; the user already saw it '
         'run and can open the file or the step details — summarize the real result in words instead, and only '
         'show a short snippet if a specific line needs pointing out.');
-    b.writeln('Before any request that will take more than one or two tool calls, open with one short plain line stating the plan — what you are '
-        'about to do and in roughly what order (for example "Going to open the folder, read each file, then rewrite the ones with the bug") — before '
-        'the first tool call, not after the work is done. Keep it to one or two sentences, no numbered steps, no restating it again once it is written. '
-        'For a single quick lookup or an obviously one-step action, skip the plan line and just do it. If the plan changes partway through (a file was '
-        'missing, an approach failed), say so in one short line before continuing differently, instead of silently switching course.');
+    b.writeln('Before any request that will take more than two or three tool calls, call set_plan first, before any other tool call, with the full '
+        'ordered list of real steps you are about to do (not vague phases — actual steps: "open config.json", "find every TODO in src/", "rewrite '
+        'auth.py", and so on) and current set to 0. The person sees this as a plan card they can open, showing which step is done, which is in '
+        'progress and which is still ahead — call it again with the same steps and an updated current every time a step actually finishes, so it '
+        'stays accurate instead of frozen on step one; when every step is actually done, call it once more with current equal to the number of steps. '
+        'Keep steps short (a few words each) and real — do not call set_plan at all for a single quick lookup or an obviously one-step action, and '
+        'never call it merely to describe what you are already doing in words; it replaces narrating the plan in your reply text, so do not also '
+        'write out the plan again in a normal message. If the plan changes partway through (a file was missing, an approach failed), call set_plan '
+        'again with the corrected steps rather than silently diverging from what it still shows.');
     b.writeln('Conversation continuity is mandatory: treat every new user message as part of this same ongoing conversation unless the user clearly starts a new topic. '
         'Use the full preceding conversation, including the latest task, files, code changes, errors, tool results and decisions, to resolve short follow-ups. '
         'For example, after discussing an app or code project, "the build failed", "fix it", "what about this error?" or a single short phrase usually refers to that active project/task, not an unrelated dictionary meaning. '
