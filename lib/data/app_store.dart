@@ -29,6 +29,11 @@ class AppStore extends ChangeNotifier {
   List<ProviderConfig> providers = <ProviderConfig>[];
   List<Skill> skills = <Skill>[];
   List<MemoryFact> memory = <MemoryFact>[];
+  /// Operational lessons the model has recorded about itself (mistakes fixed, approaches that
+  /// worked, corrections about how to behave) — not facts about the user. Kept on this phone and
+  /// fed into every future chat, under any model, so experience is not lost when the model changes
+  /// or a new conversation starts from zero.
+  List<MemoryFact> lessons = <MemoryFact>[];
   List<Plugin> plugins = <Plugin>[];
   AppSettings settings = AppSettings();
   List<Conversation> conversations = <Conversation>[];
@@ -62,6 +67,7 @@ class AppStore extends ChangeNotifier {
     }
     if (skillsMigrated) await saveSkills();
     memory = _decodeList(prefs.getString('memory'), MemoryFact.fromJson);
+    lessons = _decodeList(prefs.getString('lessons'), MemoryFact.fromJson);
     plugins = _decodeList(prefs.getString('plugins'), Plugin.fromJson);
     final rawSettings = prefs.getString('settings');
     if (rawSettings != null) {
@@ -163,6 +169,11 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> saveLessons() async {
+    await _saveJson('lessons', lessons.map((m) => m.toJson()).toList());
+    notifyListeners();
+  }
+
   Future<void> saveSettings() async {
     final prefs = _prefs ?? await SharedPreferences.getInstance();
     _prefs = prefs;
@@ -185,6 +196,23 @@ class AppStore extends ChangeNotifier {
     if (matches.isEmpty) return 0;
     memory.removeWhere(matches.contains);
     saveMemory();
+    return matches.length;
+  }
+
+  void addLesson(String text) {
+    final clean = text.trim();
+    if (clean.isEmpty) return;
+    if (lessons.any((m) => m.text.toLowerCase() == clean.toLowerCase())) return;
+    lessons.add(MemoryFact(id: newId(), text: clean));
+    saveLessons();
+  }
+
+  /// Removes every learned lesson whose text contains [query] (case-insensitive); returns how many.
+  int forgetLesson(String query) {
+    final matches = memoryMatching(lessons, query);
+    if (matches.isEmpty) return 0;
+    lessons.removeWhere(matches.contains);
+    saveLessons();
     return matches.length;
   }
 

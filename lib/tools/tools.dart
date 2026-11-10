@@ -18,6 +18,13 @@ abstract class ToolHost {
   /// Removes every remembered fact whose text contains [query] (case-insensitive); returns how many.
   int forgetMemory(String query);
   List<MemoryFact> get memory;
+  /// Records a lasting operational lesson (not a fact about the user) that persists across every
+  /// future chat regardless of which model answers it.
+  void addLesson(String text);
+  /// Removes every learned lesson whose text contains [query] (case-insensitive); returns how many.
+  int forgetLesson(String query);
+  List<MemoryFact> get lessons;
+  bool get selfImproveAllowed;
   void loadSkill(Skill skill);
   bool get memoryAllowed;
   String get githubToken;
@@ -731,6 +738,52 @@ final List<ToolDef> builtinTools = <ToolDef>[
       final removed = host.forgetMemory(query);
       if (removed == 0) return 'Nothing saved matched "$query". Saved facts: ${host.memory.map((m) => m.text).join(' | ')}';
       return 'Removed $removed fact${removed == 1 ? '' : 's'}.';
+    },
+  ),
+  ToolDef(
+    id: 'learn',
+    title: 'Learn for next time',
+    group: 'core',
+    spec: ToolSpec(
+      name: 'learn',
+      description: 'Record one short, lasting operational lesson for your future self — not a fact about the user (use remember for that), but '
+          'something about how to do this job better: a mistake you just made and its real fix, a real constraint of this app, a device or a tool '
+          'you discovered the hard way, an approach that actually worked for a recurring kind of request, or a correction the user gave about how '
+          'you should work going forward ("always do X", "never do Y here"). This is saved by the app itself and fed into every future chat from '
+          'now on, even a brand-new conversation and even if the underlying model changes — so write it as self-contained advice to a future version '
+          'of yourself that remembers nothing about this conversation, not a note about what just happened. Call it the moment you learn something '
+          'like this, even mid-task. Do not save something that only applied to this one message, and do not save a fact about the user here.',
+      parameters: _schema(<String, Map<String, String>>{
+        'lesson': <String, String>{'type': 'string', 'description': 'One short, self-contained sentence of advice for your future self'},
+      }, <String>['lesson']),
+    ),
+    run: (args, host) async {
+      if (!host.selfImproveAllowed) return 'Self-improvement is off for this chat.';
+      final lesson = (args['lesson'] ?? '').toString().trim();
+      if (lesson.isEmpty) return 'Nothing to learn.';
+      host.addLesson(lesson);
+      return 'Learned.';
+    },
+  ),
+  ToolDef(
+    id: 'forget_lesson',
+    title: 'Forget a learned lesson',
+    group: 'core',
+    spec: ToolSpec(
+      name: 'forget_lesson',
+      description: 'Remove a previously learned lesson (saved with learn) that turned out wrong or no longer applies. Give a short phrase '
+          'matching it (or part of it) as it was saved — check the "Lessons you have learned" list in your own instructions for the exact wording first.',
+      parameters: _schema(<String, Map<String, String>>{
+        'lesson': <String, String>{'type': 'string', 'description': 'Text matching the lesson to remove (or part of it)'},
+      }, <String>['lesson']),
+    ),
+    run: (args, host) async {
+      if (!host.selfImproveAllowed) return 'Self-improvement is off for this chat.';
+      final query = (args['lesson'] ?? '').toString().trim();
+      if (query.isEmpty) return 'Nothing to forget.';
+      final removed = host.forgetLesson(query);
+      if (removed == 0) return 'Nothing learned matched "$query". Learned lessons: ${host.lessons.map((m) => m.text).join(' | ')}';
+      return 'Removed $removed lesson${removed == 1 ? '' : 's'}.';
     },
   ),
 ];

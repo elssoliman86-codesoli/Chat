@@ -36,6 +36,12 @@ class ToolRegistry {
       availableIds.remove('forget');
     }
 
+    // 2b. Self-improvement tools - only if that setting is on and not temporary
+    if (!(st.selfImprove && !c.temporary)) {
+      availableIds.remove('learn');
+      availableIds.remove('forget_lesson');
+    }
+
     // 3. Skill tools - add tools required by active skills (but only if their group is enabled)
     final activeSkills = store.skills.where((k) => k.enabled && (k.alwaysOn || c.activeSkillIds.contains(k.id)));
     for (final k in activeSkills) {

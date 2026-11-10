@@ -512,6 +512,7 @@ class AppSettings {
     this.temperature,
     this.webTools = true,
     this.memoryEnabled = true,
+    this.selfImprove = true,
     this.maxAttachments = 20,
     this.maxToolSteps = 100,
     this.defaultProviderId = '',
@@ -542,6 +543,10 @@ class AppSettings {
   double? temperature;
   bool webTools;
   bool memoryEnabled;
+  /// Whether the model can record lasting operational lessons (mistakes fixed, approaches that
+  /// worked, corrections about how to work) that get fed back into every future chat regardless of
+  /// which model answers it — the app's own memory of what worked, not the model's training.
+  bool selfImprove;
   int maxAttachments;
   int maxToolSteps;
   String defaultProviderId;
@@ -586,6 +591,7 @@ class AppSettings {
         'temperature': temperature,
         'webTools': webTools,
         'memoryEnabled': memoryEnabled,
+        'selfImprove': selfImprove,
         'maxAttachments': maxAttachments,
         'maxToolSteps': maxToolSteps,
         'defaultProviderId': defaultProviderId,
@@ -614,6 +620,7 @@ class AppSettings {
         temperature: (j['temperature'] as num?)?.toDouble(),
         webTools: j['webTools'] as bool? ?? true,
         memoryEnabled: j['memoryEnabled'] as bool? ?? true,
+        selfImprove: j['selfImprove'] as bool? ?? true,
         maxAttachments: (j['maxAttachments'] as num?)?.toInt() ?? 20,
         maxToolSteps: _steps((j['maxToolSteps'] as num?)?.toInt()),
         defaultProviderId: j['defaultProviderId'] as String? ?? '',

@@ -297,6 +297,50 @@ void main() {
     expect(prompt, contains('call remember right then'));
   });
 
+  test('the system prompt tells the model to record lessons for itself, independent of the model in use', () {
+    final store = AppStore();
+    store.addLesson('Termux Play Store builds cannot run RUN_COMMAND; use F-Droid instead.');
+    final prompt = ChatEngine(store).buildSystem(Conversation(id: 'lessons-prompt-test'));
+    expect(prompt, contains('Lessons you have learned, from real mistakes and real successes in this app'));
+    expect(prompt, contains('Termux Play Store builds cannot run RUN_COMMAND'));
+    expect(prompt, contains('call learn right then'));
+    expect(prompt, contains('this app keeps them regardless of'));
+  });
+
+  test('self-improvement is skipped for a temporary conversation and when the setting is off', () {
+    final store = AppStore();
+    store.addLesson('Some hard-won lesson.');
+    final engine = ChatEngine(store);
+    expect(engine.buildSystem(Conversation(id: 'normal', temporary: false)), contains('Some hard-won lesson.'));
+    expect(engine.buildSystem(Conversation(id: 'temp', temporary: true)), isNot(contains('Some hard-won lesson.')));
+    store.settings.selfImprove = false;
+    expect(engine.buildSystem(Conversation(id: 'normal2', temporary: false)), isNot(contains('Some hard-won lesson.')));
+  });
+
+  test('learn and forget_lesson follow the selfImprove setting and temporary chats, like remember/forget do', () {
+    final store = AppStore();
+    final provider = ProviderConfig(id: 'p', name: 'Test', kind: ProviderKind.openai, baseUrl: 'https://example.invalid/v1');
+    final normal = Conversation(id: 'learn-tools-test');
+    expect(ToolRegistry.specsFor(normal, store, provider).map((t) => t.name), containsAll(['learn', 'forget_lesson']));
+
+    final temp = Conversation(id: 'learn-tools-temp', temporary: true);
+    expect(ToolRegistry.specsFor(temp, store, provider).map((t) => t.name), isNot(contains('learn')));
+
+    store.settings.selfImprove = false;
+    expect(ToolRegistry.specsFor(normal, store, provider).map((t) => t.name), isNot(contains('learn')));
+    store.settings.selfImprove = true;
+
+    store.addLesson('Always ask before a destructive Termux command.');
+    expect(store.lessons, hasLength(1));
+    // Same text saved twice is a no-op, exactly like addMemory.
+    store.addLesson('Always ask before a destructive Termux command.');
+    expect(store.lessons, hasLength(1));
+
+    final removed = store.forgetLesson('destructive termux');
+    expect(removed, 1);
+    expect(store.lessons, isEmpty);
+  });
+
   test('memoryMatching finds facts by a case-insensitive substring, forgetMemory\'s rule', () {
     final facts = [
       MemoryFact(id: '1', text: 'Lives in Cairo'),

@@ -75,6 +75,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _save();
             }),
           ),
+          SwitchCell(
+            title: 'Self-improvement',
+            subtitle: 'Learn from mistakes and corrections, across every chat and model',
+            icon: CupertinoIcons.graph_circle,
+            color: iosTeal,
+            value: s.selfImprove,
+            onChanged: (v) => setState(() {
+              s.selfImprove = v;
+              _save();
+            }),
+          ),
           Cell(
             title: 'Plugins',
             subtitle: 'Web search, browser, GitHub',

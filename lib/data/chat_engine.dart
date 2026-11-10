@@ -95,6 +95,18 @@ class ChatEngine implements ToolHost {
   List<MemoryFact> get memory => store.memory;
 
   @override
+  void addLesson(String text) => store.addLesson(text);
+
+  @override
+  int forgetLesson(String query) => store.forgetLesson(query);
+
+  @override
+  List<MemoryFact> get lessons => store.lessons;
+
+  @override
+  bool get selfImproveAllowed => store.settings.selfImprove && !(_running?.temporary ?? false);
+
+  @override
   void loadSkill(Skill skill) {
     // A skill the assistant has found worth loading once is kept on for every future message and
     // conversation too, instead of needing use_skill again every time (toggle it off in Skills if not
@@ -303,6 +315,25 @@ class ChatEngine implements ToolHost {
           'underspecified question later instead of asking the user to repeat context they already gave you once. '
           'Do not save one-off details that only matter for this single message, and do not ask permission first — '
           'just save it; the user can always tell you to forget something.');
+    }
+    if (s.selfImprove && !c.temporary) {
+      if (store.lessons.isNotEmpty) {
+        b.writeln('\nLessons you have learned, from real mistakes and real successes in this app, before this conversation ever started: '
+            'treat these as hard-won experience to act on directly, not background color, and not something to re-derive from scratch. '
+            'They were written by an earlier instance of you (possibly a different model entirely — this app keeps them regardless of '
+            'which model answers) specifically so you do not repeat a solved mistake or re-discover a known constraint:');
+        for (final m in store.lessons) {
+          b.writeln('- ${m.text}');
+        }
+      }
+      b.writeln('\nKeep building that list yourself, the same way you build the facts list above, without being asked: the moment you '
+          'actually make a mistake and find the real fix, discover a genuine constraint of this app, this device or a tool you were given, '
+          'find an approach that works well for a recurring kind of request, or the user corrects how you should work going forward ("always '
+          'do X from now on", "never do Y here") — call learn right then with one short, self-contained sentence, written as advice to a '
+          'future version of yourself that remembers nothing about this conversation. This is what keeps the app improving across every '
+          'future chat and every future model instead of starting over from zero each time: the app itself holds what was learned, not any '
+          'one model, so swapping models never loses it. Do not save something that only mattered for this one message, do not save a fact '
+          'about the user here (that belongs in remember instead), and do not call it just to narrate what you are already doing.');
     }
     final active = _activeSkills(c);
     for (final sk in active) {

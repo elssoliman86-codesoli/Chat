@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../core/models.dart';
 import '../data/services.dart';
 import '../tools/browser_service.dart';
+import 'lessons_screen.dart';
 import 'memory_screen.dart';
 import 'plugins_screen.dart';
 import 'project_screens.dart';
@@ -161,6 +162,7 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
           Divider(height: 0.5, color: pal.separator),
           _nav(CupertinoIcons.cloud, 'Providers', () => _open(const ProvidersScreen())),
           _nav(CupertinoIcons.lightbulb, 'Memory', () => _open(const MemoryScreen())),
+          _nav(CupertinoIcons.graph_circle, 'Lessons', () => _open(const LessonsScreen())),
           _nav(CupertinoIcons.gear, 'Settings', () => _open(const SettingsScreen())),
           const SizedBox(height: 6),
         ]),
