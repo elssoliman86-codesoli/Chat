@@ -25,6 +25,18 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
+
+# Regenerated into the freshly-created android/ project on every CI build (see
+# .github/workflows/build-apk.yml) by `dart run flutter_launcher_icons` - android/ itself is not
+# committed, so without this step every build would ship Flutter's default launcher icon.
+flutter_launcher_icons:
+  android: true
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "assets/icon/icon_background.png"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  adaptive_icon_foreground_inset: 0
+  min_sdk_android: 21
