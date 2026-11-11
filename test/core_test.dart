@@ -13,6 +13,7 @@ import 'package:omni_chat/llm/llm.dart';
 import 'package:omni_chat/ui/plan_banner.dart';
 import 'package:omni_chat/ui/skills_screen.dart';
 import 'package:omni_chat/ui/steps_card.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 List<int> _zip(Map<String, String> files) {
   final a = Archive();
@@ -24,6 +25,11 @@ List<int> _zip(Map<String, String> files) {
 }
 
 void main() {
+  // AppStore.saveMemory/saveLessons/etc. call SharedPreferences.getInstance(), which needs a bound
+  // platform channel even in tests that never touch the UI - set that up once for the whole file.
+  TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues(<String, Object>{});
+
   test('skill front matter is parsed', () {
     final s = parseSkillMarkdown('---\nname: Poet\ndescription: Writes verse\n---\nWrite a poem.')!;
     expect(s.name, 'Poet');
