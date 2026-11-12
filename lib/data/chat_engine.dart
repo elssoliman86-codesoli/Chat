@@ -268,7 +268,13 @@ class ChatEngine implements ToolHost {
         'Keep steps short (a few words each) and real — do not call set_plan at all for a single quick lookup or an obviously one-step action, and '
         'never call it merely to describe what you are already doing in words; it replaces narrating the plan in your reply text, so do not also '
         'write out the plan again in a normal message. If the plan changes partway through (a file was missing, an approach failed), call set_plan '
-        'again with the corrected steps rather than silently diverging from what it still shows.');
+        'again with the corrected steps rather than silently diverging from what it still shows.\n'
+        'If this conversation already has an earlier set_plan call for the SAME task that never reached its last step (current was still less than '
+        'the number of steps), and the user is now just nudging you to carry on ("continue", "كمل", "تابع", or simply repeating the original ask) '
+        'rather than asking for something new: that plan is still the real plan. Do not invent a new, different, or shorter list of steps for the '
+        'same task — look at exactly which steps you had already finished (from the tool calls and results already in this conversation, not from '
+        'memory of your own intentions), and either skip straight to continuing the real work, or call set_plan again with the ORIGINAL steps text '
+        'unchanged and current moved to wherever you genuinely left off. Only start a genuinely new plan when the task itself has actually changed.');
     b.writeln('Conversation continuity is mandatory: treat every new user message as part of this same ongoing conversation unless the user clearly starts a new topic. '
         'Use the full preceding conversation, including the latest task, files, code changes, errors, tool results and decisions, to resolve short follow-ups. '
         'For example, after discussing an app or code project, "the build failed", "fix it", "what about this error?" or a single short phrase usually refers to that active project/task, not an unrelated dictionary meaning. '
@@ -525,30 +531,79 @@ class ChatEngine implements ToolHost {
     await _run(c);
   }
 
-  /// Resumes a reply that was cut off (a dropped connection, a timeout, a provider error) instead of
-  /// throwing it away: keeps whatever text it managed to produce and asks the model to pick up exactly
-  /// where it stopped, rather than regenerate() which restarts the whole answer from scratch.
+  /// Resumes a turn that did not conclude cleanly, instead of throwing its progress away:
+  /// - an explicit error (a dropped connection, a timeout, a provider error): strips the error notice
+  ///   back off the partial reply and asks the model to pick up exactly where it stopped.
+  /// - a silent interruption (c.turnInProgress still true from a previous _run() — the app process
+  ///   was killed mid-turn): finishes any tool call the model had decided on but that never actually
+  ///   got to run (so the next request stays valid — every tool call must have a matching result) and
+  ///   nudges a cut-off partial reply the same way, before resuming.
+  /// Either way, real work already on disk is reused, not discarded — unlike regenerate(), which
+  /// restarts the whole answer from scratch.
   Future<void> continueReply(Conversation c) async {
     if (busy) return;
     if (c.messages.isEmpty) return;
+    final wasInterrupted = c.turnInProgress;
+    c.turnInProgress = false;
     final last = c.messages.last;
-    if (last.role != 'assistant' || !last.error) return;
-    // The failed attempt appends "\n\n⚠️ <error>" to whatever text it had — strip that back off so the
-    // model continues from its real partial answer, not from a sentence ending in an error notice.
-    final markIdx = last.text.lastIndexOf('\n\n⚠️ ');
-    final partial = markIdx >= 0 ? last.text.substring(0, markIdx) : '';
-    if (partial.trim().isEmpty && last.toolCalls.isEmpty) {
-      // Nothing real was produced (the whole text was just the error) — drop the empty bubble instead
-      // of handing the raw exception back to the model as if it were its own prior reply.
-      c.messages.remove(last);
-    } else {
-      last.text = partial;
-      last.error = false;
-      last.touch();
+
+    if (last.role == 'assistant' && last.error) {
+      // The failed attempt appends "\n\n⚠️ <error>" to whatever text it had — strip that back off so
+      // the model continues from its real partial answer, not from a sentence ending in an error notice.
+      final markIdx = last.text.lastIndexOf('\n\n⚠️ ');
+      final partial = markIdx >= 0 ? last.text.substring(0, markIdx) : '';
+      if (partial.trim().isEmpty && last.toolCalls.isEmpty) {
+        // Nothing real was produced (the whole text was just the error) — drop the empty bubble instead
+        // of handing the raw exception back to the model as if it were its own prior reply.
+        c.messages.remove(last);
+      } else {
+        last.text = partial;
+        last.error = false;
+        last.touch();
+      }
+      c.messages.add(ChatMessage(
+          role: 'user',
+          text: 'Continue your previous answer exactly from where it was cut off. Do not repeat anything already said and do not restart.'));
+      store.scheduleSave(c);
+      store.changed();
+      await _run(c);
+      return;
     }
-    c.messages.add(ChatMessage(
-        role: 'user',
-        text: 'Continue your previous answer exactly from where it was cut off. Do not repeat anything already said and do not restart.'));
+
+    if (!wasInterrupted) return;
+
+    // A silent interruption: find the most recent assistant reply of the unfinished turn (never cross
+    // back into an earlier, already-answered one) and make sure every tool call it decided on actually
+    // has a result — the app may have been killed between deciding a call and running it.
+    ChatMessage? lastAssistant;
+    for (final m in c.messages.reversed) {
+      if (m.role == 'assistant') {
+        lastAssistant = m;
+        break;
+      }
+      if (m.role == 'user') break;
+    }
+    if (lastAssistant != null && lastAssistant.toolCalls.isNotEmpty) {
+      final resolvedIds = c.messages.where((m) => m.role == 'tool').map((m) => m.toolCallId).toSet();
+      for (final call in lastAssistant.toolCalls) {
+        if (resolvedIds.contains(call.id)) continue;
+        final result = await runTool(call, this);
+        c.messages.add(ChatMessage(role: 'tool', text: result, toolCallId: call.id, toolName: call.name));
+        store.scheduleSave(c);
+        store.changed();
+      }
+    } else if (lastAssistant != null && identical(lastAssistant, last) && lastAssistant.text.trim().isNotEmpty) {
+      // The most recent reply has real partial text and nothing after it — it was cut off mid-stream
+      // with no tool calls involved. Nudge it the same way an errored reply is nudged, instead of
+      // silently answering the original question again from scratch.
+      c.messages.add(ChatMessage(
+          role: 'user',
+          text: 'Continue your previous answer exactly from where it was cut off. Do not repeat anything already said and do not restart.'));
+    } else if (lastAssistant != null && identical(lastAssistant, last)) {
+      // Killed before a single token or tool call ever arrived for this reply — nothing real to
+      // resume, so drop the empty bubble instead of leaving it stranded in the transcript.
+      c.messages.remove(lastAssistant);
+    }
     store.scheduleSave(c);
     store.changed();
     await _run(c);
@@ -724,6 +779,20 @@ class ChatEngine implements ToolHost {
     _browserEpoch = 0;
     BrowserService.instance.showWhileWorking = store.settings.browserVisible;
     if (store.settings.keepAlive) await BackgroundWork.start();
+    // Marks the turn as not yet concluded, and keeps saving the real, current state of the
+    // conversation to disk every ~1.5s for as long as it runs — not just once at the very end.
+    // Without this, a turn that does real multi-step work (writes files, runs commands, streams a
+    // long answer) existed only in memory until it fully finished: if the app process was killed in
+    // the middle (backgrounded and reclaimed by Android, force-closed, crashed), everything it had
+    // already done vanished on the next launch and the conversation looked like it never started.
+    // If turnInProgress is still true the next time this conversation loads, that is exactly what
+    // happened, and continueReply() is what picks it back up using whatever did make it to disk.
+    c.turnInProgress = true;
+    store.scheduleSave(c);
+    final periodicSave = Timer.periodic(const Duration(milliseconds: 1500), (_) {
+      store.scheduleSave(c);
+      unawaited(store.flush());
+    });
     store.changed();
     try {
       if (provider == null) {
@@ -741,6 +810,7 @@ class ChatEngine implements ToolHost {
         _currentReply = reply;
         final history = List<ChatMessage>.of(c.messages);
         c.messages.add(reply);
+        store.scheduleSave(c);
         store.changed();
         if (!contextDone) {
           contextDone = true;
@@ -777,6 +847,7 @@ class ChatEngine implements ToolHost {
               _notifySoon(reply);
             } else if (event is ToolCallDone) {
               reply.toolCalls.add(event.call);
+              store.scheduleSave(c);
               store.changed();
             } else if (event is ThinkingDone) {
               reply.thinking = event.text;
@@ -805,6 +876,7 @@ class ChatEngine implements ToolHost {
         for (final call in reply.toolCalls) {
           final result = await _runOnce(call);
           c.messages.add(ChatMessage(role: 'tool', text: result, toolCallId: call.id, toolName: call.name));
+          store.scheduleSave(c);
           store.changed();
           if (_abort?.aborted ?? false) break;
         }
@@ -818,6 +890,8 @@ class ChatEngine implements ToolHost {
     } catch (e) {
       c.messages.add(ChatMessage(role: 'assistant', error: true, text: e.toString()));
     } finally {
+      periodicSave.cancel();
+      c.turnInProgress = false;
       await BackgroundWork.stop();
       _currentReply = null;
       _running = null;
@@ -826,6 +900,7 @@ class ChatEngine implements ToolHost {
       _streaming?.touch();
       _streaming = null;
       store.scheduleSave(c);
+      await store.flush();
       store.changed();
       unawaited(_drainQueue(c));
     }

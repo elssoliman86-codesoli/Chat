@@ -228,12 +228,14 @@ class _ChatScreenState extends State<ChatScreen> {
             ]),
             Positioned.fill(child: DockLayer(onAttach: (page) => _composer.currentState?.addPage(page))),
             const PythonRuntimeMount(),
-            if (planAndSkill.skill != null || planAndSkill.plan != null)
+            if ((c.turnInProgress && !running) || planAndSkill.skill != null || planAndSkill.plan != null)
               Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  if (c.turnInProgress && !running)
+                    InterruptedBanner(key: ValueKey('interrupted-${c.id}'), onContinue: () => engine.continueReply(c)),
                   if (planAndSkill.skill != null)
                     SkillLoadBanner(
                       key: ValueKey('skill-${planAndSkill.skill!.id}'),

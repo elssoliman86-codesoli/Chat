@@ -85,4 +85,14 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     expect(find.textContaining('Loaded skill'), findsNothing);
   });
+
+  testWidgets('tapping the interrupted banner calls its onContinue callback', (tester) async {
+    var tapped = false;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: InterruptedBanner(onContinue: () => tapped = true)),
+    ));
+    expect(find.textContaining('Interrupted before finishing'), findsOneWidget);
+    await tester.tap(find.byType(InterruptedBanner));
+    expect(tapped, true);
+  });
 }

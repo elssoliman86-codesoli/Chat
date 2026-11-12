@@ -291,6 +291,12 @@ void main() {
     expect(prompt, contains('call it again with the same steps and an updated current every time a step actually finishes'));
   });
 
+  test('the system prompt tells the model to resume an unfinished plan rather than restart it on "continue"', () {
+    final prompt = ChatEngine(AppStore()).buildSystem(Conversation(id: 'plan-resume-prompt-test'));
+    expect(prompt, contains('Do not invent a new, different, or shorter list of steps for the same task'));
+    expect(prompt, contains('كمل'));
+  });
+
   test('the system prompt asks for plain replies without emoji, decoration or re-pasted code', () {
     final prompt = ChatEngine(AppStore()).buildSystem(Conversation(id: 'tone-prompt-test'));
     expect(prompt, contains('no emoji and no decorative symbols'));
@@ -407,6 +413,69 @@ void main() {
     // The empty failed bubble is dropped; only the continue nudge (and whatever the retry itself adds) follows.
     expect(c.messages[1].role, 'user');
     expect(c.messages[1].text, contains('Continue your previous answer'));
+  });
+
+  test('a conversation keeps turnInProgress through a JSON round trip', () {
+    final c = Conversation(id: 'turn-in-progress-test');
+    expect(c.turnInProgress, false);
+    c.turnInProgress = true;
+    expect(Conversation.fromJson(c.toJson()).turnInProgress, true);
+  });
+
+  test('continueReply finishes a tool call the app never got to run before a silent interruption', () async {
+    final engine = ChatEngine(AppStore());
+    final c = Conversation(id: 'interrupted-tool-test');
+    c.messages.add(ChatMessage(role: 'user', text: 'what time is it'));
+    final call = ToolCall(id: 'tc1', name: 'current_time', args: const {});
+    c.messages.add(ChatMessage(role: 'assistant', text: '', toolCalls: [call]));
+    // Simulates the app process being killed right after the model decided to call current_time but
+    // before the tool actually ran and before _run()'s finally block ever cleared this flag.
+    c.turnInProgress = true;
+    await engine.continueReply(c);
+    expect(c.turnInProgress, false);
+    final toolResults = c.messages.where((m) => m.role == 'tool' && m.toolCallId == 'tc1');
+    expect(toolResults, hasLength(1));
+    // A genuinely fresh AppStore has no provider configured, so _run() fails right after with "Add a
+    // provider first" — that failure is expected here and irrelevant to what this test checks: that
+    // the dangling tool call from the interrupted turn got a real result instead of being skipped.
+  });
+
+  test('continueReply does not re-run a tool call that already has a result', () async {
+    final engine = ChatEngine(AppStore());
+    final c = Conversation(id: 'interrupted-tool-resolved-test');
+    c.messages.add(ChatMessage(role: 'user', text: 'what time is it'));
+    final call = ToolCall(id: 'tc1', name: 'current_time', args: const {});
+    c.messages.add(ChatMessage(role: 'assistant', text: '', toolCalls: [call]));
+    c.messages.add(ChatMessage(role: 'tool', text: 'already answered', toolCallId: 'tc1', toolName: 'current_time'));
+    c.turnInProgress = true;
+    await engine.continueReply(c);
+    final toolResults = c.messages.where((m) => m.role == 'tool' && m.toolCallId == 'tc1');
+    expect(toolResults, hasLength(1));
+    expect(toolResults.single.text, 'already answered');
+  });
+
+  test('continueReply nudges a silently cut-off partial reply instead of answering from scratch', () async {
+    final engine = ChatEngine(AppStore());
+    final c = Conversation(id: 'interrupted-text-test');
+    c.messages.add(ChatMessage(role: 'user', text: 'tell me a long story'));
+    c.messages.add(ChatMessage(role: 'assistant', text: 'Once upon a time, something was cut off mid'));
+    c.turnInProgress = true;
+    await engine.continueReply(c);
+    expect(c.messages[1].text, 'Once upon a time, something was cut off mid');
+    expect(c.messages[2].role, 'user');
+    expect(c.messages[2].text, contains('Continue your previous answer'));
+  });
+
+  test('continueReply does nothing when the turn was not actually interrupted', () async {
+    final engine = ChatEngine(AppStore());
+    final c = Conversation(id: 'not-interrupted-test');
+    c.messages.add(ChatMessage(role: 'user', text: 'hi'));
+    c.messages.add(ChatMessage(role: 'assistant', text: 'A normal, fully finished reply.'));
+    c.turnInProgress = false;
+    await engine.continueReply(c);
+    // Nothing added or changed: this reply concluded normally, there is nothing to resume.
+    expect(c.messages, hasLength(2));
+    expect(c.messages[1].text, 'A normal, fully finished reply.');
   });
 
   test('messages typed while busy are held in order and are not lost on a stop', () {

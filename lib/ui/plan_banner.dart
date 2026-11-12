@@ -185,3 +185,45 @@ class _SkillLoadBannerState extends State<SkillLoadBanner> {
     );
   }
 }
+
+/// Pinned above the chat, above the plan/skill banners: appears when Conversation.turnInProgress is
+/// still true the moment the chat opens — the app process was killed mid-turn (backgrounded and
+/// reclaimed, force-closed, crashed) rather than the turn finishing cleanly. Whatever the model had
+/// already done (files written, commands run, text streamed) is really saved, just cut off; tapping
+/// this resumes it with ChatEngine.continueReply rather than losing it and starting over.
+class InterruptedBanner extends StatelessWidget {
+  const InterruptedBanner({super.key, required this.onContinue});
+
+  final VoidCallback onContinue;
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = paletteOf(context);
+    return InkWell(
+      onTap: onContinue,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: pal.bubble,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: iosOrange.withValues(alpha: 0.45), width: 1),
+        ),
+        child: Row(children: [
+          Icon(CupertinoIcons.exclamationmark_triangle_fill, size: 16, color: iosOrange),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              'Interrupted before finishing — tap to continue',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+            ),
+          ),
+          Icon(CupertinoIcons.arrow_turn_down_right, size: 15, color: pal.secondary),
+        ]),
+      ),
+    );
+  }
+}

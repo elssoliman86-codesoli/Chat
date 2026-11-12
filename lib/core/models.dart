@@ -374,6 +374,7 @@ class Conversation {
     this.temporary = false,
     this.web = true,
     this.projectId = '',
+    this.turnInProgress = false,
   })  : createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         messages = messages ?? <ChatMessage>[],
@@ -397,6 +398,13 @@ class Conversation {
   /// The project (folder of files) this chat works on, or empty.
   String projectId;
 
+  /// True from the moment a turn starts running until it genuinely concludes (an answer, an error, or
+  /// a manual stop) — saved to disk as the turn runs, not just at the end. If this is still true the
+  /// next time the conversation loads, the app process was killed mid-turn (backgrounded and reclaimed,
+  /// force-closed, crashed): whatever the model was doing is really there in messages, not lost, but
+  /// never got to finish. continueReply() is what resumes it correctly from here.
+  bool turnInProgress;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'title': title,
@@ -409,6 +417,7 @@ class Conversation {
         'temporary': temporary,
         'web': web,
         'projectId': projectId,
+        'turnInProgress': turnInProgress,
       };
 
   factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
@@ -426,6 +435,7 @@ class Conversation {
         temporary: j['temporary'] as bool? ?? false,
         web: j['web'] as bool? ?? true,
         projectId: j['projectId'] as String? ?? '',
+        turnInProgress: j['turnInProgress'] as bool? ?? false,
       );
 }
 
