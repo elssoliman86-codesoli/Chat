@@ -35,6 +35,7 @@ class AppStore extends ChangeNotifier {
   /// or a new conversation starts from zero.
   List<MemoryFact> lessons = <MemoryFact>[];
   List<Plugin> plugins = <Plugin>[];
+  List<CustomSite> customSites = <CustomSite>[];
   AppSettings settings = AppSettings();
   List<Conversation> conversations = <Conversation>[];
   Conversation? current;
@@ -69,6 +70,7 @@ class AppStore extends ChangeNotifier {
     memory = _decodeList(prefs.getString('memory'), MemoryFact.fromJson);
     lessons = _decodeList(prefs.getString('lessons'), MemoryFact.fromJson);
     plugins = _decodeList(prefs.getString('plugins'), Plugin.fromJson);
+    customSites = _decodeList(prefs.getString('customSites'), CustomSite.fromJson);
     final rawSettings = prefs.getString('settings');
     if (rawSettings != null) {
       try {
@@ -161,6 +163,11 @@ class AppStore extends ChangeNotifier {
 
   Future<void> savePlugins() async {
     await _saveJson('plugins', plugins.map((p) => p.toJson()).toList());
+    notifyListeners();
+  }
+
+  Future<void> saveCustomSites() async {
+    await _saveJson('customSites', customSites.map((p) => p.toJson()).toList());
     notifyListeners();
   }
 

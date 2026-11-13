@@ -373,6 +373,34 @@ void main() {
     expect(LlmRequest(system: '', messages: const [], model: 'm').reasoningEffort, '');
   });
 
+  test('a custom site survives a JSON round trip and defaults its name to the host when left blank', () {
+    final site = CustomSite(url: 'https://example.com/dashboard', name: '', purpose: 'Check daily sales');
+    final back = CustomSite.fromJson(site.toJson());
+    expect(back.url, 'https://example.com/dashboard');
+    expect(back.purpose, 'Check daily sales');
+    expect(back.enabled, true);
+    expect(back.id, site.id);
+  });
+
+  test('an enabled custom site is injected into the system prompt; a disabled one is not', () {
+    final store = AppStore();
+    store.customSites.add(CustomSite(name: 'My Shop Admin', url: 'https://shop.example/admin', purpose: 'Reorder low-stock items'));
+    store.customSites.add(CustomSite(name: 'Disabled Site', url: 'https://off.example', enabled: false));
+    final prompt = ChatEngine(store).buildSystem(Conversation(id: 'custom-site-prompt-test'));
+    expect(prompt, contains('My Shop Admin: work in https://shop.example/admin'));
+    expect(prompt, contains('Reorder low-stock items'));
+    expect(prompt, isNot(contains('Disabled Site')));
+    expect(prompt, isNot(contains('off.example')));
+  });
+
+  test('custom sites are left out of the prompt entirely when the browser plugin is off', () {
+    final store = AppStore();
+    store.settings.pluginBrowser = false;
+    store.customSites.add(CustomSite(name: 'My Shop Admin', url: 'https://shop.example/admin'));
+    final prompt = ChatEngine(store).buildSystem(Conversation(id: 'custom-site-no-browser-test'));
+    expect(prompt, isNot(contains('shop.example')));
+  });
+
   test('Anthropic replays a reply\'s thinking block only while thinking is still enabled for the request', () async {
     final client = AnthropicClient(ProviderConfig(id: 'p', name: 'N', kind: ProviderKind.anthropic, baseUrl: 'https://example.invalid'));
     final reply = ChatMessage(role: 'assistant', text: 'The answer is 4.');

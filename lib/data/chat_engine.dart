@@ -421,6 +421,16 @@ class ChatEngine implements ToolHost {
           'videos and comments in Studio. Before uploading, publishing, deleting, replying as the channel, or changing '
           'any setting, show exactly what will happen and call ask_user for approval.');
     }
+    if (st.pluginBrowser) {
+      for (final site in store.customSites) {
+        if (!site.enabled || site.url.trim().isEmpty) continue;
+        b.writeln('\n${site.name.trim().isEmpty ? site.url : site.name}: work in ${site.url} with the browser tools.'
+            '${site.purpose.trim().isEmpty ? '' : ' ${site.purpose.trim()}'} If it shows a sign-in page, call ask_user so '
+            'the person signs in in the panel — once signed in there, it stays signed in for next time. Before doing '
+            'anything there that is not just reading (publishing, buying, sending, deleting, changing a setting, '
+            'anything with a real-world or financial effect), show exactly what will happen and call ask_user for approval.');
+      }
+    }
     b.writeln('\nProjects: a separate SANDBOXED workspace for building something self-contained to hand back (a website, an app, a bundle of '
         'code) that the person did not already have — it is not connected to the phone\'s real files or folders, has no real filesystem or shell '
         'access, and is exported as a ZIP/preview when done. Never reach for it just because a task is bigger than one file or "sounds like a '

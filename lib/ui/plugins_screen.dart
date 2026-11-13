@@ -6,6 +6,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/models.dart';
 import '../data/services.dart';
 import '../tools/termux_service.dart';
 import 'model_list.dart';
@@ -274,6 +275,37 @@ class _PluginsScreenState extends State<PluginsScreen> {
             color: iosGray,
             chevron: true,
             onTap: () => showBrowser(context, address: 'https://www.youtube.com'),
+          ),
+        ],
+      ),
+      Group(
+        header: 'Custom sites',
+        footer: 'Any other website: paste a link and say what it is for, and the assistant works on it through the '
+            'browser tools the same way as the named plugins above — signs in once if asked (it stays signed in next '
+            'time), and asks for approval before anything that is not just reading.',
+        children: [
+          for (final site in store.customSites)
+            SwitchListTile(
+              title: Text(site.name.trim().isEmpty ? site.url : site.name),
+              subtitle: Text(site.purpose.trim().isEmpty ? site.url : '${site.url}\n${site.purpose}',
+                  maxLines: 2, overflow: TextOverflow.ellipsis),
+              isThreeLine: site.purpose.trim().isNotEmpty,
+              value: site.enabled,
+              onChanged: (v) => set(() {
+                site.enabled = v;
+                store.saveCustomSites();
+              }),
+              secondary: IconButton(
+                icon: const Icon(CupertinoIcons.ellipsis_circle, color: iosGray),
+                onPressed: () => _customSiteMenu(context, site),
+              ),
+            ),
+          Cell(
+            title: 'Add a site',
+            icon: CupertinoIcons.add_circled,
+            color: iosBlue,
+            chevron: true,
+            onTap: () => _addCustomSite(context),
           ),
         ],
       ),
@@ -585,6 +617,78 @@ class _PluginsScreenState extends State<PluginsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _addCustomSite(BuildContext context) async {
+    final nameCtrl = TextEditingController();
+    final urlCtrl = TextEditingController();
+    final purposeCtrl = TextEditingController();
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Add a site'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: nameCtrl, autofocus: true, decoration: const InputDecoration(labelText: 'Name')),
+            TextField(controller: urlCtrl, decoration: const InputDecoration(labelText: 'Link', hintText: 'https://…'), keyboardType: TextInputType.url),
+            TextField(
+              controller: purposeCtrl,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'What should it do there?',
+                hintText: 'e.g. Track orders and reorder anything low in stock',
+              ),
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('Add')),
+        ],
+      ),
+    );
+    nameCtrl.dispose();
+    if (saved != true) {
+      urlCtrl.dispose();
+      purposeCtrl.dispose();
+      return;
+    }
+    var url = urlCtrl.text.trim();
+    if (url.isNotEmpty && !url.contains('://')) url = 'https://$url';
+    urlCtrl.dispose();
+    final name = nameCtrl.text.trim();
+    final purpose = purposeCtrl.text.trim();
+    purposeCtrl.dispose();
+    if (url.isEmpty) return;
+    setState(() {
+      store.customSites.add(CustomSite(
+        name: name.isEmpty ? (Uri.tryParse(url)?.host ?? url) : name,
+        url: url,
+        purpose: purpose,
+      ));
+    });
+    await store.saveCustomSites();
+  }
+
+  Future<void> _customSiteMenu(BuildContext context, CustomSite site) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(CupertinoIcons.arrow_up_right_square), title: const Text('Open / sign in'), onTap: () => Navigator.pop(ctx, 'open')),
+          ListTile(leading: const Icon(CupertinoIcons.delete), title: const Text('Remove'), onTap: () => Navigator.pop(ctx, 'remove')),
+          ListTile(leading: const Icon(CupertinoIcons.xmark), title: const Text('Cancel'), onTap: () => Navigator.pop(ctx)),
+        ]),
+      ),
+    );
+    if (!context.mounted) return;
+    if (choice == 'open') {
+      showBrowser(context, address: site.url);
+    } else if (choice == 'remove') {
+      setState(() => store.customSites.remove(site));
+      await store.saveCustomSites();
+    }
   }
 
   Future<void> _addPlugin() async {

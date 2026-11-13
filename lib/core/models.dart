@@ -514,6 +514,44 @@ class MemoryFact {
       MemoryFact(id: j['id'] as String? ?? newId(), text: j['text'] as String? ?? '');
 }
 
+/// A user-added website the assistant can work on through the browser tools, the same generic
+/// mechanism behind the named Gmail/Canva/Facebook/Instagram/YouTube plugins — but for any site the
+/// person pastes a link to, instead of one Claude has to build in by name ahead of time.
+class CustomSite {
+  CustomSite({
+    String? id,
+    required this.name,
+    required this.url,
+    this.purpose = '',
+    this.enabled = true,
+  }) : id = id ?? newId();
+
+  final String id;
+  String name;
+  String url;
+
+  /// What the assistant should do there and for whom — fed into the system prompt verbatim, e.g.
+  /// "Track shipments and reorder low-stock items" or "Post daily specials, read customer reviews".
+  String purpose;
+  bool enabled;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'name': name,
+        'url': url,
+        'purpose': purpose,
+        'enabled': enabled,
+      };
+
+  factory CustomSite.fromJson(Map<String, dynamic> j) => CustomSite(
+        id: j['id'] as String?,
+        name: j['name'] as String? ?? 'Site',
+        url: j['url'] as String? ?? '',
+        purpose: j['purpose'] as String? ?? '',
+        enabled: j['enabled'] as bool? ?? true,
+      );
+}
+
 /// App-wide preferences.
 class AppSettings {
   AppSettings({
