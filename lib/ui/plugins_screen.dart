@@ -185,6 +185,23 @@ class _PluginsScreenState extends State<PluginsScreen> {
             chevron: true,
             onTap: _termuxHelp,
           ),
+          for (final h in store.sshHosts)
+            Cell(
+              title: h.alias,
+              subtitle: '${h.username}@${h.host}${h.port != 22 ? ':${h.port}' : ''} · '
+                  '${h.authMethod == 'key' ? (h.hasKey ? 'Key saved on this phone' : 'Key not generated yet') : 'Password'}',
+              icon: CupertinoIcons.globe,
+              color: iosGray,
+              chevron: true,
+              onTap: () => _sshHostMenu(context, h),
+            ),
+          Cell(
+            title: 'Add SSH host',
+            icon: CupertinoIcons.add_circled,
+            color: iosBlue,
+            chevron: true,
+            onTap: () => _addSshHost(context),
+          ),
         ],
       ),
       Group(
@@ -688,6 +705,249 @@ class _PluginsScreenState extends State<PluginsScreen> {
     } else if (choice == 'remove') {
       setState(() => store.customSites.remove(site));
       await store.saveCustomSites();
+    }
+  }
+
+  static final RegExp _sshAliasPattern = RegExp(r'^[a-zA-Z0-9_-]+$');
+
+  Future<void> _addSshHost(BuildContext context) async {
+    final aliasCtrl = TextEditingController();
+    final hostCtrl = TextEditingController();
+    final portCtrl = TextEditingController(text: '22');
+    final userCtrl = TextEditingController();
+    final passwordCtrl = TextEditingController();
+    var authMethod = 'key';
+    String? error;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (d) => StatefulBuilder(
+        builder: (d, setD) => AlertDialog(
+          title: const Text('Add SSH host'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                TextField(
+                  controller: aliasCtrl,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'Name', hintText: 'letters, numbers, - and _ only'),
+                ),
+                TextField(controller: hostCtrl, decoration: const InputDecoration(labelText: 'Host or IP')),
+                TextField(controller: portCtrl, decoration: const InputDecoration(labelText: 'Port'), keyboardType: TextInputType.number),
+                TextField(controller: userCtrl, decoration: const InputDecoration(labelText: 'Username')),
+                const SizedBox(height: 12),
+                CupertinoSlidingSegmentedControl<String>(
+                  groupValue: authMethod,
+                  children: const {
+                    'key': Padding(padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6), child: Text('Key (recommended)')),
+                    'password': Padding(padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6), child: Text('Password')),
+                  },
+                  onValueChanged: (v) => setD(() => authMethod = v ?? 'key'),
+                ),
+                if (authMethod == 'password') ...[
+                  const SizedBox(height: 8),
+                  TextField(controller: passwordCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
+                  const Padding(
+                    padding: EdgeInsets.only(top: 6),
+                    child: Text(
+                      'Stored on this phone and shown to the model so it can use it, the same way an API key is — prefer a key when you can.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ] else
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text(
+                      'A keypair is generated on this phone after you add this host; you then copy its public half to the '
+                      'server yourself (its authorized_keys) — the private key never leaves this phone.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                if (error != null)
+                  Padding(padding: const EdgeInsets.only(top: 8), child: Text(error!, style: const TextStyle(color: iosRed, fontSize: 12.5))),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () {
+                final alias = aliasCtrl.text.trim();
+                if (alias.isEmpty || !_sshAliasPattern.hasMatch(alias)) {
+                  setD(() => error = 'Name must use only letters, numbers, - and _');
+                  return;
+                }
+                if (hostCtrl.text.trim().isEmpty || userCtrl.text.trim().isEmpty) {
+                  setD(() => error = 'Host and username are required');
+                  return;
+                }
+                Navigator.pop(d, true);
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (saved != true) {
+      for (final c in [aliasCtrl, hostCtrl, portCtrl, userCtrl, passwordCtrl]) {
+        c.dispose();
+      }
+      return;
+    }
+    final host = SshHost(
+      alias: aliasCtrl.text.trim(),
+      host: hostCtrl.text.trim(),
+      port: int.tryParse(portCtrl.text.trim()) ?? 22,
+      username: userCtrl.text.trim(),
+      authMethod: authMethod,
+      password: authMethod == 'password' ? passwordCtrl.text : '',
+    );
+    for (final c in [aliasCtrl, hostCtrl, portCtrl, userCtrl, passwordCtrl]) {
+      c.dispose();
+    }
+    setState(() => store.sshHosts.add(host));
+    await store.saveSshHosts();
+    if (authMethod == 'key' && context.mounted) {
+      await _generateSshKey(context, host);
+    }
+  }
+
+  /// Generates an ed25519 keypair at ~/.ssh/<alias> in Termux (skips generation if one already exists
+  /// there) and shows the public half so the user can add it to the server's authorized_keys.
+  Future<void> _generateSshKey(BuildContext context, SshHost host) async {
+    if (!await TermuxService.instance.isInstalled()) {
+      if (context.mounted) _showSshResult(context, 'Termux is not installed, so a key could not be generated here.');
+      return;
+    }
+    if (!await TermuxService.instance.hasPermission()) {
+      final granted = await TermuxService.instance.requestPermission();
+      if (!granted) {
+        if (context.mounted) _showSshResult(context, 'Termux permission was not granted, so a key could not be generated.');
+        return;
+      }
+    }
+    final alias = host.alias;
+    final command = 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && '
+        '([ -f ~/.ssh/$alias ] || ssh-keygen -t ed25519 -f ~/.ssh/$alias -N "" -q -C "$alias") && '
+        'cat ~/.ssh/$alias.pub';
+    try {
+      final result = await TermuxService.instance.run(command, timeout: const Duration(seconds: 30));
+      final stdout = (result['stdout'] ?? '').toString().trim();
+      final exitCode = result['exitCode'];
+      if (exitCode == 0 && stdout.isNotEmpty) {
+        host.hasKey = true;
+        host.publicKey = stdout;
+        await store.saveSshHosts();
+        if (context.mounted) _showPublicKey(context, host);
+      } else {
+        final stderr = (result['stderr'] ?? '').toString().trim();
+        if (context.mounted) _showSshResult(context, 'Could not generate a key for "$alias".${stderr.isNotEmpty ? '\n\n$stderr' : ''}');
+      }
+    } catch (e) {
+      if (context.mounted) _showSshResult(context, 'Could not generate a key for "$alias": $e');
+    }
+  }
+
+  void _showPublicKey(BuildContext context, SshHost host) {
+    showDialog<void>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text('Public key for "${host.alias}"'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text(
+                'Add this to the server\'s ~/.ssh/authorized_keys for that user (or use ssh-copy-id with your own login) before '
+                'asking the assistant to connect — it cannot add itself to the server.',
+                style: TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 10),
+              SelectableText(host.publicKey, style: const TextStyle(fontSize: 12.5, fontFamily: 'monospace')),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: host.publicKey));
+              Navigator.pop(d);
+            },
+            child: const Text('Copy'),
+          ),
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  void _showSshResult(BuildContext context, String text) {
+    showDialog<void>(
+      context: context,
+      builder: (d) => AlertDialog(
+        content: Text(text),
+        actions: [TextButton(onPressed: () => Navigator.pop(d), child: const Text('OK'))],
+      ),
+    );
+  }
+
+  Future<void> _sshHostMenu(BuildContext context, SshHost host) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (host.authMethod == 'key')
+            ListTile(
+              leading: const Icon(CupertinoIcons.doc_on_clipboard),
+              title: Text(host.hasKey ? 'Show public key' : 'Generate key'),
+              onTap: () => Navigator.pop(ctx, 'key'),
+            ),
+          if (host.authMethod == 'password')
+            ListTile(
+              leading: const Icon(CupertinoIcons.cloud_download),
+              title: const Text('Install sshpass in Termux'),
+              subtitle: const Text('Needed once for password logins to work'),
+              onTap: () => Navigator.pop(ctx, 'sshpass'),
+            ),
+          ListTile(leading: const Icon(CupertinoIcons.delete), title: const Text('Remove'), onTap: () => Navigator.pop(ctx, 'remove')),
+          ListTile(leading: const Icon(CupertinoIcons.xmark), title: const Text('Cancel'), onTap: () => Navigator.pop(ctx)),
+        ]),
+      ),
+    );
+    if (!context.mounted) return;
+    if (choice == 'key') {
+      if (host.hasKey && host.publicKey.isNotEmpty) {
+        _showPublicKey(context, host);
+      } else {
+        await _generateSshKey(context, host);
+      }
+    } else if (choice == 'sshpass') {
+      await _installSshpass(context);
+    } else if (choice == 'remove') {
+      setState(() => store.sshHosts.remove(host));
+      await store.saveSshHosts();
+    }
+  }
+
+  Future<void> _installSshpass(BuildContext context) async {
+    if (!await TermuxService.instance.isInstalled()) {
+      if (context.mounted) _showSshResult(context, 'Termux is not installed.');
+      return;
+    }
+    try {
+      final result = await TermuxService.instance.run('pkg install -y sshpass', timeout: const Duration(seconds: 90));
+      final exitCode = result['exitCode'];
+      if (context.mounted) {
+        _showSshResult(
+          context,
+          exitCode == 0 ? 'sshpass installed.' : 'Install may have failed.\n\n${(result['stdout'] ?? '').toString()}\n${(result['stderr'] ?? '').toString()}',
+        );
+      }
+    } catch (e) {
+      if (context.mounted) _showSshResult(context, 'Could not install sshpass: $e');
     }
   }
 

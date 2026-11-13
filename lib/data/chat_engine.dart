@@ -488,6 +488,22 @@ class ChatEngine implements ToolHost {
           'next step, continue. Only ever use a host and login the user has already configured themselves; never try a password, guess a host, or attempt '
           'to reach any machine the user has not already given you working, pre-set-up access to. '
           'For security work, use only explicitly authorized targets and obey the reviewed scope and program restrictions; never attack unrelated systems.');
+      if (store.sshHosts.isNotEmpty) {
+        b.writeln('\nThe user has set up these SSH hosts in Settings > Plugins > Shell (Termux) > SSH hosts — use the exact command shown for each '
+            '(through termux_run, same as any other command) instead of asking the user to configure ssh by hand or guessing at host/user/port:');
+        for (final h in store.sshHosts) {
+          final target = '${h.username}@${h.host}';
+          final portFlag = h.port == 22 ? '' : '-p ${h.port} ';
+          final cmd = h.authMethod == 'password'
+              ? "sshpass -p '<stored password, see below>' ssh $portFlag-o StrictHostKeyChecking=accept-new $target 'command'"
+              : 'ssh $portFlag-o StrictHostKeyChecking=accept-new -i ~/.ssh/${h.alias} $target \'command\'';
+          b.writeln('- "${h.alias}": $cmd');
+          if (h.authMethod == 'password') {
+            b.writeln('  Password for this host (replace the placeholder above with this exact value): ${h.password}\n'
+                '  This needs the sshpass package in Termux; if a command fails because sshpass is missing, run "pkg install -y sshpass" first.');
+          }
+        }
+      }
     } else {
       b.writeln('\nTermux integration is currently disabled in Settings > Plugins > Shell (Termux). '
           'If the user asks for local Termux actions, do not use web search or a browser and do not pretend to execute commands. '

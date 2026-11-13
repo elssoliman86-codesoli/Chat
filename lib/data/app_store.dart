@@ -36,6 +36,7 @@ class AppStore extends ChangeNotifier {
   List<MemoryFact> lessons = <MemoryFact>[];
   List<Plugin> plugins = <Plugin>[];
   List<CustomSite> customSites = <CustomSite>[];
+  List<SshHost> sshHosts = <SshHost>[];
   AppSettings settings = AppSettings();
   List<Conversation> conversations = <Conversation>[];
   Conversation? current;
@@ -71,6 +72,7 @@ class AppStore extends ChangeNotifier {
     lessons = _decodeList(prefs.getString('lessons'), MemoryFact.fromJson);
     plugins = _decodeList(prefs.getString('plugins'), Plugin.fromJson);
     customSites = _decodeList(prefs.getString('customSites'), CustomSite.fromJson);
+    sshHosts = _decodeList(prefs.getString('sshHosts'), SshHost.fromJson);
     final rawSettings = prefs.getString('settings');
     if (rawSettings != null) {
       try {
@@ -168,6 +170,11 @@ class AppStore extends ChangeNotifier {
 
   Future<void> saveCustomSites() async {
     await _saveJson('customSites', customSites.map((p) => p.toJson()).toList());
+    notifyListeners();
+  }
+
+  Future<void> saveSshHosts() async {
+    await _saveJson('sshHosts', sshHosts.map((p) => p.toJson()).toList());
     notifyListeners();
   }
 

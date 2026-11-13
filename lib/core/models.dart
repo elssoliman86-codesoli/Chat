@@ -552,6 +552,68 @@ class CustomSite {
       );
 }
 
+/// A remote machine the user has already set up their own SSH access to, so the assistant can reach
+/// it through Termux (`ssh ...`) without ever being given a host or login it was not explicitly handed.
+/// alias is restricted to safe filename/command-token characters ([a-zA-Z0-9_-]) so it, and the key
+/// file path derived from it, never need shell-escaping.
+class SshHost {
+  SshHost({
+    String? id,
+    required this.alias,
+    required this.host,
+    this.port = 22,
+    required this.username,
+    this.authMethod = 'key',
+    this.password = '',
+    this.hasKey = false,
+    this.publicKey = '',
+  }) : id = id ?? newId();
+
+  final String id;
+  String alias;
+  String host;
+  int port;
+  String username;
+
+  /// 'key' (recommended) or 'password'.
+  String authMethod;
+
+  /// Only meaningful for authMethod 'password'. Stored and shown to the model the same way an API key
+  /// is — this app has no extra encryption layer beyond the device's own app sandbox.
+  String password;
+
+  /// Whether a keypair for this host already exists at ~/.ssh/<alias> in Termux.
+  bool hasKey;
+
+  /// The public key's content, cached after generating or importing it, so it can be shown again
+  /// (e.g. "add this to the server's authorized_keys") without reading it back from Termux.
+  String publicKey;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'alias': alias,
+        'host': host,
+        'port': port,
+        'username': username,
+        'authMethod': authMethod,
+        'password': password,
+        'hasKey': hasKey,
+        'publicKey': publicKey,
+      };
+
+  factory SshHost.fromJson(Map<String, dynamic> j) => SshHost(
+        id: j['id'] as String?,
+        alias: j['alias'] as String? ?? 'host',
+        host: j['host'] as String? ?? '',
+        port: (j['port'] as num?)?.toInt() ?? 22,
+        username: j['username'] as String? ?? '',
+        authMethod: j['authMethod'] as String? ?? 'key',
+        password: j['password'] as String? ?? '',
+        hasKey: j['hasKey'] as bool? ?? false,
+        publicKey: j['publicKey'] as String? ?? '',
+      );
+}
+
 /// App-wide preferences.
 class AppSettings {
   AppSettings({

@@ -401,6 +401,40 @@ void main() {
     expect(prompt, isNot(contains('shop.example')));
   });
 
+  test('an SSH host survives a JSON round trip', () {
+    final host = SshHost(alias: 'shop-vps', host: '203.0.113.5', port: 2222, username: 'deploy', authMethod: 'key', hasKey: true, publicKey: 'ssh-ed25519 AAAA...');
+    final back = SshHost.fromJson(host.toJson());
+    expect(back.alias, 'shop-vps');
+    expect(back.port, 2222);
+    expect(back.hasKey, true);
+    expect(back.publicKey, 'ssh-ed25519 AAAA...');
+    expect(back.id, host.id);
+  });
+
+  test('a key-based SSH host gets a ready-to-use ssh command in the prompt, gated on Termux being on', () {
+    final store = AppStore();
+    store.sshHosts.add(SshHost(alias: 'shop-vps', host: '203.0.113.5', port: 2222, username: 'deploy', authMethod: 'key'));
+    final engine = ChatEngine(store);
+    final off = engine.buildSystem(Conversation(id: 'ssh-prompt-off-test'));
+    expect(off, isNot(contains('shop-vps')));
+    store.settings.termuxTools = true;
+    final on = engine.buildSystem(Conversation(id: 'ssh-prompt-on-test'));
+    expect(on, contains('"shop-vps"'));
+    expect(on, contains('-p 2222'));
+    expect(on, contains('-i ~/.ssh/shop-vps'));
+    expect(on, contains('deploy@203.0.113.5'));
+  });
+
+  test('a password-based SSH host\'s real password and the sshpass hint reach the prompt', () {
+    final store = AppStore();
+    store.settings.termuxTools = true;
+    store.sshHosts.add(SshHost(alias: 'office-pc', host: '192.168.1.50', username: 'win', authMethod: 'password', password: 'hunter2'));
+    final prompt = ChatEngine(store).buildSystem(Conversation(id: 'ssh-password-prompt-test'));
+    expect(prompt, contains('sshpass -p'));
+    expect(prompt, contains('hunter2'));
+    expect(prompt, contains('pkg install -y sshpass'));
+  });
+
   test('Anthropic replays a reply\'s thinking block only while thinking is still enabled for the request', () async {
     final client = AnthropicClient(ProviderConfig(id: 'p', name: 'N', kind: ProviderKind.anthropic, baseUrl: 'https://example.invalid'));
     final reply = ChatMessage(role: 'assistant', text: 'The answer is 4.');
