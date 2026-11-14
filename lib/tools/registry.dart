@@ -24,7 +24,7 @@ class ToolRegistry {
         'github_write' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
         'project_push' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
         'termux' => st.termuxTools,
-        'advisor' => st.assistantProviderId.isNotEmpty,
+        'advisor' => st.assistantProviderId.isNotEmpty && st.assistantModel.isNotEmpty,
         'python' => true, // Python is always available (sandboxed)
         _ => true, // core tools always available
       };
@@ -56,6 +56,7 @@ class ToolRegistry {
             'github_write' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
             'project_push' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
             'termux' => st.termuxTools,
+            'advisor' => st.assistantProviderId.isNotEmpty && st.assistantModel.isNotEmpty,
             'python' => true,
             _ => true,
           };
@@ -118,7 +119,7 @@ class ToolRegistry {
         'github_write' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
         'project_push' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
         'termux' => st.termuxTools,
-        'advisor' => st.assistantProviderId.isNotEmpty,
+        'advisor' => st.assistantProviderId.isNotEmpty && st.assistantModel.isNotEmpty,
         'python' => true,
         _ => true,
       };
