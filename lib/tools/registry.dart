@@ -24,6 +24,7 @@ class ToolRegistry {
         'github_write' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
         'project_push' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
         'termux' => st.termuxTools,
+        'advisor' => st.assistantProviderId.isNotEmpty,
         'python' => true, // Python is always available (sandboxed)
         _ => true, // core tools always available
       };
@@ -117,11 +118,13 @@ class ToolRegistry {
         'github_write' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
         'project_push' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
         'termux' => st.termuxTools,
+        'advisor' => st.assistantProviderId.isNotEmpty,
         'python' => true,
         _ => true,
       };
       if (!on) return false;
       if ((toolId == 'remember' || toolId == 'forget') && !(st.memoryEnabled && !c.temporary)) return false;
+      if ((toolId == 'learn' || toolId == 'forget_lesson') && !(st.selfImprove && !c.temporary)) return false;
       return true;
     }
 

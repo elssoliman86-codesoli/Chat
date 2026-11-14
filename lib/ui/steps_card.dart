@@ -41,6 +41,8 @@ List<ToolCall> stepsOnly(List<ToolCall> calls) => calls.where((c) => !_nonStepTo
       return (title: 'Went back', detail: '');
     case 'ask_user':
       return (title: 'Asked you', detail: arg('question'));
+    case 'ask_advisor':
+      return (title: 'Asked the assistant model', detail: arg('question'));
     case 'use_skill':
       return (title: 'Loaded skill ${arg('name')}', detail: '');
     case 'remember':
@@ -96,6 +98,7 @@ IconData _iconFor(String name) {
   if (name == 'fetch_page') return CupertinoIcons.globe;
   if (name.startsWith('github')) return CupertinoIcons.chevron_left_slash_chevron_right;
   if (name == 'ask_user') return CupertinoIcons.hand_raised;
+  if (name == 'ask_advisor') return CupertinoIcons.person_2;
   return CupertinoIcons.wrench;
 }
 

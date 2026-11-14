@@ -435,6 +435,36 @@ void main() {
     expect(prompt, contains('pkg install -y sshpass'));
   });
 
+  test('ask_advisor is only offered once an assistant provider and model are both configured', () {
+    final store = AppStore();
+    final provider = ProviderConfig(id: 'p', name: 'Test', kind: ProviderKind.openai, baseUrl: 'https://example.invalid/v1');
+    final c = Conversation(id: 'advisor-tool-test');
+    expect(ToolRegistry.specsFor(c, store, provider).map((t) => t.name), isNot(contains('ask_advisor')));
+    store.settings.assistantProviderId = 'some-id';
+    // Provider id set but no model chosen yet — still not offered.
+    expect(ToolRegistry.specsFor(c, store, provider).map((t) => t.name), isNot(contains('ask_advisor')));
+    store.settings.assistantModel = 'gpt-5';
+    expect(ToolRegistry.specsFor(c, store, provider).map((t) => t.name), contains('ask_advisor'));
+  });
+
+  test('the system prompt only mentions the assistant model once one is fully configured', () {
+    final store = AppStore();
+    final off = ChatEngine(store).buildSystem(Conversation(id: 'advisor-prompt-off-test'));
+    expect(off, isNot(contains('ask_advisor')));
+    store.settings.assistantProviderId = 'some-id';
+    store.settings.assistantModel = 'gpt-5';
+    final on = ChatEngine(store).buildSystem(Conversation(id: 'advisor-prompt-on-test'));
+    expect(on, contains('ask_advisor'));
+    expect(on, contains('carry them out for real'));
+  });
+
+  test('askAdvisor reports plainly when no assistant model is configured, without any network call', () async {
+    final engine = ChatEngine(AppStore());
+    expect(engine.advisorConfigured, false);
+    final result = await engine.askAdvisor('why does this command fail?');
+    expect(result, contains('No assistant model is configured'));
+  });
+
   test('Anthropic replays a reply\'s thinking block only while thinking is still enabled for the request', () async {
     final client = AnthropicClient(ProviderConfig(id: 'p', name: 'N', kind: ProviderKind.anthropic, baseUrl: 'https://example.invalid'));
     final reply = ChatMessage(role: 'assistant', text: 'The answer is 4.');

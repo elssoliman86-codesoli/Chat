@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../core/models.dart';
 import '../llm/llm.dart';
 import '../plugins/plugin.dart';
+import '../tools/advisor_service.dart';
 import '../tools/browser_service.dart';
 import '../tools/image_reader.dart';
 import '../tools/tools.dart';
@@ -189,6 +190,21 @@ class ChatEngine implements ToolHost {
     return answer ?? 'The person cancelled. Stop the task.';
   }
 
+  @override
+  bool get advisorConfigured => store.settings.assistantProviderId.isNotEmpty && store.settings.assistantModel.isNotEmpty;
+
+  @override
+  Future<String> askAdvisor(String question) async {
+    final provider = store.providerById(store.settings.assistantProviderId);
+    final model = store.settings.assistantModel;
+    if (provider == null || model.isEmpty) return 'No assistant model is configured.';
+    try {
+      return await AdvisorService.ask(question, provider, model);
+    } catch (e) {
+      return 'The assistant model could not be reached: $e';
+    }
+  }
+
   (Plugin, PluginTool)? _findPluginTool(String name) {
     for (final p in store.plugins) {
       if (!p.enabled) continue;
@@ -340,6 +356,13 @@ class ChatEngine implements ToolHost {
           'future chat and every future model instead of starting over from zero each time: the app itself holds what was learned, not any '
           'one model, so swapping models never loses it. Do not save something that only mattered for this one message, do not save a fact '
           'about the user here (that belongs in remember instead), and do not call it just to narrate what you are already doing.');
+    }
+    if (advisorConfigured) {
+      b.writeln('\nAssistant model: the person has set up a second AI model (their own choice/account) you can consult with ask_advisor '
+          'when you are genuinely stuck or unsure about something real — not for ordinary questions you can already answer yourself. Give it '
+          'the real specific context (the exact command, its full real output, the actual error) so it can actually help. Read what it says '
+          'back and act on it the same way you would act on your own plan: if it lays out steps, carry them out for real, one at a time, '
+          'instead of just repeating its words to the person as if that were the work done.');
     }
     final active = _activeSkills(c);
     for (final sk in active) {

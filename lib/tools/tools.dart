@@ -37,6 +37,12 @@ abstract class ToolHost {
   /// Pauses the task and asks the person to do something or answer; returns what they said.
   Future<String> askUser(String question);
 
+  /// True once Settings > Plugins > Assistant model has a provider/model configured.
+  bool get advisorConfigured;
+
+  /// Sends [question] to the configured second-opinion model and returns its full plain-text answer.
+  Future<String> askAdvisor(String question);
+
   /// Runs a tool that belongs to an installed plugin, or returns null when [name] is not one.
   Future<String?> runPluginTool(String name, Map<String, dynamic> args);
 
@@ -479,6 +485,29 @@ final List<ToolDef> builtinTools = <ToolDef>[
       parameters: _obj(<String, dynamic>{'question': _str('What you need from them, short and clear')}, <String>['question']),
     ),
     run: (a, host) => host.askUser(_s(a, 'question')),
+  ),
+  ToolDef(
+    id: 'ask_advisor',
+    title: 'Ask the assistant model',
+    group: 'advisor',
+    spec: ToolSpec(
+      name: 'ask_advisor',
+      description: 'Ask a second, separately-configured AI model (the person\'s own "assistant model", set up in Settings > '
+          'Plugins) for a second opinion — use this when your own judgement on something real feels weak or you are genuinely '
+          'stuck (a command keeps failing and you are not sure why, an error is confusing, you are unsure which of two real '
+          'approaches to take), not for ordinary questions you can already answer yourself. Give it the real, specific context '
+          'it needs to actually help — the exact command, its full real output, the error, what you already tried — not a vague '
+          'summary. Its answer comes back as plain text; if it lays out more than one step, carry them out for real yourself, '
+          'one at a time, the same way you would with your own plan — do not just relay its words back to the person as if that '
+          'were the work done.',
+      parameters: _obj(<String, dynamic>{
+        'question': _str('The real context and question — specific enough that a second model with no other context could act on it'),
+      }, <String>['question']),
+    ),
+    run: (a, host) async {
+      if (!host.advisorConfigured) return 'No assistant model is configured. Tell the person to set one in Settings > Plugins > Assistant model.';
+      return host.askAdvisor(_s(a, 'question'));
+    },
   ),
   ToolDef(
     id: 'set_plan',

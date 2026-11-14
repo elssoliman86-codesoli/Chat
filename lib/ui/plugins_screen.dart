@@ -362,6 +362,27 @@ class _PluginsScreenState extends State<PluginsScreen> {
         ],
       ),
       Group(
+        header: 'Assistant model (second opinion)',
+        footer: 'A second model — any provider/account you have set up, your own choice — the assistant can ask for advice mid-task '
+            'when its own judgement on something real feels weak (a command that keeps failing, a confusing error, a decision it is '
+            'unsure about). It gets the real context and gives its own read on it; the main model reads that back and acts on it itself. '
+            'Leave this unset to turn the feature off entirely.',
+        children: [
+          Cell(
+            title: 'Assistant provider',
+            subtitle: store.providerById(s.assistantProviderId)?.name ?? 'Not set',
+            chevron: true,
+            onTap: _chooseAssistantProvider,
+          ),
+          Cell(
+            title: 'Assistant model',
+            subtitle: s.assistantModel.isEmpty ? 'Choose a model' : s.assistantModel,
+            chevron: true,
+            onTap: _chooseAssistantModel,
+          ),
+        ],
+      ),
+      Group(
         header: 'GitHub',
         footer: 'With a token the assistant works on your repositories directly: it reads and analyzes them, then commits '
             'the changes itself (on a branch, with a pull request if you ask) instead of pasting code in the chat. '
@@ -475,6 +496,40 @@ class _PluginsScreenState extends State<PluginsScreen> {
     );
     if (picked == null) return;
     setState(() => store.settings.helperModel = picked);
+    store.saveSettings();
+  }
+
+  Future<void> _chooseAssistantProvider() async {
+    if (store.providers.isEmpty) return;
+    final id = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheet) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          for (final p in store.providers) ListTile(title: Text(p.name), onTap: () => Navigator.pop(sheet, p.id)),
+        ]),
+      ),
+    );
+    if (id == null) return;
+    setState(() {
+      store.settings.assistantProviderId = id;
+      store.settings.assistantModel = '';
+    });
+    store.saveSettings();
+  }
+
+  Future<void> _chooseAssistantModel() async {
+    final p = store.providerById(store.settings.assistantProviderId);
+    if (p == null) {
+      await _chooseAssistantProvider();
+      return;
+    }
+    final picked = await Navigator.push<String>(
+      context,
+      CupertinoPageRoute<String>(builder: (_) => ModelListPage(provider: p, selected: store.settings.assistantModel)),
+    );
+    if (picked == null) return;
+    setState(() => store.settings.assistantModel = picked);
     store.saveSettings();
   }
 

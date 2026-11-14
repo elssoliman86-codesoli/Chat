@@ -642,6 +642,8 @@ class AppSettings {
     this.browserVisible = false,
     this.keepAlive = true,
     this.termuxTools = false,
+    this.assistantProviderId = '',
+    this.assistantModel = '',
     List<String>? favorites,
   }) : favorites = favorites ?? <String>[];
 
@@ -692,6 +694,13 @@ class AppSettings {
   /// default: unlike the other tools, this reaches a real Linux environment on the device, not a sandbox).
   bool termuxTools;
 
+  /// A second model (any configured provider/model — the user's own account/key) the assistant can
+  /// consult mid-task for a second opinion when its own judgement feels weak, e.g. why a command
+  /// failed or what to try next. Empty providerId means none is configured and the ask_advisor tool
+  /// is not offered at all.
+  String assistantProviderId;
+  String assistantModel;
+
   /// Favorite models, each as "providerId|model".
   List<String> favorites;
 
@@ -721,6 +730,8 @@ class AppSettings {
         'browserVisible': browserVisible,
         'keepAlive': keepAlive,
         'termuxTools': termuxTools,
+        'assistantProviderId': assistantProviderId,
+        'assistantModel': assistantModel,
         'favorites': favorites,
       };
 
@@ -750,6 +761,8 @@ class AppSettings {
         browserVisible: j['browserVisible'] as bool? ?? false,
         keepAlive: j['keepAlive'] as bool? ?? true,
         termuxTools: j['termuxTools'] as bool? ?? false,
+        assistantProviderId: j['assistantProviderId'] as String? ?? '',
+        assistantModel: j['assistantModel'] as String? ?? '',
         favorites: (j['favorites'] as List?)?.whereType<String>().toList(),
       );
 }
