@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import '../core/models.dart';
 import '../data/services.dart';
+import '../tools/ftp_service.dart';
 import '../tools/termux_service.dart';
 import 'model_list.dart';
 import '../plugins/installer.dart';
@@ -26,11 +27,60 @@ class _PluginsScreenState extends State<PluginsScreen> {
   late final TextEditingController _token = TextEditingController(text: store.settings.githubToken);
   bool _show = false;
   TermuxDiagnosis? _termux;
+  List<String> _ftpAddresses = <String>[];
+  bool _ftpBusy = false;
+  String? _ftpError;
 
   @override
   void initState() {
     super.initState();
     _refreshTermux();
+    _refreshFtpAddresses();
+    // The setting may say "on" from a previous launch while the server itself is not actually
+    // running yet (a fresh app process, or it failed silently at startup) — reconcile reality with
+    // the setting the moment this screen is actually looked at, instead of showing a stale "on".
+    if (store.settings.ftpEnabled && !FtpService.instance.running) {
+      _toggleFtp(true);
+    }
+  }
+
+  Future<void> _refreshFtpAddresses() async {
+    final a = await FtpService.instance.localAddresses();
+    if (mounted) setState(() => _ftpAddresses = a);
+  }
+
+  Future<void> _toggleFtp(bool on) async {
+    setState(() {
+      _ftpBusy = true;
+      _ftpError = null;
+    });
+    if (on) {
+      final s = store.settings;
+      final error = await FtpService.instance.start(port: s.ftpPort, username: s.ftpUsername, password: s.ftpPassword);
+      if (mounted) {
+        setState(() {
+          _ftpBusy = false;
+          if (error == null) {
+            s.ftpEnabled = true;
+          } else {
+            _ftpError = error;
+          }
+        });
+        if (error == null) {
+          store.saveSettings();
+          await _refreshFtpAddresses();
+        }
+      }
+    } else {
+      await FtpService.instance.stop();
+      if (mounted) {
+        setState(() {
+          _ftpBusy = false;
+          store.settings.ftpEnabled = false;
+        });
+        store.saveSettings();
+      }
+    }
   }
 
   Future<void> _refreshTermux() async {
@@ -201,6 +251,50 @@ class _PluginsScreenState extends State<PluginsScreen> {
             color: iosBlue,
             chevron: true,
             onTap: () => _addSshHost(context),
+          ),
+        ],
+      ),
+      Group(
+        header: 'FTP (edit files from another device)',
+        footer: _ftpError != null
+            ? 'Could not start: $_ftpError — another app may already be using that port; try a different one.'
+            : s.ftpEnabled
+                ? _ftpAddresses.isEmpty
+                    ? 'Running, but no local network address was found — make sure this device is on Wi-Fi.'
+                    : 'Connect from another device on the same Wi-Fi with an FTP client (Windows Explorer, FileZilla, WinSCP, ...) to: '
+                        '${_ftpAddresses.map((a) => 'ftp://$a:${s.ftpPort}').join(' or ')}'
+                        '${s.ftpUsername.isEmpty ? ' (no username/password needed)' : ' — username "${s.ftpUsername}"'}. '
+                        'This opens read/write access to your Projects folder to anything on this network; turn it off when done.'
+                : 'Opens your Projects folder (the files behind project_create/project_write) to plain read/write access from any '
+                    'device on the same Wi-Fi — off by default for that reason, same as Termux.',
+        children: [
+          SwitchListTile(
+            title: const Text('Run FTP server'),
+            subtitle: Text(s.ftpEnabled ? 'Running on port ${s.ftpPort}' : 'Off'),
+            value: s.ftpEnabled,
+            onChanged: _ftpBusy ? null : _toggleFtp,
+            secondary: _ftpBusy ? const CupertinoActivityIndicator() : null,
+          ),
+          Cell(
+            title: 'Port',
+            subtitle: s.ftpPort.toString(),
+            chevron: true,
+            onTap: s.ftpEnabled ? null : () => _editFtpField(context, 'Port', s.ftpPort.toString(), (v) {
+                  final n = int.tryParse(v.trim());
+                  if (n != null && n > 0 && n < 65536) store.settings.ftpPort = n;
+                }),
+          ),
+          Cell(
+            title: 'Username (optional)',
+            subtitle: s.ftpUsername.isEmpty ? 'None' : s.ftpUsername,
+            chevron: true,
+            onTap: s.ftpEnabled ? null : () => _editFtpField(context, 'Username', s.ftpUsername, (v) => store.settings.ftpUsername = v.trim()),
+          ),
+          Cell(
+            title: 'Password (optional)',
+            subtitle: s.ftpPassword.isEmpty ? 'None' : '••••••••',
+            chevron: true,
+            onTap: s.ftpEnabled ? null : () => _editFtpField(context, 'Password', s.ftpPassword, (v) => store.settings.ftpPassword = v.trim(), obscure: true),
           ),
         ],
       ),
@@ -764,6 +858,26 @@ class _PluginsScreenState extends State<PluginsScreen> {
   }
 
   static final RegExp _sshAliasPattern = RegExp(r'^[a-zA-Z0-9_-]+$');
+
+  Future<void> _editFtpField(BuildContext context, String label, String current, void Function(String) apply, {bool obscure = false}) async {
+    final ctrl = TextEditingController(text: current);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text(label),
+        content: TextField(controller: ctrl, autofocus: true, obscureText: obscure, keyboardType: obscure ? null : TextInputType.text),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('Save')),
+        ],
+      ),
+    );
+    final text = ctrl.text;
+    ctrl.dispose();
+    if (saved != true) return;
+    setState(() => apply(text));
+    await store.saveSettings();
+  }
 
   Future<void> _addSshHost(BuildContext context) async {
     final aliasCtrl = TextEditingController();

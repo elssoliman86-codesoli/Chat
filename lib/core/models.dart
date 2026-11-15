@@ -644,6 +644,10 @@ class AppSettings {
     this.termuxTools = false,
     this.assistantProviderId = '',
     this.assistantModel = '',
+    this.ftpEnabled = false,
+    this.ftpPort = 2121,
+    this.ftpUsername = '',
+    this.ftpPassword = '',
     List<String>? favorites,
   }) : favorites = favorites ?? <String>[];
 
@@ -701,6 +705,14 @@ class AppSettings {
   String assistantProviderId;
   String assistantModel;
 
+  /// A local FTP server over the Projects folder, for editing those files directly from another
+  /// device on the same network (a PC's file manager, FileZilla, ...) — off by default, same as
+  /// Termux, since it's real read/write access to those files from any device that can reach it.
+  bool ftpEnabled;
+  int ftpPort;
+  String ftpUsername;
+  String ftpPassword;
+
   /// Favorite models, each as "providerId|model".
   List<String> favorites;
 
@@ -732,6 +744,10 @@ class AppSettings {
         'termuxTools': termuxTools,
         'assistantProviderId': assistantProviderId,
         'assistantModel': assistantModel,
+        'ftpEnabled': ftpEnabled,
+        'ftpPort': ftpPort,
+        'ftpUsername': ftpUsername,
+        'ftpPassword': ftpPassword,
         'favorites': favorites,
       };
 
@@ -763,6 +779,10 @@ class AppSettings {
         termuxTools: j['termuxTools'] as bool? ?? false,
         assistantProviderId: j['assistantProviderId'] as String? ?? '',
         assistantModel: j['assistantModel'] as String? ?? '',
+        ftpEnabled: j['ftpEnabled'] as bool? ?? false,
+        ftpPort: (j['ftpPort'] as num?)?.toInt() ?? 2121,
+        ftpUsername: j['ftpUsername'] as String? ?? '',
+        ftpPassword: j['ftpPassword'] as String? ?? '',
         favorites: (j['favorites'] as List?)?.whereType<String>().toList(),
       );
 }

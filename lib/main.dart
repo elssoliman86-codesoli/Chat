@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'data/services.dart';
+import 'tools/ftp_service.dart';
 import 'ui/chat_screen.dart';
 import 'ui/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await store.load();
+  unawaited(FtpService.instance.ensureStartedIfEnabled(store.settings));
   runApp(const OmniChatApp());
 }
 

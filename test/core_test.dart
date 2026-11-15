@@ -6,6 +6,7 @@ import 'package:omni_chat/core/skill_import.dart';
 import 'package:omni_chat/data/app_store.dart';
 import 'package:omni_chat/data/chat_engine.dart';
 import 'package:omni_chat/tools/registry.dart';
+import 'package:omni_chat/tools/ftp_service.dart';
 import 'package:omni_chat/files/attachment_service.dart';
 import 'package:omni_chat/files/code_export.dart';
 import 'package:omni_chat/llm/anthropic.dart';
@@ -463,6 +464,31 @@ void main() {
     expect(engine.advisorConfigured, false);
     final result = await engine.askAdvisor('why does this command fail?');
     expect(result, contains('No assistant model is configured'));
+  });
+
+  test('FTP settings survive a JSON round trip, off and with a port/username/password set', () {
+    final off = AppSettings();
+    expect(off.ftpEnabled, false);
+    expect(off.ftpPort, 2121);
+    expect(AppSettings.fromJson(off.toJson()).ftpEnabled, false);
+
+    final on = AppSettings()
+      ..ftpEnabled = true
+      ..ftpPort = 2200
+      ..ftpUsername = 'phone'
+      ..ftpPassword = 'secret';
+    final back = AppSettings.fromJson(on.toJson());
+    expect(back.ftpEnabled, true);
+    expect(back.ftpPort, 2200);
+    expect(back.ftpUsername, 'phone');
+    expect(back.ftpPassword, 'secret');
+  });
+
+  test('FtpService.localAddresses never throws, even with no usable network interface', () async {
+    // CI runners vary wildly in what NetworkInterface.list() can see; this only checks the call
+    // itself is safe and returns a list, not what's actually in it.
+    final addresses = await FtpService.instance.localAddresses();
+    expect(addresses, isA<List<String>>());
   });
 
   test('Anthropic replays a reply\'s thinking block only while thinking is still enabled for the request', () async {
