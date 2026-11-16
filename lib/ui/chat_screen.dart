@@ -95,7 +95,7 @@ class _ChatScreenState extends State<ChatScreen> {
         // and only reflect the current turn: everything since the person's last message.
         final lastUserIdx = c.messages.lastIndexWhere((m) => m.role == 'user');
         final turnMessages = lastUserIdx >= 0 ? c.messages.sublist(lastUserIdx + 1) : c.messages;
-        final planAndSkill = latestPlanAndSkill(turnMessages);
+        final skillCall = latestSkillCall(turnMessages);
         return Scaffold(
           drawer: HistoryDrawer(onNewChat: _newChat),
           appBar: AppBar(
@@ -226,9 +226,10 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
             ]),
-            Positioned.fill(child: DockLayer(onAttach: (page) => _composer.currentState?.addPage(page))),
-            const PythonRuntimeMount(),
-            if ((c.turnInProgress && !running) || planAndSkill.skill != null || planAndSkill.plan != null)
+            // The banners and the plan badge come BEFORE the browser dock in this Stack so the dock draws on
+            // top of them: its own toolbar (back/forward/reload and the arrow that collapses it) sits at
+            // the very top of the screen, and anything drawn after it used to cover that arrow.
+            if ((c.turnInProgress && !running) || skillCall != null)
               Positioned(
                 top: 0,
                 left: 0,
@@ -236,18 +237,18 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
                   if (c.turnInProgress && !running)
                     InterruptedBanner(key: ValueKey('interrupted-${c.id}'), onContinue: () => engine.continueReply(c)),
-                  if (planAndSkill.skill != null)
+                  if (skillCall != null)
                     SkillLoadBanner(
-                      key: ValueKey('skill-${planAndSkill.skill!.id}'),
-                      name: (planAndSkill.skill!.args['name'] ?? '').toString(),
-                      result: results[planAndSkill.skill!.id],
+                      key: ValueKey('skill-${skillCall.id}'),
+                      name: (skillCall.args['name'] ?? '').toString(),
+                      result: results[skillCall.id],
                     ),
-                  if (planAndSkill.plan != null)
-                    // Keyed by the conversation, not the call id: set_plan is called again every time a
-                    // step finishes, and keying on that would reset the open/closed state on every update.
-                    PlanBanner(key: ValueKey('plan-${c.id}'), call: planAndSkill.plan!),
                 ]),
               ),
+            if (c.planSteps.isNotEmpty)
+              Positioned(top: 8, right: 10, child: PlanBadge(steps: c.planSteps, current: c.planCurrent)),
+            Positioned.fill(child: DockLayer(onAttach: (page) => _composer.currentState?.addPage(page))),
+            const PythonRuntimeMount(),
           ]),
         );
       },

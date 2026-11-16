@@ -6,103 +6,109 @@ import 'package:flutter/material.dart';
 import '../core/models.dart';
 import 'theme.dart';
 
-/// The most recent set_plan and use_skill calls in [turnMessages] (everything since the last user
-/// message), the two things shown above the chat — null when the model has not called either yet
-/// this turn.
-({ToolCall? plan, ToolCall? skill}) latestPlanAndSkill(List<ChatMessage> turnMessages) {
-  ToolCall? plan;
+/// The most recent use_skill call in [turnMessages] (everything since the last user message) — what
+/// the skill-load pop-up above the chat is driven by. null when no skill was loaded this turn.
+ToolCall? latestSkillCall(List<ChatMessage> turnMessages) {
   ToolCall? skill;
   for (final m in turnMessages) {
     for (final call in m.toolCalls) {
-      if (call.name == 'set_plan') plan = call;
       if (call.name == 'use_skill') skill = call;
     }
   }
-  return (plan: plan, skill: skill);
+  return skill;
 }
 
-List<String> _stepsOf(ToolCall call) => ((call.args['steps'] as List?) ?? const <dynamic>[]).map((e) => e.toString()).toList();
+/// A small circular badge for the conversation's plan (Conversation.planSteps/planCurrent, enforced by
+/// ChatEngine.setPlan): shows progress as a ring with "done/total" inside, and opens the full
+/// step-by-step list in a popup when tapped. Deliberately small — it used to be a full-width bar that
+/// ate the top of the screen — and positioned in a corner so it never covers the browser's controls.
+class PlanBadge extends StatelessWidget {
+  const PlanBadge({super.key, required this.steps, required this.current});
 
-int _currentOf(ToolCall call) => (call.args['current'] as num?)?.toInt() ?? 0;
-
-/// Pinned above the chat (not the Steps card at the bottom): a short, tappable card showing the
-/// model's own stated plan for the task it is working on now, with a done/in-progress/ahead status
-/// per step.
-class PlanBanner extends StatefulWidget {
-  const PlanBanner({super.key, required this.call});
-
-  final ToolCall call;
-
-  @override
-  State<PlanBanner> createState() => _PlanBannerState();
-}
-
-class _PlanBannerState extends State<PlanBanner> {
-  bool _open = false;
+  final List<String> steps;
+  final int current;
 
   @override
   Widget build(BuildContext context) {
-    final pal = paletteOf(context);
-    final steps = _stepsOf(widget.call);
     if (steps.isEmpty) return const SizedBox.shrink();
+    final pal = paletteOf(context);
     final total = steps.length;
-    final current = _currentOf(widget.call).clamp(0, total);
-    final allDone = current >= total;
-    final headline = allDone ? 'Plan complete — $total/$total' : 'Step ${current + 1} of $total: ${steps[current]}';
-    return Container(
-      margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
-      decoration: BoxDecoration(
-        color: pal.bubble,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: pal.accent.withValues(alpha: 0.35), width: 1),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () => setState(() => _open = !_open),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            child: Row(children: [
-              Icon(allDone ? CupertinoIcons.check_mark_circled_solid : CupertinoIcons.list_bullet, size: 16, color: pal.accent),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(headline, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
-              ),
-              Icon(_open ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down, size: 14, color: pal.secondary),
-            ]),
-          ),
+    final done = current.clamp(0, total);
+    final allDone = done >= total;
+    return GestureDetector(
+      onTap: () => showPlanDialog(context, steps, current),
+      child: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          color: pal.bubble,
+          shape: BoxShape.circle,
+          border: Border.all(color: pal.accent.withValues(alpha: 0.45), width: 1),
+          boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 8, offset: Offset(0, 2))],
         ),
-        if (_open)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              for (var i = 0; i < steps.length; i++) _planStep(pal, i, steps[i], i < current ? _StepState.done : (i == current && !allDone ? _StepState.doing : _StepState.ahead)),
-            ]),
+        child: Stack(alignment: Alignment.center, children: [
+          SizedBox(
+            width: 38,
+            height: 38,
+            child: CircularProgressIndicator(
+              value: total == 0 ? 0 : done / total,
+              strokeWidth: 3,
+              backgroundColor: pal.secondary.withValues(alpha: 0.25),
+              valueColor: AlwaysStoppedAnimation<Color>(pal.accent),
+            ),
           ),
-      ]),
+          allDone
+              ? Icon(CupertinoIcons.check_mark, size: 16, color: pal.accent)
+              : Text('$done/$total', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+        ]),
+      ),
     );
   }
+}
 
-  Widget _planStep(Palette pal, int i, String text, _StepState state) {
-    final Widget icon = switch (state) {
-      _StepState.done => Icon(CupertinoIcons.check_mark_circled_solid, size: 15, color: pal.accent),
-      _StepState.doing => const SizedBox(width: 13, height: 13, child: CupertinoActivityIndicator(radius: 6)),
-      _StepState.ahead => Icon(CupertinoIcons.circle, size: 14, color: pal.secondary),
-    };
-    final style = TextStyle(
-      fontSize: 13,
-      color: state == _StepState.ahead ? pal.secondary : null,
-      fontWeight: state == _StepState.doing ? FontWeight.w600 : FontWeight.w400,
-    );
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SizedBox(width: 20, child: icon),
-        const SizedBox(width: 7),
-        Expanded(child: Text(text, style: style)),
-      ]),
-    );
-  }
+/// The full plan as a popup: each step marked done, in progress, or still ahead.
+Future<void> showPlanDialog(BuildContext context, List<String> steps, int current) {
+  final pal = paletteOf(context);
+  final total = steps.length;
+  final done = current.clamp(0, total);
+  final allDone = done >= total;
+  return showDialog<void>(
+    context: context,
+    builder: (d) => AlertDialog(
+      title: Text(allDone ? 'Plan complete — $total/$total' : 'Plan — step ${done + 1} of $total'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            for (var i = 0; i < steps.length; i++)
+              _planStep(pal, steps[i], i < done ? _StepState.done : (i == done && !allDone ? _StepState.doing : _StepState.ahead)),
+          ]),
+        ),
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(d), child: const Text('Close'))],
+    ),
+  );
+}
+
+Widget _planStep(Palette pal, String text, _StepState state) {
+  final Widget icon = switch (state) {
+    _StepState.done => Icon(CupertinoIcons.check_mark_circled_solid, size: 16, color: pal.accent),
+    _StepState.doing => const SizedBox(width: 14, height: 14, child: CupertinoActivityIndicator(radius: 6.5)),
+    _StepState.ahead => Icon(CupertinoIcons.circle, size: 15, color: pal.secondary),
+  };
+  final style = TextStyle(
+    fontSize: 14,
+    color: state == _StepState.ahead ? pal.secondary : null,
+    fontWeight: state == _StepState.doing ? FontWeight.w600 : FontWeight.w400,
+  );
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(width: 22, child: icon),
+      const SizedBox(width: 8),
+      Expanded(child: Text(text, style: style)),
+    ]),
+  );
 }
 
 enum _StepState { done, doing, ahead }

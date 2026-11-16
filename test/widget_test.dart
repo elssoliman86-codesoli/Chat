@@ -50,27 +50,30 @@ void main() {
     expect(find.text('q0'), findsOneWidget);
   });
 
-  testWidgets('the plan banner shows the current step collapsed and a full checklist when tapped', (tester) async {
-    final call = ToolCall(id: 'p1', name: 'set_plan', args: {
-      'steps': ['Open the folder', 'Read every file', 'Fix the bug'],
-      'current': 1,
-    });
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: PlanBanner(call: call))));
-    expect(find.textContaining('Step 2 of 3'), findsOneWidget);
+  testWidgets('the plan badge is a small circle showing progress, and opens the full checklist when tapped', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: Center(child: PlanBadge(steps: const ['Open the folder', 'Read every file', 'Fix the bug'], current: 1))),
+    ));
+    expect(find.text('1/3'), findsOneWidget);
+    // Steps are not on screen until the badge is tapped — it must not take up a wide bar.
     expect(find.text('Open the folder'), findsNothing);
-    await tester.tap(find.textContaining('Step 2 of 3'));
+    final size = tester.getSize(find.byType(PlanBadge));
+    expect(size.width, lessThan(60));
+    expect(size.height, lessThan(60));
+    await tester.tap(find.byType(PlanBadge));
     await tester.pump();
+    expect(find.textContaining('step 2 of 3'), findsOneWidget);
     expect(find.text('Open the folder'), findsOneWidget);
     expect(find.text('Read every file'), findsOneWidget);
     expect(find.text('Fix the bug'), findsOneWidget);
   });
 
-  testWidgets('the plan banner shows completion once every step is past current', (tester) async {
-    final call = ToolCall(id: 'p2', name: 'set_plan', args: {
-      'steps': ['a', 'b'],
-      'current': 2,
-    });
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: PlanBanner(call: call))));
+  testWidgets('the plan badge shows completion once every step is past current', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: Center(child: PlanBadge(steps: const ['a', 'b'], current: 2))),
+    ));
+    await tester.tap(find.byType(PlanBadge));
+    await tester.pump();
     expect(find.textContaining('Plan complete — 2/2'), findsOneWidget);
   });
 

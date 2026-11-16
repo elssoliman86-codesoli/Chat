@@ -205,6 +205,16 @@ class ChatEngine implements ToolHost {
     }
   }
 
+  @override
+  String setPlan(List<String> steps, int current) {
+    final c = _running;
+    if (c == null) return 'No active conversation.';
+    final result = applyPlanUpdate(c, steps, current);
+    store.scheduleSave(c);
+    store.changed();
+    return result;
+  }
+
   (Plugin, PluginTool)? _findPluginTool(String name) {
     for (final p in store.plugins) {
       if (!p.enabled) continue;
@@ -278,19 +288,16 @@ class ChatEngine implements ToolHost {
         'show a short snippet if a specific line needs pointing out.');
     b.writeln('Before any request that will take more than two or three tool calls, call set_plan first, before any other tool call, with the full '
         'ordered list of real steps you are about to do (not vague phases — actual steps: "open config.json", "find every TODO in src/", "rewrite '
-        'auth.py", and so on) and current set to 0. The person sees this as a plan card they can open, showing which step is done, which is in '
-        'progress and which is still ahead — call it again with the same steps and an updated current every time a step actually finishes, so it '
-        'stays accurate instead of frozen on step one; when every step is actually done, call it once more with current equal to the number of steps. '
-        'Keep steps short (a few words each) and real — do not call set_plan at all for a single quick lookup or an obviously one-step action, and '
-        'never call it merely to describe what you are already doing in words; it replaces narrating the plan in your reply text, so do not also '
-        'write out the plan again in a normal message. If the plan changes partway through (a file was missing, an approach failed), call set_plan '
-        'again with the corrected steps rather than silently diverging from what it still shows.\n'
-        'If this conversation already has an earlier set_plan call for the SAME task that never reached its last step (current was still less than '
-        'the number of steps), and the user is now just nudging you to carry on ("continue", "كمل", "تابع", or simply repeating the original ask) '
-        'rather than asking for something new: that plan is still the real plan. Do not invent a new, different, or shorter list of steps for the '
-        'same task — look at exactly which steps you had already finished (from the tool calls and results already in this conversation, not from '
-        'memory of your own intentions), and either skip straight to continuing the real work, or call set_plan again with the ORIGINAL steps text '
-        'unchanged and current moved to wherever you genuinely left off. Only start a genuinely new plan when the task itself has actually changed.');
+        'auth.py", and so on) and current set to 0. The person sees this as a small badge above the chat they can open, showing which step is done, '
+        'which is in progress and which is still ahead. This is enforced, not just a convention: once a plan is set, the app locks its steps until '
+        'current reaches the step count (fully done) — a later set_plan call while it is still unfinished only moves current forward on that same '
+        'list, and a different or shorter list sent then is silently ignored, including after the person says "continue"/"كمل" or an error '
+        'interrupted you. So plan once with the real full list, then just call it again with the same steps and an updated current as steps '
+        'actually finish — never resend a different list to describe the same still-unfinished task; if you do, the tool result will tell you it '
+        'was ignored and what the real current progress is, so adjust and keep going rather than trying again. Keep steps short (a few words each) '
+        'and real — do not call set_plan at all for a single quick lookup or an obviously one-step action, and never call it merely to describe '
+        'what you are already doing in words; it replaces narrating the plan in your reply text, so do not also write out the plan again in a '
+        'normal message. Only a genuinely new task — after the previous plan actually finished — gets a new plan.');
     b.writeln('Conversation continuity is mandatory: treat every new user message as part of this same ongoing conversation unless the user clearly starts a new topic. '
         'Use the full preceding conversation, including the latest task, files, code changes, errors, tool results and decisions, to resolve short follow-ups. '
         'For example, after discussing an app or code project, "the build failed", "fix it", "what about this error?" or a single short phrase usually refers to that active project/task, not an unrelated dictionary meaning. '
@@ -954,4 +961,24 @@ class ChatEngine implements ToolHost {
       unawaited(_drainQueue(c));
     }
   }
+}
+
+/// The continuity rule behind set_plan, as a plain function so it can be tested without a running
+/// conversation. Once a plan exists and is not finished (planCurrent < planSteps.length), its steps are
+/// locked: a later call can only move planCurrent forward on them, and any different or shorter list it
+/// sends is ignored — this is what actually stops a model that stopped and resumed (or just re-planned
+/// out of habit) from silently swapping in a different plan mid-task. A finished plan (or no plan yet)
+/// accepts a brand new one. Returns the message handed back to the model as the tool result.
+String applyPlanUpdate(Conversation c, List<String> steps, int current) {
+  if (steps.isEmpty) return 'No steps given.';
+  final hasUnfinishedPlan = c.planSteps.isNotEmpty && c.planCurrent < c.planSteps.length;
+  if (hasUnfinishedPlan) {
+    c.planCurrent = current.clamp(0, c.planSteps.length);
+    return 'An unfinished plan for this task is already shown to the person (${c.planSteps.length} steps) — its steps are locked '
+        'until it is fully done, so the new steps you just sent were not used. Moved its progress to ${c.planCurrent}/${c.planSteps.length} '
+        'instead. Keep working through the existing steps; call set_plan again only to move current further, not to resend the list.';
+  }
+  c.planSteps = List<String>.of(steps);
+  c.planCurrent = current.clamp(0, steps.length);
+  return 'Plan shown to the person (${steps.length} step${steps.length == 1 ? '' : 's'}).';
 }

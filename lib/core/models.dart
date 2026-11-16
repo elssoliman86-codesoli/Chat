@@ -375,10 +375,13 @@ class Conversation {
     this.web = true,
     this.projectId = '',
     this.turnInProgress = false,
+    List<String>? planSteps,
+    this.planCurrent = 0,
   })  : createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
         updatedAt = updatedAt ?? DateTime.now().millisecondsSinceEpoch,
         messages = messages ?? <ChatMessage>[],
-        activeSkillIds = activeSkillIds ?? <String>[];
+        activeSkillIds = activeSkillIds ?? <String>[],
+        planSteps = planSteps ?? <String>[];
 
   final String id;
   String title;
@@ -405,6 +408,14 @@ class Conversation {
   /// never got to finish. continueReply() is what resumes it correctly from here.
   bool turnInProgress;
 
+  /// The current plan for this conversation, set by set_plan and enforced by ChatEngine.setPlan: once
+  /// non-empty, these steps are locked in until planCurrent reaches their length (the plan is fully
+  /// done) — a later set_plan call can only move planCurrent forward on them, never replace them with
+  /// a different list, so a model that stops and resumes (or re-plans out of habit) cannot silently
+  /// swap in a different plan mid-task. Shown in the UI as a small badge, not a full-width banner.
+  List<String> planSteps;
+  int planCurrent;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'title': title,
@@ -418,6 +429,8 @@ class Conversation {
         'web': web,
         'projectId': projectId,
         'turnInProgress': turnInProgress,
+        'planSteps': planSteps,
+        'planCurrent': planCurrent,
       };
 
   factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
@@ -436,6 +449,8 @@ class Conversation {
         web: j['web'] as bool? ?? true,
         projectId: j['projectId'] as String? ?? '',
         turnInProgress: j['turnInProgress'] as bool? ?? false,
+        planSteps: (j['planSteps'] as List?)?.whereType<String>().toList(),
+        planCurrent: (j['planCurrent'] as num?)?.toInt() ?? 0,
       );
 }
 

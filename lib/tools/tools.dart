@@ -43,6 +43,11 @@ abstract class ToolHost {
   /// Sends [question] to the configured second-opinion model and returns its full plain-text answer.
   Future<String> askAdvisor(String question);
 
+  /// Applies a set_plan call to the active conversation and returns a message describing what
+  /// actually happened (a new plan recorded, or an existing unfinished one kept with just its
+  /// progress moved forward) — see ChatEngine.setPlan for the enforced continuity rule.
+  String setPlan(List<String> steps, int current);
+
   /// Runs a tool that belongs to an installed plugin, or returns null when [name] is not one.
   Future<String?> runPluginTool(String name, Map<String, dynamic> args);
 
@@ -515,11 +520,16 @@ final List<ToolDef> builtinTools = <ToolDef>[
     group: 'core',
     spec: ToolSpec(
       name: 'set_plan',
-      description: 'Show the person a short structured plan for this task: a card above the chat listing the real steps, with a '
-          'checkmark on finished ones, a spinner on the one in progress, and the rest shown ahead — tap to open it. Call it once near '
-          'the start of a multi-step task with the full ordered list of steps and current set to 0, then call it again with the same '
-          'steps and an updated current every time a step actually finishes (current equal to the number of steps once everything is '
-          'done). Never use it for a single quick action, and never also narrate the plan in your reply text — this replaces that.',
+      description: 'Show the person a short structured plan for this task: a small badge above the chat with the real steps behind it, '
+          'checkmark on finished ones, a spinner on the one in progress, the rest shown ahead — tap it to open the full list. Call it '
+          'once near the start of a multi-step task with the full ordered list of steps and current set to 0. IMPORTANT: once a plan is '
+          'set, its steps are locked until current reaches the step count (fully done) — a later call while it is still unfinished can '
+          'only move current forward on the SAME steps; sending a different or shorter list then does nothing (the person is shown this '
+          'exact behavior as a hard rule, not a suggestion you can override). So: plan once with the real full list, then just call it '
+          'again with the same steps and an updated current as steps actually finish — never resend a shorter/different list to describe '
+          'the same unfinished task, including after the person says "continue"/"كمل" or a tool/connection error interrupted you; that is '
+          'exactly the case this rule exists for. Never use it for a single quick action, and never also narrate the plan in your reply '
+          'text — this replaces that.',
       parameters: _obj(<String, dynamic>{
         'steps': <String, dynamic>{
           'type': 'array',
@@ -534,8 +544,9 @@ final List<ToolDef> builtinTools = <ToolDef>[
       }, <String>['steps', 'current']),
     ),
     run: (a, host) async {
-      final steps = (a['steps'] as List?)?.length ?? 0;
-      return steps == 0 ? 'No steps given.' : 'Plan shown to the person ($steps step${steps == 1 ? '' : 's'}).';
+      final steps = (a['steps'] as List?)?.map((e) => e.toString()).toList() ?? <String>[];
+      final current = (a['current'] as num?)?.toInt() ?? 0;
+      return host.setPlan(steps, current);
     },
   ),
   ToolDef(

@@ -219,23 +219,55 @@ void main() {
     expect(kept, isNot(contains('set_plan')));
   });
 
-  test('latestPlanAndSkill picks the most recent set_plan and use_skill calls across the turn', () {
+  test('latestSkillCall picks the most recent use_skill call across the turn', () {
     final older = ChatMessage(role: 'assistant', text: '', toolCalls: [
-      ToolCall(id: '1', name: 'set_plan', args: {
-        'steps': ['a', 'b'],
-        'current': 0,
-      }),
-      ToolCall(id: '2', name: 'use_skill', args: {'name': 'first'}),
+      ToolCall(id: '1', name: 'use_skill', args: {'name': 'first'}),
     ]);
     final newer = ChatMessage(role: 'assistant', text: '', toolCalls: [
-      ToolCall(id: '3', name: 'set_plan', args: {
-        'steps': ['a', 'b'],
-        'current': 1,
-      }),
+      ToolCall(id: '2', name: 'use_skill', args: {'name': 'second'}),
+      ToolCall(id: '3', name: 'web_search', args: {'query': 'x'}),
     ]);
-    final result = latestPlanAndSkill([older, newer]);
-    expect(result.plan!.id, '3');
-    expect(result.skill!.id, '2');
+    expect(latestSkillCall([older, newer])!.id, '2');
+    expect(latestSkillCall([ChatMessage(role: 'assistant', text: '')]), isNull);
+  });
+
+  test('a plan is locked once set: later calls only move progress, until it is fully done', () {
+    final c = Conversation(id: 'plan-lock-test');
+    // First call: no plan yet, so it is accepted as-is.
+    expect(applyPlanUpdate(c, ['open folder', 'read files', 'fix bug', 'run tests'], 0), contains('Plan shown'));
+    expect(c.planSteps, hasLength(4));
+    expect(c.planCurrent, 0);
+
+    // The model stops and resumes and re-plans with a different, shorter list: ignored, progress still moves.
+    final msg = applyPlanUpdate(c, ['just fix it'], 2);
+    expect(msg, contains('locked'));
+    expect(c.planSteps, ['open folder', 'read files', 'fix bug', 'run tests']);
+    expect(c.planCurrent, 2);
+
+    // Progress cannot run past the end of the ORIGINAL list.
+    applyPlanUpdate(c, ['x'], 99);
+    expect(c.planCurrent, 4);
+
+    // Fully done now, so a genuinely new task gets a genuinely new plan.
+    expect(applyPlanUpdate(c, ['new task step 1', 'new task step 2'], 0), contains('Plan shown'));
+    expect(c.planSteps, ['new task step 1', 'new task step 2']);
+    expect(c.planCurrent, 0);
+  });
+
+  test('an empty plan is rejected and never overwrites an existing one', () {
+    final c = Conversation(id: 'plan-empty-test');
+    applyPlanUpdate(c, ['a', 'b'], 1);
+    expect(applyPlanUpdate(c, const [], 0), 'No steps given.');
+    expect(c.planSteps, ['a', 'b']);
+    expect(c.planCurrent, 1);
+  });
+
+  test('a conversation keeps its plan through a JSON round trip', () {
+    final c = Conversation(id: 'plan-json-test', planSteps: ['one', 'two'], planCurrent: 1);
+    final back = Conversation.fromJson(c.toJson());
+    expect(back.planSteps, ['one', 'two']);
+    expect(back.planCurrent, 1);
+    expect(Conversation.fromJson(<String, dynamic>{'id': 'old'}).planSteps, isEmpty);
   });
 
   test('a skill installed from GitHub keeps its repo as a folder; a manual one has none', () {
@@ -289,12 +321,13 @@ void main() {
   test('the system prompt tells the model to call set_plan before multi-step tool work and keep it updated', () {
     final prompt = ChatEngine(AppStore()).buildSystem(Conversation(id: 'plan-prompt-test'));
     expect(prompt, contains('call set_plan first, before any other tool call'));
-    expect(prompt, contains('call it again with the same steps and an updated current every time a step actually finishes'));
+    expect(prompt, contains('just call it again with the same steps and an updated current as steps '));
   });
 
-  test('the system prompt tells the model to resume an unfinished plan rather than restart it on "continue"', () {
+  test('the system prompt tells the model its plan is locked until done, including after "continue"', () {
     final prompt = ChatEngine(AppStore()).buildSystem(Conversation(id: 'plan-resume-prompt-test'));
-    expect(prompt, contains('Do not invent a new, different, or shorter list of steps for the same task'));
+    expect(prompt, contains('the app locks its steps until'));
+    expect(prompt, contains('silently ignored'));
     expect(prompt, contains('كمل'));
   });
 
