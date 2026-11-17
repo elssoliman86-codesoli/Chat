@@ -21,6 +21,9 @@ build/
 
 # Fonts are downloaded by tool/get_fonts.sh (Inter, OFL licence)
 /assets/fonts/*.ttf
+# ...except the code font this app ships itself (DejaVu Sans Mono, see assets/fonts/LICENSE-DejaVu.txt)
+!/assets/fonts/DejaVuSansMono.ttf
+!/assets/fonts/DejaVuSansMono-Bold.ttf
 
 # Signing material must never be committed
 *.jks
