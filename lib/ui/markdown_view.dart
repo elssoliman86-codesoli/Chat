@@ -6,6 +6,8 @@ import 'package:markdown/markdown.dart' as md;
 
 import '../files/code_export.dart';
 import 'code_preview.dart';
+import 'code_view.dart';
+import 'syntax.dart';
 import 'theme.dart';
 
 /// Markdown that only rebuilds when its text or theme changes.
@@ -46,7 +48,7 @@ class _MarkdownTextState extends State<MarkdownText> {
           h1: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
           h2: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
           h3: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-          code: TextStyle(fontFamily: 'monospace', fontSize: 14.5, backgroundColor: pal.bubble),
+          code: TextStyle(fontFamily: kCodeFont, fontFamilyFallback: kCodeFontFallback, fontSize: 14, backgroundColor: pal.bubble),
           blockquoteDecoration: BoxDecoration(border: Border(left: BorderSide(color: pal.separator, width: 3))),
           tableBorder: TableBorder.all(color: pal.separator, width: 0.5),
           // Columns share the available width equally and wrap their text, instead of each being
@@ -143,20 +145,20 @@ class CodeBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pal = paletteOf(context);
+    const theme = CodeTheme.dark;
     final canPreview = isPreviewable(language, code);
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
-      decoration: BoxDecoration(color: pal.field, borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(color: theme.background, borderRadius: BorderRadius.circular(12)),
       clipBehavior: Clip.antiAlias,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Container(
-          color: pal.bubble,
+          color: theme.header,
           padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
           child: Row(children: [
             Expanded(
               child: Text(language.isEmpty ? 'code' : language,
-                  style: TextStyle(fontSize: 12.5, color: pal.secondary, fontWeight: FontWeight.w600)),
+                  style: TextStyle(fontFamily: kCodeFont, fontFamilyFallback: kCodeFontFallback, fontSize: 12, color: theme.headerText, fontWeight: FontWeight.w600)),
             ),
             if (canPreview) _btn(context, CupertinoIcons.play_rectangle, 'Preview', () => openPreview(context, language, code)),
             _btn(context, CupertinoIcons.doc_on_doc, 'Copy', () {
@@ -168,22 +170,17 @@ class CodeBlock extends StatelessWidget {
             _btn(context, CupertinoIcons.arrow_down_to_line, 'Download', () => saveCode(context, language, code)),
           ]),
         ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.all(12),
-          child: Text(code, style: const TextStyle(fontFamily: 'monospace', fontSize: 13.5, height: 1.4)),
-        ),
+        HighlightedCode(code: code, language: language, size: 13),
       ]),
     );
   }
 
   Widget _btn(BuildContext context, IconData icon, String label, VoidCallback tap) {
-    final pal = paletteOf(context);
     return TextButton.icon(
       style: TextButton.styleFrom(
         visualDensity: VisualDensity.compact,
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        foregroundColor: pal.secondary,
+        foregroundColor: CodeTheme.dark.headerText,
         textStyle: const TextStyle(fontSize: 12.5),
       ),
       onPressed: tap,

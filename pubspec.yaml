@@ -30,6 +30,12 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: DejaVuSansMono
+      fonts:
+        - asset: assets/fonts/DejaVuSansMono.ttf
+        - asset: assets/fonts/DejaVuSansMono-Bold.ttf
+          weight: 700
 
 # Regenerated into the freshly-created android/ project on every CI build (see
 # .github/workflows/build-apk.yml) by `dart run flutter_launcher_icons` - android/ itself is not

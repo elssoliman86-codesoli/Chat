@@ -10,6 +10,8 @@ import '../data/services.dart';
 import '../files/code_export.dart';
 import '../projects/project_store.dart';
 import '../projects/projects.dart';
+import 'code_view.dart';
+import 'syntax.dart';
 import 'theme.dart';
 
 void _toast(BuildContext context, String text) {
@@ -474,7 +476,7 @@ class ProjectFileScreen extends StatefulWidget {
 }
 
 class _ProjectFileScreenState extends State<ProjectFileScreen> {
-  final TextEditingController _text = TextEditingController();
+  late final HighlightingController _text = HighlightingController(language: languageForPath(widget.path));
   bool _loading = true;
   bool _image = false;
   bool _binary = false;
@@ -544,20 +546,10 @@ class _ProjectFileScreenState extends State<ProjectFileScreen> {
               ? InteractiveViewer(child: Center(child: Image.file(File(_imagePath!))))
               : _binary
                   ? const Center(child: Text('Binary file'))
-                  : SingleChildScrollView(
+                  : ColoredBox(
+                      color: CodeTheme.dark.background,
                       child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: SizedBox(
-                          width: MediaQuery.of(context).size.width * 2.2,
-                          child: TextField(
-                            controller: _text,
-                            maxLines: null,
-                            keyboardType: TextInputType.multiline,
-                            onChanged: (_) => setState(() {}),
-                            style: const TextStyle(fontFamily: 'monospace', fontSize: 12.5, height: 1.4),
-                            decoration: const InputDecoration(border: InputBorder.none, filled: false, contentPadding: EdgeInsets.all(12)),
-                          ),
-                        ),
+                        child: CodeEditor(controller: _text, onChanged: () => setState(() {}), size: 13),
                       ),
                     ),
     );
