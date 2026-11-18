@@ -13,7 +13,9 @@ class ModelChecker extends ChangeNotifier {
 
   void cancel() => _cancel = true;
 
-  Future<void> run(List<(ProviderConfig, String)> jobs) async {
+  /// [keepOnNoAnswer]: for the automatic check at launch, a model that gives no answer at all (the phone is
+  /// offline) keeps its earlier result instead of being marked as failing.
+  Future<void> run(List<(ProviderConfig, String)> jobs, {bool keepOnNoAnswer = false}) async {
     if (running || jobs.isEmpty) return;
     running = true;
     _cancel = false;
@@ -34,7 +36,7 @@ class ModelChecker extends ChangeNotifier {
         } catch (e) {
           r = PingResult(0, e.toString(), 0);
         }
-        provider.health[model] = r.status;
+        if (!(keepOnNoAnswer && r.status == 0 && provider.health.containsKey(model))) provider.health[model] = r.status;
         // A model that rejects images will say so on the first real use; here only the status matters.
         done++;
         notifyListeners();

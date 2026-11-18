@@ -278,6 +278,7 @@ class ChatMessage extends ChangeNotifier {
     this.model = '',
     List<String>? sources,
     this.note = '',
+    this.switched = '',
     List<String>? outputs,
     this.thinking = '',
     this.thinkingSignature = '',
@@ -314,6 +315,9 @@ class ChatMessage extends ChangeNotifier {
   /// Shown above the reply but never sent to the model, for example the text read from an image.
   String note;
 
+  /// Set when the app moved this turn to another model because the first one could not answer.
+  String switched;
+
   /// Files the assistant made for the person (a project ZIP, say), each as "name<TAB>path".
   final List<String> outputs;
 
@@ -337,6 +341,7 @@ class ChatMessage extends ChangeNotifier {
         'model': model,
         'sources': sources,
         'note': note,
+        'switched': switched,
         'outputs': outputs,
         'thinking': thinking,
         'thinkingSignature': thinkingSignature,
@@ -362,6 +367,7 @@ class ChatMessage extends ChangeNotifier {
         model: j['model'] as String? ?? '',
         sources: (j['sources'] as List?)?.whereType<String>().toList(),
         note: j['note'] as String? ?? '',
+        switched: j['switched'] as String? ?? '',
         outputs: (j['outputs'] as List?)?.whereType<String>().toList(),
         thinking: j['thinking'] as String? ?? '',
         thinkingSignature: j['thinkingSignature'] as String? ?? '',
@@ -671,6 +677,7 @@ class AppSettings {
     this.helperModel = '',
     this.browserVisible = false,
     this.keepAlive = true,
+    this.autoSwitchModel = true,
     this.termuxTools = false,
     this.assistantProviderId = '',
     this.assistantModel = '',
@@ -724,6 +731,10 @@ class AppSettings {
   /// Keep long tasks running when the app is in the background.
   bool keepAlive;
 
+  /// When a model cannot answer (out of tokens, rate limited, no response), carry on with another model
+  /// that passed the last health check.
+  bool autoSwitchModel;
+
   /// Let the assistant run real shell commands through a separately installed Termux app (off by
   /// default: unlike the other tools, this reaches a real Linux environment on the device, not a sandbox).
   bool termuxTools;
@@ -771,6 +782,7 @@ class AppSettings {
         'helperModel': helperModel,
         'browserVisible': browserVisible,
         'keepAlive': keepAlive,
+        'autoSwitchModel': autoSwitchModel,
         'termuxTools': termuxTools,
         'assistantProviderId': assistantProviderId,
         'assistantModel': assistantModel,
@@ -806,6 +818,7 @@ class AppSettings {
         helperModel: j['helperModel'] as String? ?? '',
         browserVisible: j['browserVisible'] as bool? ?? false,
         keepAlive: j['keepAlive'] as bool? ?? true,
+        autoSwitchModel: j['autoSwitchModel'] as bool? ?? true,
         termuxTools: j['termuxTools'] as bool? ?? false,
         assistantProviderId: j['assistantProviderId'] as String? ?? '',
         assistantModel: j['assistantModel'] as String? ?? '',

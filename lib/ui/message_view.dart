@@ -260,6 +260,15 @@ class _MessageViewState extends State<MessageView> {
           if (stepsOnly(message.toolCalls).isNotEmpty)
             StepsCard(calls: stepsOnly(message.toolCalls), resultOf: widget.resultOf ?? (_) => null, live: streaming),
           for (final o in message.outputs) _OutputCard(entry: o),
+          if (message.switched.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(children: [
+                Icon(CupertinoIcons.arrow_2_squarepath, size: 13, color: pal.secondary),
+                const SizedBox(width: 6),
+                Expanded(child: Text(message.switched, style: TextStyle(fontSize: 12.5, color: pal.secondary))),
+              ]),
+            ),
           if (message.note.isNotEmpty) _NoteCard(note: message.note),
           if (message.sources.isNotEmpty) _sources(context),
           if (empty && streaming && message.toolCalls.isEmpty)

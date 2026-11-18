@@ -13,6 +13,7 @@ import '../tools/termux_service.dart';
 import 'model_list.dart';
 import '../plugins/installer.dart';
 import 'browser_dock.dart';
+import 'guides_screen.dart';
 import 'kit.dart';
 import 'theme.dart';
 
@@ -153,6 +154,14 @@ class _PluginsScreenState extends State<PluginsScreen> {
             value: s.keepAlive,
             onChanged: (v) => set(() => s.keepAlive = v),
           ),
+          SwitchCell(
+            title: 'Switch model automatically',
+            subtitle: 'If a model runs out of tokens, is rate limited or gives no response, carry on with another model that passed the health check. A dropped connection alone does not switch.',
+            icon: CupertinoIcons.arrow_2_squarepath,
+            color: iosTeal,
+            value: s.autoSwitchModel,
+            onChanged: (v) => set(() => s.autoSwitchModel = v),
+          ),
           Cell(
             title: 'Open browser',
             icon: CupertinoIcons.arrow_up_right_square,
@@ -251,6 +260,14 @@ class _PluginsScreenState extends State<PluginsScreen> {
             color: iosBlue,
             chevron: true,
             onTap: () => _addSshHost(context),
+          ),
+          Cell(
+            title: 'SSH & FTP setup guides',
+            subtitle: 'PowerShell, CMD, macOS, Linux, Ubuntu, Kali',
+            icon: CupertinoIcons.book,
+            color: iosIndigo,
+            chevron: true,
+            onTap: () => Navigator.of(context).push(CupertinoPageRoute<void>(builder: (_) => const GuidesScreen())),
           ),
         ],
       ),

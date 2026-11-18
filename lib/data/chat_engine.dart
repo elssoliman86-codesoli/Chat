@@ -14,6 +14,7 @@ import '../tools/registry.dart';
 import '../tools/web_tools.dart';
 import 'app_store.dart';
 import 'keep_alive.dart';
+import 'model_fallback.dart';
 import 'services.dart' show navigatorKey;
 
 /// Prevent automatic web enrichment from hijacking local-device commands or short follow-ups.
@@ -841,7 +842,7 @@ class ChatEngine implements ToolHost {
   }
 
   Future<void> _run(Conversation c) async {
-    final provider = store.providerById(c.providerId) ?? store.defaultProvider;
+    final initialProvider = store.providerById(c.providerId) ?? store.defaultProvider;
     _running = c;
     _seenCalls.clear();
     _browserEpoch = 0;
@@ -863,12 +864,34 @@ class ChatEngine implements ToolHost {
     });
     store.changed();
     try {
-      if (provider == null) {
+      if (initialProvider == null) {
         throw LlmException('Add a provider first: menu > Providers.');
       }
+      var provider = initialProvider;
       if (c.model.isEmpty) c.model = provider.model;
       if (c.model.isEmpty) throw LlmException('Pick a model for ${provider.name}.');
-      final client = createClient(provider);
+      var client = createClient(provider);
+      // Models already tried in this turn, so automatic switching never loops back to one that just failed.
+      final triedModels = <String>{candidateKey(provider, c.model)};
+      var switchNote = '';
+      // Moves this turn to the next model that passed the health check; false when there is none.
+      bool switchModel(String why) {
+        if (!store.settings.autoSwitchModel) return false;
+        final status = failureStatus(why);
+        if (status != null) provider.health[c.model] = status;
+        final next = fallbackCandidates(store.providers, provider, triedModels, otherProviderFirst: isAccountFailure(why));
+        if (next.isEmpty) return false;
+        final (p, m) = next.first;
+        final from = c.model;
+        provider = p;
+        client = createClient(p);
+        c.providerId = p.id;
+        c.model = m;
+        triedModels.add(candidateKey(p, m));
+        switchNote = 'Switched from $from to $m — $why';
+        store.saveProviders();
+        return true;
+      }
       // Long-task mode raises the cap well past the normal one: the whole point is not stopping early.
       final maxSteps = c.longTask ? kLongTaskSteps : store.settings.maxToolSteps.clamp(1, 100);
       var autoNudges = 0;
@@ -877,7 +900,8 @@ class ChatEngine implements ToolHost {
       var contextDone = false;
       var step = 0;
       while (step < maxSteps) {
-        final reply = ChatMessage(role: 'assistant', model: c.model);
+        final reply = ChatMessage(role: 'assistant', model: c.model, switched: switchNote);
+        switchNote = '';
         _currentReply = reply;
         final history = List<ChatMessage>.of(c.messages);
         c.messages.add(reply);
@@ -934,6 +958,15 @@ class ChatEngine implements ToolHost {
             c.messages.remove(reply);
             continue;
           }
+          // Out of tokens, rate limited, bad key, model gone: carry on with another healthy model. A dropped
+          // connection or timeout never switches — only an answer from the provider saying it cannot serve this model.
+          if (!abort.aborted && reply.text.isEmpty && reply.toolCalls.isEmpty && isModelFailure(e.toString())) {
+            final reason = e.toString().replaceAll('\n', ' ');
+            if (switchModel(reason.length > 140 ? '${reason.substring(0, 140)}…' : reason)) {
+              c.messages.remove(reply);
+              continue;
+            }
+          }
           if (!abort.aborted) {
             reply.error = true;
             reply.text = reply.text.isEmpty ? e.toString() : '${reply.text}\n\n⚠️ $e';
@@ -953,7 +986,17 @@ class ChatEngine implements ToolHost {
             step++;
             continue;
           }
-          if (reply.text.trim().isEmpty && reply.sources.isEmpty) c.messages.remove(reply);
+          if (reply.text.trim().isEmpty && reply.sources.isEmpty && reply.outputs.isEmpty) {
+            // "No response": the model returned nothing at all. Try another healthy model; if there is none, say so
+            // instead of leaving the person looking at a turn that silently ended.
+            c.messages.remove(reply);
+            if (switchModel('no response from ${c.model}')) continue;
+            c.messages.add(ChatMessage(
+                role: 'assistant',
+                error: true,
+                model: c.model,
+                text: 'The model returned no response. Tap Continue to try again, or pick another model.'));
+          }
           break;
         }
         lastWasNudge = false;

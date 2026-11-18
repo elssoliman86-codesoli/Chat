@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'data/auto_health.dart';
 import 'data/services.dart';
 import 'tools/ftp_service.dart';
 import 'ui/chat_screen.dart';
@@ -12,6 +13,8 @@ Future<void> main() async {
   await store.load();
   unawaited(FtpService.instance.ensureStartedIfEnabled(store.settings));
   runApp(const OmniChatApp());
+  // Re-test every known model in the background each time the app opens.
+  AutoHealth.instance.start();
 }
 
 class OmniChatApp extends StatelessWidget {
