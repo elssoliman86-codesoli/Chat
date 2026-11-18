@@ -124,6 +124,34 @@ class WebTools {
     return buffer.toString().trim();
   }
 
+  /// Pictures for a query (Bing Images) as markdown image lines the chat shows as a swipeable slideshow.
+  static Future<String> imageSearch(String query, {int max = 8}) async {
+    try {
+      final html = await _get('https://www.bing.com/images/search?q=${Uri.encodeQueryComponent(query)}&form=HDRSC3&first=1');
+      final hits = <String>[];
+      final seen = <String>{};
+      for (final m in RegExp(r'class="iusc"[^>]*?\sm="([^"]+)"', caseSensitive: false).allMatches(html)) {
+        try {
+          final j = jsonDecode(decodeEntities(m.group(1) ?? ''));
+          if (j is! Map) continue;
+          final thumb = (j['turl'] ?? '').toString();
+          final full = (j['murl'] ?? '').toString();
+          final url = thumb.startsWith('http') ? thumb : full;
+          if (!url.startsWith('http') || !seen.add(url)) continue;
+          final title = _clean((j['t'] ?? '').toString()).replaceAll(RegExp(r'[\[\]()]'), ' ').trim();
+          final page = (j['purl'] ?? '').toString();
+          hits.add('![${title.isEmpty ? 'image' : title}]($url)${page.startsWith('http') ? '   (page: $page)' : ''}');
+          if (hits.length >= max) break;
+        } catch (_) {}
+      }
+      if (hits.isEmpty) return 'No images found for "$query".';
+      return 'Found ${hits.length} pictures. To show them, copy the image lines (only the ![title](url) part) into your reply on consecutive '
+          'lines with nothing else between them: the app turns them into one slideshow card the person swipes left and right.\n\n${hits.join('\n')}';
+    } catch (e) {
+      return 'Image search failed: $e';
+    }
+  }
+
   /// Readable text of a page.
   static Future<String> fetchText(String url, {int maxChars = 6000}) async {
     try {

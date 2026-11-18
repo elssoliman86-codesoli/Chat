@@ -307,6 +307,9 @@ class ChatEngine implements ToolHost {
           'credential, or an action that needs their approval — and then say exactly what you are waiting for. When it is truly done, summarize what '
           'was done and what (if anything) was skipped and why.');
     }
+    b.writeln('Showing media: when you have several pictures (for example from image_search), put their ![title](url) lines on consecutive lines of the reply — '
+        'the app shows them side by side as one swipeable slideshow. A video link (YouTube and similar) on a line of its own, as a bare URL or [title](url), '
+        'shows as a card with its thumbnail. Do not put pictures inside a table or a list item, and never invent image URLs — use only ones a tool returned.');
     b.writeln('Conversation continuity is mandatory: treat every new user message as part of this same ongoing conversation unless the user clearly starts a new topic. '
         'Use the full preceding conversation, including the latest task, files, code changes, errors, tool results and decisions, to resolve short follow-ups. '
         'For example, after discussing an app or code project, "the build failed", "fix it", "what about this error?" or a single short phrase usually refers to that active project/task, not an unrelated dictionary meaning. '

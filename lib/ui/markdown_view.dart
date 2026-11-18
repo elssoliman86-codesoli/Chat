@@ -7,6 +7,7 @@ import 'package:markdown/markdown.dart' as md;
 import '../files/code_export.dart';
 import 'code_preview.dart';
 import 'code_view.dart';
+import 'rich_media.dart';
 import 'syntax.dart';
 import 'theme.dart';
 
@@ -36,8 +37,8 @@ class _MarkdownTextState extends State<MarkdownText> {
       _lastBrightness = theme.brightness;
       _lastPalette = pal;
       _built = MarkdownBody(
-        data: widget.text,
-        builders: {'pre': CodeBlockBuilder()},
+        data: groupMedia(widget.text),
+        builders: {'pre': CodeBlockBuilder(onLink: widget.onLink)},
         imageBuilder: (uri, title, alt) => _MarkdownImage(uri: uri, alt: alt),
         onTapLink: (text, href, title) {
           if (href != null && href.startsWith('http')) widget.onLink(href);
@@ -117,6 +118,10 @@ class _MarkdownImage extends StatelessWidget {
 
 /// Fenced code blocks with a header: language, Preview when the language can be shown or run, Copy and Download.
 class CodeBlockBuilder extends MarkdownElementBuilder {
+  CodeBlockBuilder({this.onLink});
+
+  final void Function(String url)? onLink;
+
   @override
   bool isBlockElement() => true;
 
@@ -133,6 +138,14 @@ class CodeBlockBuilder extends MarkdownElementBuilder {
       }
     }
     if (code.endsWith('\n')) code = code.substring(0, code.length - 1);
+    if (lang == 'gallery') {
+      final items = parseMedia(code);
+      if (items.isNotEmpty) return ImageCarousel(items: items);
+    }
+    if (lang == 'cards') {
+      final items = parseMedia(code);
+      if (items.isNotEmpty) return LinkCards(items: items, onOpen: onLink ?? (_) {});
+    }
     return CodeBlock(code: code, language: lang);
   }
 }

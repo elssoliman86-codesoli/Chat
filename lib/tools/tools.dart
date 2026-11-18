@@ -148,6 +148,20 @@ final List<ToolDef> builtinTools = <ToolDef>[
     run: (args, host) => WebTools.search((args['query'] ?? '').toString()),
   ),
   ToolDef(
+    id: 'image_search',
+    title: 'Image search',
+    group: 'web',
+    spec: ToolSpec(
+      name: 'image_search',
+      description: 'Search the web for pictures. Returns image URLs as markdown image lines; put them on consecutive lines in the reply '
+          'and the app shows them as a swipeable slideshow.',
+      parameters: _schema(<String, Map<String, String>>{
+        'query': <String, String>{'type': 'string', 'description': 'What the pictures should show'},
+      }, <String>['query']),
+    ),
+    run: (args, host) => WebTools.imageSearch((args['query'] ?? '').toString()),
+  ),
+  ToolDef(
     id: 'fetch_page',
     title: 'Read a web page',
     group: 'web',

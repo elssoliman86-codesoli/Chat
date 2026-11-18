@@ -18,6 +18,8 @@ List<ToolCall> stepsOnly(List<ToolCall> calls) => calls.where((c) => !_nonStepTo
   switch (c.name) {
     case 'web_search':
       return (title: 'Searched the web', detail: arg('query'));
+    case 'image_search':
+      return (title: 'Searched for pictures', detail: arg('query'));
     case 'fetch_page':
     case 'browse_page':
       return (title: 'Read a web page', detail: arg('url'));
@@ -95,6 +97,7 @@ IconData _iconFor(String name) {
   if (name.startsWith('project_')) return CupertinoIcons.folder;
   if (name.startsWith('browser') || name == 'browse_page') return CupertinoIcons.compass;
   if (name == 'web_search') return CupertinoIcons.search;
+  if (name == 'image_search') return CupertinoIcons.photo_on_rectangle;
   if (name == 'fetch_page') return CupertinoIcons.globe;
   if (name.startsWith('github')) return CupertinoIcons.chevron_left_slash_chevron_right;
   if (name == 'ask_user') return CupertinoIcons.hand_raised;
