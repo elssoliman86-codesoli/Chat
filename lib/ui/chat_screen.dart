@@ -121,7 +121,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   Icon(CupertinoIcons.chevron_forward, size: 13, color: paletteOf(context).secondary),
                 ]),
                 Text(
-                  '${provider?.name ?? 'No provider'}${c.temporary ? ' · temporary' : ''}',
+                  '${provider?.name ?? 'No provider'}${c.temporary ? ' · temporary' : ''}${c.longTask ? ' · long tasks' : ''}',
                   style: TextStyle(fontSize: 11.5, color: paletteOf(context).secondary),
                 ),
               ]),
@@ -145,6 +145,18 @@ class _ChatScreenState extends State<ChatScreen> {
                 icon: const Icon(CupertinoIcons.ellipsis),
                 onSelected: (v) async {
                   if (v == 'temp') _newChat(temporary: true);
+                  if (v == 'long') {
+                    c.longTask = !c.longTask;
+                    store.scheduleSave(c);
+                    store.changed();
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(SnackBar(
+                        content: Text(c.longTask
+                            ? 'Long tasks on — the assistant keeps going until the whole job is done'
+                            : 'Long tasks off'),
+                      ));
+                  }
                   if (v == 'browser') _composer.currentState?.openBrowser();
                   if (v == 'copy') {
                     await Clipboard.setData(ClipboardData(text: _markdown(c)));
@@ -152,10 +164,17 @@ class _ChatScreenState extends State<ChatScreen> {
                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chat copied as Markdown')));
                   }
                 },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'temp', child: Text('Temporary chat')),
-                  PopupMenuItem(value: 'browser', child: Text('Open browser')),
-                  PopupMenuItem(value: 'copy', child: Text('Copy chat as Markdown')),
+                itemBuilder: (_) => [
+                  const PopupMenuItem(value: 'temp', child: Text('Temporary chat')),
+                  PopupMenuItem(
+                    value: 'long',
+                    child: Row(children: [
+                      const Expanded(child: Text('Long tasks')),
+                      if (c.longTask) const Icon(CupertinoIcons.checkmark_alt, size: 18),
+                    ]),
+                  ),
+                  const PopupMenuItem(value: 'browser', child: Text('Open browser')),
+                  const PopupMenuItem(value: 'copy', child: Text('Copy chat as Markdown')),
                 ],
               ),
             ],

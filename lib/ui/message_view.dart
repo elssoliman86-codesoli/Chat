@@ -155,6 +155,20 @@ class _MessageViewState extends State<MessageView> {
 
   Widget _user(BuildContext context) {
     if (_editing) return _editor(context);
+    // A turn the app wrote itself (long-task mode carrying a stopped reply on) is a quiet line, not a
+    // speech bubble pretending the person typed it.
+    if (message.auto) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Center(
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(CupertinoIcons.arrow_2_circlepath, size: 13, color: paletteOf(context).secondary),
+            const SizedBox(width: 6),
+            Text('Continuing automatically (long task)', style: TextStyle(fontSize: 12.5, color: paletteOf(context).secondary)),
+          ]),
+        ),
+      );
+    }
     final images = message.attachments.where((a) => a.kind == AttachmentKind.image).toList();
     final files = message.attachments.where((a) => a.kind != AttachmentKind.image).toList();
     return Column(

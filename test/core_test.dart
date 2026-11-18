@@ -270,6 +270,43 @@ void main() {
     expect(Conversation.fromJson(<String, dynamic>{'id': 'old'}).planSteps, isEmpty);
   });
 
+  test('long-task mode: a conversation and an auto message keep their flags through JSON', () {
+    final c = Conversation(id: 'long-json-test', longTask: true);
+    expect(Conversation.fromJson(c.toJson()).longTask, true);
+    expect(Conversation.fromJson(<String, dynamic>{'id': 'old'}).longTask, false);
+    final m = ChatMessage(role: 'user', text: 'Continue.', auto: true);
+    expect(ChatMessage.fromJson(m.toJson()).auto, true);
+    expect(ChatMessage.fromJson(ChatMessage(role: 'user', text: 'hi').toJson()).auto, false);
+  });
+
+  test('looksUnfinished: an unfinished plan, a "want me to continue?" ending, or items left all count', () {
+    final c = Conversation(id: 'unfinished-test');
+    expect(looksUnfinished(c, 'All done. Replied to every comment.'), false);
+    expect(looksUnfinished(c, ''), false);
+    expect(looksUnfinished(c, 'I replied to 2 comments. Do you want me to continue with the rest?'), true);
+    expect(looksUnfinished(c, 'رديت على تعليقين. تحب أكمل الباقي؟'), true);
+    expect(looksUnfinished(c, 'Replied to 3 of them — 12 more remaining.'), true);
+    expect(looksUnfinished(c, 'رديت على 3 والمتبقي 12 تعليق'), true);
+    // A closing question that has nothing to do with carrying on is not a reason to nudge.
+    expect(looksUnfinished(c, 'Everything is finished. Anything else?'), false);
+    // The word alone in a statement that ends normally is not either.
+    expect(looksUnfinished(c, 'I will continue to monitor nothing; the job is complete.'), false);
+
+    applyPlanUpdate(c, ['open', 'reply to all', 'verify'], 1);
+    expect(looksUnfinished(c, 'Finished.'), true);
+    applyPlanUpdate(c, ['x'], 3);
+    expect(looksUnfinished(c, 'Finished.'), false);
+  });
+
+  test('the system prompt only asks for finish-everything behaviour when long tasks is on for the chat', () {
+    final engine = ChatEngine(AppStore());
+    final off = engine.buildSystem(Conversation(id: 'long-off'));
+    expect(off, isNot(contains('Long-task mode is ON')));
+    final on = engine.buildSystem(Conversation(id: 'long-on', longTask: true));
+    expect(on, contains('Long-task mode is ON'));
+    expect(on, contains('do not end your turn by asking whether to continue'));
+  });
+
   test('a skill installed from GitHub keeps its repo as a folder; a manual one has none', () {
     final fromRepo = Skill(id: 's3', name: 'From repo', source: 'octocat/hello-world');
     expect(Skill.fromJson(fromRepo.toJson()).source, 'octocat/hello-world');

@@ -274,6 +274,7 @@ class ChatMessage extends ChangeNotifier {
     this.toolName = '',
     int? at,
     this.error = false,
+    this.auto = false,
     this.model = '',
     List<String>? sources,
     this.note = '',
@@ -301,6 +302,10 @@ class ChatMessage extends ChangeNotifier {
   final String toolName;
   final int at;
   bool error;
+
+  /// A user turn the app wrote itself (long-task mode nudging the model to carry on) rather than the
+  /// person; shown as a small "continuing automatically" line instead of a speech bubble.
+  bool auto;
   String model;
 
   /// Web pages used for this answer, each as "title<TAB>url".
@@ -328,6 +333,7 @@ class ChatMessage extends ChangeNotifier {
         'toolName': toolName,
         'at': at,
         'error': error,
+        'auto': auto,
         'model': model,
         'sources': sources,
         'note': note,
@@ -352,6 +358,7 @@ class ChatMessage extends ChangeNotifier {
         toolName: j['toolName'] as String? ?? '',
         at: (j['at'] as num?)?.toInt(),
         error: j['error'] as bool? ?? false,
+        auto: j['auto'] as bool? ?? false,
         model: j['model'] as String? ?? '',
         sources: (j['sources'] as List?)?.whereType<String>().toList(),
         note: j['note'] as String? ?? '',
@@ -373,6 +380,7 @@ class Conversation {
     List<String>? activeSkillIds,
     this.temporary = false,
     this.web = true,
+    this.longTask = false,
     this.projectId = '',
     this.turnInProgress = false,
     List<String>? planSteps,
@@ -397,6 +405,11 @@ class Conversation {
 
   /// Search the web before answering.
   bool web;
+
+  /// Long-task mode for this chat: the model is expected to finish the whole job in one go (every
+  /// comment replied to, not two), the step cap is raised, and a reply that stops short of done is
+  /// nudged to carry on automatically instead of waiting for the person to type continue.
+  bool longTask;
 
   /// The project (folder of files) this chat works on, or empty.
   String projectId;
@@ -427,6 +440,7 @@ class Conversation {
         'activeSkillIds': activeSkillIds,
         'temporary': temporary,
         'web': web,
+        'longTask': longTask,
         'projectId': projectId,
         'turnInProgress': turnInProgress,
         'planSteps': planSteps,
@@ -447,6 +461,7 @@ class Conversation {
         activeSkillIds: (j['activeSkillIds'] as List?)?.whereType<String>().toList(),
         temporary: j['temporary'] as bool? ?? false,
         web: j['web'] as bool? ?? true,
+        longTask: j['longTask'] as bool? ?? false,
         projectId: j['projectId'] as String? ?? '',
         turnInProgress: j['turnInProgress'] as bool? ?? false,
         planSteps: (j['planSteps'] as List?)?.whereType<String>().toList(),

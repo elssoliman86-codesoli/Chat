@@ -298,6 +298,15 @@ class ChatEngine implements ToolHost {
         'and real — do not call set_plan at all for a single quick lookup or an obviously one-step action, and never call it merely to describe '
         'what you are already doing in words; it replaces narrating the plan in your reply text, so do not also write out the plan again in a '
         'normal message. Only a genuinely new task — after the previous plan actually finished — gets a new plan.');
+    if (c.longTask) {
+      b.writeln('Long-task mode is ON for this chat: the person wants the WHOLE job finished in one go, not a sample of it. If the job is a set '
+          'of items (every comment to reply to, every file to fix, every message to answer), work through every one of them — do not do one or two '
+          'and then stop to report progress, and do not end your turn by asking whether to continue; the person already said yes by turning this on. '
+          'Keep calling tools until nothing is left, re-checking the source for items you may have missed (scroll, paginate, reload) before declaring '
+          'it finished. Only stop early for something you genuinely cannot get past on your own — a sign-in or captcha only they can do, a missing '
+          'credential, or an action that needs their approval — and then say exactly what you are waiting for. When it is truly done, summarize what '
+          'was done and what (if anything) was skipped and why.');
+    }
     b.writeln('Conversation continuity is mandatory: treat every new user message as part of this same ongoing conversation unless the user clearly starts a new topic. '
         'Use the full preceding conversation, including the latest task, files, code changes, errors, tool results and decisions, to resolve short follow-ups. '
         'For example, after discussing an app or code project, "the build failed", "fix it", "what about this error?" or a single short phrase usually refers to that active project/task, not an unrelated dictionary meaning. '
@@ -857,7 +866,10 @@ class ChatEngine implements ToolHost {
       if (c.model.isEmpty) c.model = provider.model;
       if (c.model.isEmpty) throw LlmException('Pick a model for ${provider.name}.');
       final client = createClient(provider);
-      final maxSteps = store.settings.maxToolSteps.clamp(1, 100);
+      // Long-task mode raises the cap well past the normal one: the whole point is not stopping early.
+      final maxSteps = c.longTask ? kLongTaskSteps : store.settings.maxToolSteps.clamp(1, 100);
+      var autoNudges = 0;
+      var lastWasNudge = false;
       String? context;
       var contextDone = false;
       var step = 0;
@@ -926,9 +938,22 @@ class ChatEngine implements ToolHost {
         }
         if (abort.aborted || reply.error) break;
         if (reply.toolCalls.isEmpty) {
+          // Long-task mode: a reply that stops short of done (an unfinished plan, or "want me to
+          // continue?") is nudged on automatically instead of waiting for the person to type continue.
+          // Only once in a row — if it still answers with no tool use after the nudge, it is really done.
+          if (c.longTask && !lastWasNudge && autoNudges < kMaxAutoNudges && looksUnfinished(c, reply.text)) {
+            autoNudges++;
+            lastWasNudge = true;
+            c.messages.add(ChatMessage(role: 'user', auto: true, text: kLongTaskNudge));
+            store.scheduleSave(c);
+            store.changed();
+            step++;
+            continue;
+          }
           if (reply.text.trim().isEmpty && reply.sources.isEmpty) c.messages.remove(reply);
           break;
         }
+        lastWasNudge = false;
         for (final call in reply.toolCalls) {
           final result = await _runOnce(call);
           c.messages.add(ChatMessage(role: 'tool', text: result, toolCallId: call.id, toolName: call.name));
@@ -981,4 +1006,35 @@ String applyPlanUpdate(Conversation c, List<String> steps, int current) {
   c.planSteps = List<String>.of(steps);
   c.planCurrent = current.clamp(0, steps.length);
   return 'Plan shown to the person (${steps.length} step${steps.length == 1 ? '' : 's'}).';
+}
+
+/// How many tool steps one reply may take in long-task mode (the normal cap is the setting, at most 100).
+const int kLongTaskSteps = 400;
+
+/// How many times one turn may be nudged on automatically before it is left alone.
+const int kMaxAutoNudges = 30;
+
+/// What the app says on the person's behalf when a long-task reply stops short.
+const String kLongTaskNudge = 'Continue. Do not stop to report partial progress or ask whether to carry on — keep going through every '
+    'remaining item until the whole task is actually done, then summarize what was done.';
+
+final RegExp _askingToContinue = RegExp(
+    r"(want me to|shall i|should i|would you like|do you want|let me know|continue|go on|carry on|هل تريد|هل تحب|تحب|أكمل|اكمل|كمل|تكمل|تابع)",
+    caseSensitive: false);
+final RegExp _itemsLeft = RegExp(
+    r"(\d+\s+(more|remaining|left|other|others)\b|(more|remaining|left)\s*[:：]\s*\d+|المتبقي|الباقي|متبقي|باقي\s*\d+|\d+\s*(متبقي|باقي|أخرى|اخرى))",
+    caseSensitive: false);
+
+/// Whether a text-only reply looks like the model stopping short of finishing rather than being done:
+/// the conversation's plan still has steps left, the reply ends by asking whether to continue, or it
+/// says how many items remain. Deliberately narrow — a wrong "yes" costs one extra model call (and
+/// is never repeated back to back), a wrong "no" is just the old behaviour.
+bool looksUnfinished(Conversation c, String replyText) {
+  if (c.planSteps.isNotEmpty && c.planCurrent < c.planSteps.length) return true;
+  final text = replyText.trim();
+  if (text.isEmpty) return false;
+  final tail = text.length > 300 ? text.substring(text.length - 300) : text;
+  if (_itemsLeft.hasMatch(tail)) return true;
+  final endsWithQuestion = RegExp(r'[?؟]\s*$').hasMatch(tail);
+  return endsWithQuestion && _askingToContinue.hasMatch(tail);
 }
