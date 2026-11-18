@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../core/models.dart';
 import '../projects/projects.dart';
+import 'file_report.dart';
 
 class AttachmentException implements Exception {
   AttachmentException(this.message);
@@ -16,12 +17,6 @@ class AttachmentException implements Exception {
 }
 
 const Set<String> _imageExt = {'png', 'jpg', 'jpeg', 'webp', 'gif'};
-const Set<String> _textExt = {
-  'txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'jsonl', 'xml', 'html', 'htm', 'yaml', 'yml', 'toml', 'ini',
-  'log', 'rtf', 'tex', 'srt', 'vtt', 'sql', 'css', 'scss', 'js', 'mjs', 'ts', 'tsx', 'jsx', 'py', 'java', 'kt',
-  'dart', 'c', 'h', 'cpp', 'hpp', 'cs', 'go', 'rs', 'rb', 'php', 'sh', 'bat', 'swift', 'm', 'r', 'lua', 'gradle',
-  'properties', 'env', 'conf', 'cfg',
-};
 
 String extensionOf(String name) {
   final i = name.lastIndexOf('.');
@@ -42,6 +37,11 @@ String mimeForImage(String ext) {
       return 'image/png';
   }
 }
+
+/// Largest image / PDF sent to the model as-is; bigger ones are described instead of refused.
+const int maxInlineImageBytes = 20 * 1024 * 1024;
+const int maxInlinePdfBytes = 32 * 1024 * 1024;
+const int maxOfficeBytes = 60 * 1024 * 1024;
 
 /// Maximum characters one document adds to a prompt.
 const int maxDocumentChars = 200000;
@@ -138,6 +138,29 @@ String xlsxText(List<int> bytes) {
   return out.toString().trim();
 }
 
+/// Text of an OpenDocument file (content.xml) or an EPUB (its XHTML chapters).
+String zipDocumentText(List<int> bytes, String ext) {
+  final archive = ZipDecoder().decodeBytes(bytes);
+  if (ext == 'epub') {
+    final pages = archive.files
+        .where((f) => f.isFile && RegExp(r'\.(x?html?)$', caseSensitive: false).hasMatch(f.name))
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    final out = StringBuffer();
+    for (final f in pages) {
+      final xml = utf8.decode(f.content as List<int>, allowMalformed: true);
+      final body = xml.replaceAll(RegExp(r'<(script|style)[^>]*>.*?</\1>', dotAll: true), '').replaceAll(RegExp(r'</(p|div|h\d|li|br)\s*/?>'), '\n');
+      out.writeln(_xmlText(body));
+      out.writeln();
+    }
+    return out.toString().trim();
+  }
+  final xml = _entry(archive, 'content.xml')
+      .replaceAll(RegExp(r'</text:p>|</text:h>|</table:table-row>|<text:line-break/>'), '\n')
+      .replaceAll(RegExp(r'</table:table-cell>'), '\t');
+  return _xmlText(xml);
+}
+
 /// Copies files into app storage and reads documents into text.
 class AttachmentService {
   Directory? _dir;
@@ -174,65 +197,79 @@ class AttachmentService {
     }
   }
 
-  /// Turns a picked file into an attachment. Throws [AttachmentException] when it cannot be used.
+  Future<Attachment> _stored(File file, String name, String mime, AttachmentKind kind, int size, String id) async {
+    final folder = await _folder();
+    final stored = '${folder.path}/${id}_$name';
+    await file.copy(stored);
+    return Attachment(id: id, name: name, mime: mime, kind: kind, path: stored, size: size);
+  }
+
+  Attachment _textAttachment(String id, String name, int size, String text) =>
+      Attachment(id: id, name: name, mime: 'text/plain', kind: AttachmentKind.text, size: size, text: _clip(text));
+
+  /// Turns a picked file into an attachment. Any file of any type and size is accepted: what the
+  /// model cannot read directly is described to it instead of being refused.
   Future<Attachment> ingest(String sourcePath, String name) async {
     final file = File(sourcePath);
     if (!await file.exists()) throw AttachmentException('Could not read $name');
     final ext = extensionOf(name);
     final size = await file.length();
     final id = newId();
+    final head = await readHead(file, 4096);
+    final sniffed = sniffType(head, ext);
 
-    if (_imageExt.contains(ext)) {
-      if (size > 20 * 1024 * 1024) throw AttachmentException('$name is larger than 20 MB');
-      final folder = await _folder();
-      final stored = '${folder.path}/${id}_$name';
-      await file.copy(stored);
-      return Attachment(id: id, name: name, mime: mimeForImage(ext), kind: AttachmentKind.image, path: stored, size: size);
+    // Images are sent as they are; the provider clients downscale nothing, so huge ones are described.
+    if (_imageExt.contains(ext) || sniffed == 'PNG image' || sniffed == 'JPEG image' || sniffed == 'GIF image' || sniffed == 'WebP image') {
+      final realExt = sniffed == 'PNG image'
+          ? 'png'
+          : sniffed == 'JPEG image'
+              ? 'jpg'
+              : sniffed == 'GIF image'
+                  ? 'gif'
+                  : sniffed == 'WebP image'
+                      ? 'webp'
+                      : ext;
+      if (size <= maxInlineImageBytes) {
+        return _stored(file, name, mimeForImage(realExt), AttachmentKind.image, size, id);
+      }
+      return _textAttachment(id, name, size, await binaryReport(file, name, size, ext));
     }
-    if (ext == 'pdf') {
-      if (size > 32 * 1024 * 1024) throw AttachmentException('$name is larger than 32 MB');
-      final folder = await _folder();
-      final stored = '${folder.path}/${id}_$name';
-      await file.copy(stored);
-      return Attachment(id: id, name: name, mime: 'application/pdf', kind: AttachmentKind.pdf, path: stored, size: size);
+    if (ext == 'pdf' || sniffed == 'PDF document') {
+      if (size <= maxInlinePdfBytes) {
+        return _stored(file, name, 'application/pdf', AttachmentKind.pdf, size, id);
+      }
+      return _textAttachment(id, name, size, await binaryReport(file, name, size, ext));
     }
-    if (ext == 'zip') {
-      if (size > 400 * 1024 * 1024) throw AttachmentException('$name is larger than 400 MB');
+    if (ext == 'zip' && sniffed == 'ZIP archive') {
       try {
         final (p, summary) = await projects.importZip(sourcePath, name);
         return await _projectAttachment(p.id, p.name, name, size, summary);
-      } catch (e) {
-        throw AttachmentException('Could not open $name as a project');
+      } catch (_) {
+        return _textAttachment(id, name, size, await binaryReport(file, name, size, ext));
       }
     }
-    if (size > 60 * 1024 * 1024) throw AttachmentException('$name is larger than 60 MB');
-    String text;
-    final bytes = await file.readAsBytes();
-    try {
-      if (ext == 'docx') {
-        text = docxText(bytes);
-      } else if (ext == 'pptx') {
-        text = pptxText(bytes);
-      } else if (ext == 'xlsx') {
-        text = xlsxText(bytes);
-      } else if (_textExt.contains(ext) || ext.isEmpty) {
-        text = utf8.decode(bytes, allowMalformed: true);
-      } else {
-        throw AttachmentException('".$ext" files are not supported yet');
+    if (const {'docx', 'pptx', 'xlsx'}.contains(ext) && size <= maxOfficeBytes) {
+      try {
+        final bytes = await file.readAsBytes();
+        final text = ext == 'docx' ? docxText(bytes) : ext == 'pptx' ? pptxText(bytes) : xlsxText(bytes);
+        if (text.trim().isNotEmpty) return _textAttachment(id, name, size, text);
+      } catch (_) {
+        // fall through to the generic report
       }
-    } on AttachmentException {
-      rethrow;
-    } catch (_) {
-      throw AttachmentException('Could not read $name');
     }
-    if (text.trim().isEmpty) throw AttachmentException('$name has no readable text');
-    return Attachment(
-      id: id,
-      name: name,
-      mime: 'text/plain',
-      kind: AttachmentKind.text,
-      size: size,
-      text: _clip(text),
-    );
+    if (const {'odt', 'ods', 'odp', 'epub'}.contains(ext) && size <= maxOfficeBytes) {
+      try {
+        final text = zipDocumentText(await file.readAsBytes(), ext);
+        if (text.trim().isNotEmpty) return _textAttachment(id, name, size, text);
+      } catch (_) {
+        // fall through to the generic report
+      }
+    }
+    if (looksLikeText(head)) {
+      final text = await readTextCapped(file, size);
+      if (text.trim().isEmpty) return _textAttachment(id, name, size, '[Empty file: "$name"]');
+      return _textAttachment(id, name, size, text);
+    }
+    return _textAttachment(id, name, size, await binaryReport(file, name, size, ext));
   }
 }
