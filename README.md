@@ -12,7 +12,20 @@ Flutter. Bring your own provider API keys; everything runs from your own phone.
   OpenAI-compatible providers, an extended-thinking token budget for Anthropic, or `thinkingConfig`
   for Gemini.
 - **Many files and images per message**: up to 50 (default 20) — photos, camera, PDF, Word, Excel,
-  PowerPoint, text and code. A text-only model can be given a helper model to describe images for it.
+  PowerPoint, OpenDocument, EPUB, text and code. A text-only model can be given a helper model to describe
+  images for it.
+- **Any file, any size**: nothing is refused. Text of any kind (whatever the extension) is read — a huge log
+  is trimmed to its start and end with a line count; anything else (video, audio, APK, EXE, databases,
+  unknown binaries) is attached as a report: type from its magic bytes, size, first bytes, an archive's
+  file list and the readable strings inside.
+- **Pictures and videos in answers**: pictures found by the image search show as one slideshow card you
+  swipe left and right (tap one for full screen); a YouTube/Vimeo link shows as a card with its thumbnail
+  and title.
+- **Long tasks**: a toggle in the chat's menu. The model keeps going until the whole job is done (every
+  comment replied to, every file fixed) instead of stopping after one or two and waiting for "continue".
+- **Automatic model health and fallback**: the HTTP-200 check re-runs by itself every time the app opens.
+  If a model runs out of tokens, is rate limited, rejects the key or returns no response, the turn moves to
+  another model that passed the check — but never just because the connection dropped (can be switched off).
 - Streaming Markdown answers, chat history with search, temporary chats, custom instructions, and
   several themes including a dark glass/"emerald" look.
 - **Edit, regenerate, or continue**: edit your own message and re-send, regenerate the last answer, or
@@ -47,7 +60,9 @@ came from (one per repo, plus "Manual" and "Built-in").
 - **SSH hosts**: add a server's host/user/port and either generate a real key pair (Termux creates it,
   you copy the public half to the server) or a password (with a one-tap sshpass install) — the
   assistant then reaches that host directly, Linux, Kali or a Windows PC's Command Prompt/PowerShell
-  over its OpenSSH Server.
+  over its OpenSSH Server. Built-in **SSH & FTP setup guides** (Plugins) walk through turning the servers
+  on, finding the address, key login and file transfer on PowerShell, CMD, macOS, Linux, Ubuntu and Kali,
+  with a copy button on every command.
 - **FTP server**: turn on a local FTP server over the Projects folder (below) to edit those files
   directly from a PC or another device on the same Wi-Fi — Windows Explorer, FileZilla, WinSCP, or any
   FTP client.
@@ -55,7 +70,10 @@ came from (one per repo, plus "Manual" and "Built-in").
 ## Browser and plugins
 
 A built-in browser the assistant can open, read, click, type into, drag within and scroll — visible so
-you can watch it work. On top of that:
+you can watch it work. It always shows the **desktop** version of sites (desktop Chrome user agent and a
+wide viewport — Facebook, WhatsApp Web and the like), and has a **DevTools** panel (hammer button) with
+every network request (status, timing, headers, request and response bodies) and the console. The
+assistant reads the same data with `browser_devtools`. On top of that:
 
 - **Named plugins**: Gmail, Canva, Facebook, Instagram, YouTube, GitHub (search, read, and — with your
   own token — open PRs/issues, comment, create a repo). Each signs in once and stays signed in.
