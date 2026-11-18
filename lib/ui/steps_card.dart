@@ -25,6 +25,8 @@ List<ToolCall> stepsOnly(List<ToolCall> calls) => calls.where((c) => !_nonStepTo
       return (title: 'Read a web page', detail: arg('url'));
     case 'browser_open':
       return (title: 'Opened ${host(arg('url'))}', detail: arg('url'));
+    case 'browser_devtools':
+      return (title: 'Checked the browser DevTools', detail: arg('filter').isNotEmpty ? arg('filter') : arg('kind'));
     case 'browser_read':
       return (title: 'Read the page', detail: '');
     case 'browser_click':

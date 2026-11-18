@@ -4,6 +4,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../core/models.dart';
 import '../tools/browser_service.dart';
+import 'devtools_pane.dart';
 import 'theme.dart';
 
 /// Opens the shared browser. Called from anywhere: pages above the chat are closed first so the dock is visible.
@@ -224,6 +225,15 @@ class _Card extends StatelessWidget {
                 ),
               ),
               IconButton(visualDensity: VisualDensity.compact, icon: const Icon(CupertinoIcons.arrow_clockwise, size: 19), onPressed: b.controller.reload),
+              ValueListenableBuilder<bool>(
+                valueListenable: b.devToolsOpen,
+                builder: (context, open, _) => IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'DevTools (network and console)',
+                  icon: Icon(CupertinoIcons.hammer, size: 19, color: open ? pal.accent : null),
+                  onPressed: () => b.devToolsOpen.value = !open,
+                ),
+              ),
               IconButton(
                 visualDensity: VisualDensity.compact,
                 tooltip: 'Ask about this page',
@@ -243,6 +253,12 @@ class _Card extends StatelessWidget {
             builder: (context, p, _) => p > 0 && p < 100 ? LinearProgressIndicator(value: p / 100, minHeight: 2) : const SizedBox(height: 2),
           ),
           Expanded(child: view),
+          ValueListenableBuilder<bool>(
+            valueListenable: b.devToolsOpen,
+            builder: (context, open, _) => open
+                ? SizedBox(height: full ? 300 : 190, child: DevToolsPane(log: b.dev))
+                : const SizedBox.shrink(),
+          ),
         ]),
       ),
     );

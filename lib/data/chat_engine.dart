@@ -409,7 +409,10 @@ class ChatEngine implements ToolHost {
           'going until the whole task is done without asking the person to do steps you can do. The browser works in the background and '
           'does not cover the chat. When you need a login, a captcha, a payment, a permission or a decision, call ask_user: the browser '
           'comes up so they can act, then continue. Never type passwords or card numbers yourself. '
-          'Ask for confirmation before irreversible actions (sending, buying, deleting, publishing).');
+          'Ask for confirmation before irreversible actions (sending, buying, deleting, publishing). '
+          'The browser always shows the desktop version of sites (like a computer), so use the desktop layout of Facebook, WhatsApp Web and similar. '
+          'When something fails or does nothing, call browser_devtools to see the network requests (status codes, responses) and console errors '
+          'of the page — the person can see the same panel.');
     }
     if (st.pluginGmail && st.pluginBrowser) {
       b.writeln('\nGmail: work in https://mail.google.com with the browser tools. Search with the search box, open threads to '

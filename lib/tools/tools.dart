@@ -587,6 +587,28 @@ final List<ToolDef> builtinTools = <ToolDef>[
     run: (a, host) => BrowserService.instance.read(),
   ),
   ToolDef(
+    id: 'browser_devtools',
+    title: 'Browser: DevTools',
+    group: 'browser',
+    spec: ToolSpec(
+      name: 'browser_devtools',
+      description: 'Read the browser\'s DevTools for the current page: every network request (method, status, time, address) and the console '
+          '(logs, warnings, errors). Use it to find why a page or an action failed, or to see which API a site calls. '
+          'kind is network, console or all (default). filter keeps only requests whose address contains the text. '
+          'id=N returns the full headers and response body of request #N.',
+      parameters: _obj(<String, dynamic>{
+        'kind': <String, dynamic>{'type': 'string', 'enum': <String>['all', 'network', 'console'], 'description': 'What to read (default all)'},
+        'filter': _str('Only requests whose address contains this text (optional)'),
+        'id': <String, dynamic>{'type': 'integer', 'description': 'Request number for its full detail (optional)'},
+      }),
+    ),
+    run: (a, host) async {
+      final id = a['id'] == null ? null : int.tryParse(a['id'].toString());
+      final kind = _s(a, 'kind');
+      return BrowserService.instance.devtoolsReport(kind: kind.isEmpty ? 'all' : kind, filter: _s(a, 'filter'), id: id);
+    },
+  ),
+  ToolDef(
     id: 'browser_click',
     title: 'Browser: click',
     group: 'browser',

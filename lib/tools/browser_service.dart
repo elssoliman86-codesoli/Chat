@@ -5,8 +5,18 @@ import 'package:flutter/widgets.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
-const String browserUserAgent = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 '
+import 'devtools_log.dart';
+
+/// The browser always presents itself as desktop Chrome on Windows, so Facebook, WhatsApp Web and other sites
+/// that check the device give their full computer version.
+const String desktopUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+/// Only used for a moment by project_check, which tests how a web project looks on a phone.
+const String phoneUserAgent = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 '
     '(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36';
+
+const String browserUserAgent = desktopUserAgent;
 
 enum DockMode { hidden, panel, full }
 
@@ -52,6 +62,31 @@ class BrowserService {
   /// When true the panel slides up while the assistant works. Default is the background.
   bool showWhileWorking = false;
 
+  /// Network requests and console output of the current page (the browser's DevTools), shown in the panel
+  /// and readable by the model through browser_devtools.
+  final DevLog dev = DevLog();
+  final ValueNotifier<bool> devToolsOpen = ValueNotifier<bool>(false);
+
+  /// Desktop mode is always on; it is switched off only while project_check looks at a page like a phone.
+  bool _desktop = true;
+
+  Future<void> _setDesktop(bool on) async {
+    _desktop = on;
+    try {
+      await controller.setUserAgent(on ? desktopUserAgent : phoneUserAgent);
+    } catch (_) {}
+  }
+
+  Future<void> _injectScripts() async {
+    try {
+      await controller.runJavaScript(devToolsScript);
+      if (_desktop) await controller.runJavaScript(desktopViewportScript);
+    } catch (_) {}
+  }
+
+  /// The DevTools data as text for the model.
+  String devtoolsReport({String kind = 'all', String filter = '', int? id}) => dev.report(kind: kind, filter: filter, id: id);
+
   /// Console messages and failed requests of the current page, for checking a web project.
   final List<String> logs = <String>[];
 
@@ -72,12 +107,18 @@ class BrowserService {
   WebViewController _create() {
     final c = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setUserAgent(browserUserAgent)
+      ..setUserAgent(desktopUserAgent)
+      ..addJavaScriptChannel('OmniDev', onMessageReceived: (m) => dev.handle(m.message))
       ..setNavigationDelegate(NavigationDelegate(
         onProgress: (p) => progress.value = p,
-        onPageStarted: (u) => url.value = u,
+        onPageStarted: (u) {
+          url.value = u;
+          dev.newPage();
+          _injectScripts();
+        },
         onPageFinished: (u) async {
           url.value = u;
+          _injectScripts();
           final l = _loaded;
           if (l != null && !l.isCompleted) l.complete();
           try {
@@ -307,12 +348,19 @@ class BrowserService {
   Future<String> check(String address, {int waitMs = 1200}) => _serial(() async {
         logs.clear();
         _revealIfWanted();
-        await _load(address);
-        await Future<void>.delayed(Duration(milliseconds: waitMs));
-        final raw = await _eval(_checkJs);
+        // A web project is judged on how it looks on a phone, so the browser steps out of desktop mode for this one look.
+        await _setDesktop(false);
+        String raw;
+        try {
+          await _load(address);
+          await Future<void>.delayed(Duration(milliseconds: waitMs));
+          raw = (await _eval(_checkJs)).toString();
+        } finally {
+          await _setDesktop(true);
+        }
         final b = StringBuffer();
         try {
-          final j = jsonDecode(raw as String) as Map<String, dynamic>;
+          final j = jsonDecode(raw) as Map<String, dynamic>;
           b.writeln('Checked $address (viewport ${j['width']}px wide, like a phone)');
           b.writeln('Title: ${j['title']}');
           b.writeln('Viewport meta tag: ${j['viewportMeta'] == true ? 'yes' : 'MISSING (page will not be responsive)'}');
