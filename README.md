@@ -265,6 +265,27 @@ turned on/off under *Installed plugins*.
 
 ---
 
+## Design: Midnight Glass
+
+The whole app uses one frosted-glass design system. **Settings → Appearance** picks *Dark* (deep midnight navy),
+*Light* (pale frosted glass), *System* or *Emerald*.
+
+- **Surfaces** are translucent with a thin bright rim, a soft top-left sheen and a gentle shadow, over a static
+  scene (a deep gradient with two soft light pools) that gives the glass something to refract. Blur is used only
+  on a few large surfaces — the top bar, dialogs, bottom sheets and the side drawer — never per list row, so
+  scrolling stays light on the GPU.
+- **Components** (`lib/ui/glass/`): `FrostedGlassCard`, `GlassButton`, `GlassIconButton`, `GlassInput`,
+  `GlassNavigation`, `GlassDialog`, `GlassBottomSheet` (`showGlassSheet`), `GlassStatusIndicator`, `GlassToggle`
+  and `NeonProgressTimeline`. Buttons and controls have pressed, disabled, loading, selected and focus states.
+- **Neon progress timeline.** Every multi-step run (the assistant's tool steps, and the plan popup) is drawn as a
+  vertical timeline: a glowing electric-blue ring on the active step, a luminous line that fills in as each step
+  finishes, and clear completed / failed / cancelled / waiting states with real start times and durations.
+  It shows only what the app is really doing: the active ring follows the engine's current tool call, a step turns
+  red when the tool actually failed, and calls that never ran after a stop are marked cancelled.
+- **Icons** are one outline set (Cupertino) at three sizes, with electric blue for active controls.
+
+---
+
 ## Proxy and Tor
 
 **Settings → Proxy & Tor** sends the app's traffic through a proxy or through Tor. Everything the app does on
