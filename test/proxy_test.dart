@@ -12,15 +12,34 @@ import 'package:omni_chat/net/proxy_service.dart';
 class _Buf {
   _Buf(Socket s) {
     s.listen((d) {
+      final f = _forward;
+      if (f != null) {
+        f(d);
+        return;
+      }
       _data.addAll(d);
       _wake();
     }, onDone: () {
       _done = true;
+      _onDone?.call();
       _wake();
     }, onError: (Object _) {
       _done = true;
+      _onDone?.call();
       _wake();
     });
+  }
+
+  void Function(List<int>)? _forward;
+  void Function()? _onDone;
+
+  /// From now on, everything that arrives goes to [f] (a socket can only be listened to once).
+  void forwardTo(void Function(List<int>) f, void Function() onDone) {
+    final pending = rest();
+    _forward = f;
+    _onDone = onDone;
+    if (pending.isNotEmpty) f(pending);
+    if (_done) onDone();
   }
 
   final List<int> _data = [];
@@ -126,9 +145,7 @@ class _FakeSocks {
       requestedHosts.add(host);
       final out = await Socket.connect(InternetAddress.loopbackIPv4, targetPort);
       c.add([5, 0, 0, 1, 0, 0, 0, 0, 0, 0]);
-      final pending = b.rest();
-      if (pending.isNotEmpty) out.add(pending);
-      c.listen(out.add, onDone: out.close, onError: (Object _) => out.destroy());
+      b.forwardTo(out.add, out.close);
       out.listen(c.add, onDone: c.close, onError: (Object _) => c.destroy());
     } catch (_) {
       c.destroy();
@@ -344,7 +361,7 @@ void main() {
         }
         final out = await Socket.connect(InternetAddress.loopbackIPv4, echo.port);
         c.add(latin1.encode('HTTP/1.1 200 Connection established\r\n\r\n'));
-        c.listen(out.add, onDone: out.close);
+        b.forwardTo(out.add, out.close);
         out.listen(c.add, onDone: c.close);
       });
       final bridge = LocalProxyBridge();
