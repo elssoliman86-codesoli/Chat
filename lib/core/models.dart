@@ -688,6 +688,9 @@ class AppSettings {
     this.torPort = 9050,
     this.proxyBypassLan = true,
     this.proxyBrowser = true,
+    this.localBrowser = '',
+    this.localBrowserName = '',
+    this.localBrowserVersion = '',
     this.termuxTools = false,
     this.assistantProviderId = '',
     this.assistantModel = '',
@@ -761,6 +764,12 @@ class AppSettings {
   /// Send the built-in browser through it too.
   bool proxyBrowser;
 
+  /// The browser the built-in browser presents itself as: the package name of an installed browser
+  /// (Firefox, Chrome, Tor Browser…), or empty for the built-in default.
+  String localBrowser;
+  String localBrowserName;
+  String localBrowserVersion;
+
   /// Let the assistant run real shell commands through a separately installed Termux app (off by
   /// default: unlike the other tools, this reaches a real Linux environment on the device, not a sandbox).
   bool termuxTools;
@@ -819,6 +828,9 @@ class AppSettings {
         'torPort': torPort,
         'proxyBypassLan': proxyBypassLan,
         'proxyBrowser': proxyBrowser,
+        'localBrowser': localBrowser,
+        'localBrowserName': localBrowserName,
+        'localBrowserVersion': localBrowserVersion,
         'termuxTools': termuxTools,
         'assistantProviderId': assistantProviderId,
         'assistantModel': assistantModel,
@@ -865,6 +877,9 @@ class AppSettings {
         torPort: (j['torPort'] as num?)?.toInt() ?? 9050,
         proxyBypassLan: j['proxyBypassLan'] as bool? ?? true,
         proxyBrowser: j['proxyBrowser'] as bool? ?? true,
+        localBrowser: j['localBrowser'] as String? ?? '',
+        localBrowserName: j['localBrowserName'] as String? ?? '',
+        localBrowserVersion: j['localBrowserVersion'] as String? ?? '',
         termuxTools: j['termuxTools'] as bool? ?? false,
         assistantProviderId: j['assistantProviderId'] as String? ?? '',
         assistantModel: j['assistantModel'] as String? ?? '',

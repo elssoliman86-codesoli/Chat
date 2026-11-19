@@ -76,6 +76,33 @@ class MainActivity : FlutterActivity() {
                 result.error("proxy", e.message, null)
             }
         }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "omni/browsers").setMethodCallHandler { call, result ->
+            try {
+                if (call.method == "list") {
+                    val probe = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com")).addCategory(Intent.CATEGORY_BROWSABLE)
+                    val infos = packageManager.queryIntentActivities(probe, PackageManager.MATCH_ALL)
+                    val seen = HashSet<String>()
+                    val out = ArrayList<Map<String, String>>()
+                    for (ri in infos) {
+                        val name = ri.activityInfo.packageName
+                        if (name == packageName || !seen.add(name)) {
+                            continue
+                        }
+                        var ver = ""
+                        try {
+                            ver = packageManager.getPackageInfo(name, 0).versionName ?: ""
+                        } catch (e: Exception) {
+                        }
+                        out.add(mapOf("package" to name, "label" to ri.loadLabel(packageManager).toString(), "version" to ver))
+                    }
+                    result.success(out)
+                } else {
+                    result.notImplemented()
+                }
+            } catch (e: Exception) {
+                result.error("browsers", e.message, null)
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "omni/termux").setMethodCallHandler { call, result ->
             try {
                 when (call.method) {

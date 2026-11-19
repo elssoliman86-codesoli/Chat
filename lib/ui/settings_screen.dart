@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../data/services.dart';
 import 'kit.dart';
+import 'browser_choice_screen.dart';
 import 'plugins_screen.dart';
 import 'proxy_screen.dart';
 import 'theme.dart';
@@ -94,6 +95,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             color: iosIndigo,
             chevron: true,
             onTap: () => Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => const PluginsScreen())),
+          ),
+          Cell(
+            title: 'Change local browser',
+            subtitle: localBrowserSummary(),
+            icon: CupertinoIcons.compass,
+            color: iosBlue,
+            chevron: true,
+            onTap: () async {
+              await Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => const BrowserChoiceScreen()));
+              if (mounted) setState(() {});
+            },
           ),
           Cell(
             title: 'Proxy & Tor',

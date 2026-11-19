@@ -30,8 +30,14 @@ for name in perms:
         lines += f'    <uses-permission android:name="{name}" />\n'
 # Package-visibility declaration (Android 11+ / targetSdk 30+): without this, the app cannot even see
 # whether Termux is installed, let alone send it a command.
-if '<package android:name="com.termux"' not in s:
-    lines += '    <queries>\n        <package android:name="com.termux" />\n    </queries>\n'
+# The same block lists the browsers (any app that opens https links) for Settings -> Change local browser.
+if '<queries>' not in s:
+    lines += (
+        '    <queries>\n        <package android:name="com.termux" />\n'
+        '        <intent>\n            <action android:name="android.intent.action.VIEW" />\n'
+        '            <category android:name="android.intent.category.BROWSABLE" />\n'
+        '            <data android:scheme="https" />\n        </intent>\n    </queries>\n'
+    )
 s = s.replace('<application', lines + '    <application', 1)
 # Allow http:// servers on the local network (Ollama, LM Studio).
 if 'usesCleartextTraffic' not in s:

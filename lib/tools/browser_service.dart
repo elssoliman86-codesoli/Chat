@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
+import 'browser_identity.dart';
 import 'devtools_log.dart';
 
 /// The browser always presents itself as desktop Chrome on Windows, so Facebook, WhatsApp Web and other sites
@@ -70,10 +71,27 @@ class BrowserService {
   /// Desktop mode is always on; it is switched off only while project_check looks at a page like a phone.
   bool _desktop = true;
 
+  /// The desktop identity the browser presents: the default, or the browser chosen in Settings.
+  String _desktopUa = desktopUserAgent;
+  bool _created = false;
+  String get currentUserAgent => _desktopUa;
+
+  /// Makes the built-in browser present itself as another browser (Firefox, Chrome, Tor Browser…). It stays
+  /// the same built-in web view, inside the app and fully driven by the assistant — only the identity sites
+  /// see changes. An empty [package] goes back to the default.
+  Future<void> useIdentity({required String package, String label = '', String version = ''}) async {
+    _desktopUa = package.isEmpty ? desktopUserAgent : identityUserAgent(package: package, label: label, version: version);
+    if (!_created) return; // the web view is made later with this identity
+    await _setDesktop(_desktop);
+    try {
+      await controller.reload();
+    } catch (_) {}
+  }
+
   Future<void> _setDesktop(bool on) async {
     _desktop = on;
     try {
-      await controller.setUserAgent(on ? desktopUserAgent : phoneUserAgent);
+      await controller.setUserAgent(on ? _desktopUa : phoneUserAgent);
     } catch (_) {}
   }
 
@@ -105,9 +123,10 @@ class BrowserService {
   late final WebViewController controller = _create();
 
   WebViewController _create() {
+    _created = true;
     final c = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setUserAgent(desktopUserAgent)
+      ..setUserAgent(_desktopUa)
       ..addJavaScriptChannel('OmniDev', onMessageReceived: (m) => dev.handle(m.message))
       ..setNavigationDelegate(NavigationDelegate(
         onProgress: (p) => progress.value = p,

@@ -130,6 +130,12 @@ language* — the assistant chooses the tools.
   can watch; off = it works in the background.
 - **Desktop mode, always**: the browser identifies as desktop Chrome with a wide viewport, so Facebook,
   WhatsApp Web, Gmail and similar sites show their full computer version.
+- **Change local browser** (Settings): lists the browsers on your phone (Chrome, Firefox, Tor Browser, Edge…)
+  plus the built-in one at the top. Pick one and every plugin task still runs **inside Omni Chat** — the
+  assistant keeps reading and driving the page — but sites now see that browser's name and version. Pick
+  *Built-in browser* to go back. The engine is always Android's web view, so this changes the identity, not
+  the engine, cookies or add-ons of the other app, and the other app is never opened. For Tor, also turn on
+  *Proxy & Tor*, since the identity alone does not hide your address.
 - **Use it**: *“Open Facebook, go to my page’s comments and reply to each customer politely.”* Combine
   with **Long tasks** so it doesn’t stop after the first reply. Sign in once by hand in the browser — the
   session is kept.

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'data/auto_health.dart';
 import 'data/services.dart';
 import 'net/proxy_service.dart';
+import 'tools/browser_service.dart';
 import 'tools/ftp_service.dart';
 import 'ui/chat_screen.dart';
 import 'ui/startup_error.dart';
@@ -38,6 +39,13 @@ Future<void> _start() async {
   try {
     await ProxyService.instance.apply(store.settings).timeout(const Duration(seconds: 5));
   } catch (_) {}
+  if (store.settings.localBrowser.isNotEmpty) {
+    unawaited(BrowserService.instance.useIdentity(
+      package: store.settings.localBrowser,
+      label: store.settings.localBrowserName,
+      version: store.settings.localBrowserVersion,
+    ));
+  }
   unawaited(FtpService.instance.ensureStartedIfEnabled(store.settings).catchError((Object _) {}));
   runApp(const OmniChatApp());
   // Re-test the known models in the background each time the app opens — only after the first screen is
