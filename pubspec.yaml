@@ -28,11 +28,12 @@ dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.14.4
 
-# jni 1.2.0 (released 2026-11-19) breaks path_provider_android on Android: every start failed with
+# jni 1.2.0 / jni_flutter 1.1.0 (released 2026-11-19) break path_provider_android on Android: every start failed with
 # ClassNotFoundException "Landroid/content/Context;" while loading the saved data. CI resolves the newest
 # packages on every build, so the version that worked (used by build-74 and earlier) is pinned here.
 dependency_overrides:
   jni: 1.1.2
+  jni_flutter: 1.0.4+1
 
 flutter:
   uses-material-design: true
