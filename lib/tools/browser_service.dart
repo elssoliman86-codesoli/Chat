@@ -68,6 +68,9 @@ class BrowserService {
   final DevLog dev = DevLog();
   final ValueNotifier<bool> devToolsOpen = ValueNotifier<bool>(false);
 
+  /// Name of the browser the built-in one is presenting as (empty = the default). Shown in the toolbar.
+  final ValueNotifier<String> identityName = ValueNotifier<String>('');
+
   /// Desktop mode is always on; it is switched off only while project_check looks at a page like a phone.
   bool _desktop = true;
 
@@ -80,6 +83,7 @@ class BrowserService {
   /// the same built-in web view, inside the app and fully driven by the assistant — only the identity sites
   /// see changes. An empty [package] goes back to the default.
   Future<void> useIdentity({required String package, String label = '', String version = ''}) async {
+    identityName.value = package.isEmpty ? '' : (label.isEmpty ? package : label);
     _desktopUa = package.isEmpty ? desktopUserAgent : identityUserAgent(package: package, label: label, version: version);
     if (!_created) return; // the web view is made later with this identity
     await _setDesktop(_desktop);

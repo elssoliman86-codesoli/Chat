@@ -204,6 +204,21 @@ class _Card extends StatelessWidget {
                 builder: (context, v, _) => IconButton(
                     visualDensity: VisualDensity.compact, icon: const Icon(CupertinoIcons.chevron_forward, size: 20), onPressed: v ? b.controller.goForward : null),
               ),
+              ValueListenableBuilder<String>(
+                valueListenable: b.identityName,
+                builder: (context, name, _) => name.isEmpty
+                    ? const SizedBox.shrink()
+                    : Tooltip(
+                        message: 'Sites see this browser: $name',
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          constraints: const BoxConstraints(maxWidth: 84),
+                          decoration: BoxDecoration(color: pal.accent.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(8)),
+                          child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: pal.accent)),
+                        ),
+                      ),
+              ),
               Expanded(
                 child: GestureDetector(
                   onTap: () => _editAddress(context),
