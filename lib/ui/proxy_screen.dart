@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -33,6 +35,9 @@ class _ProxyScreenState extends State<ProxyScreen> {
   late final TextEditingController _torHost = TextEditingController(text: store.settings.torHost);
   late final TextEditingController _torPort = TextEditingController(text: '${store.settings.torPort}');
 
+  bool _checking = false;
+  String? _reach; // null = reachable (or not checked), otherwise why not
+  bool _reachChecked = false;
   bool _testing = false;
   bool _starting = false;
   ProxyTestResult? _result;
@@ -46,10 +51,32 @@ class _ProxyScreenState extends State<ProxyScreen> {
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _checkReach();
+  }
+
+  Future<void> _checkReach() async {
+    if (store.settings.proxyMode == 'off') {
+      if (mounted) setState(() => _reachChecked = false);
+      return;
+    }
+    setState(() => _checking = true);
+    final why = await ProxyService.instance.reachability();
+    if (!mounted) return;
+    setState(() {
+      _checking = false;
+      _reach = why;
+      _reachChecked = true;
+    });
+  }
+
   Future<void> _save() async {
     await store.saveSettings();
     await ProxyService.instance.apply(store.settings);
     if (mounted) setState(() => _result = null);
+    unawaited(_checkReach());
   }
 
   Future<void> _test() async {
@@ -132,6 +159,26 @@ class _ProxyScreenState extends State<ProxyScreen> {
           ),
         ],
       ),
+      if (mode != 'off')
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+          child: _checking
+              ? Text('Checking the connection…', style: TextStyle(color: pal.secondary, fontSize: 13.5))
+              : !_reachChecked
+                  ? const SizedBox.shrink()
+                  : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Icon(_reach == null ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.exclamationmark_triangle_fill,
+                          size: 18, color: _reach == null ? iosGreen : iosOrange),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _reach ?? (mode == 'tor' ? 'Tor is answering. Tap "Test connection" to confirm it reaches the internet.' : 'The proxy is answering.'),
+                          style: TextStyle(color: _reach == null ? pal.secondary : iosOrange, fontSize: 13.5, height: 1.3),
+                        ),
+                      ),
+                      IconButton(visualDensity: VisualDensity.compact, icon: const Icon(CupertinoIcons.arrow_clockwise, size: 18), onPressed: _checkReach),
+                    ]),
+        ),
       if (mode == 'custom')
         Group(
           header: 'Proxy server',

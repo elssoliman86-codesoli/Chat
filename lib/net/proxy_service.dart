@@ -106,6 +106,24 @@ class ProxyService {
     }
   }
 
+  /// Quick check (a few seconds): is anything listening at the proxy / Tor address? Returns null when it is
+  /// reachable, otherwise a plain-words explanation. Nothing is sent through it.
+  Future<String?> reachability() async {
+    final c = _config;
+    if (c == null) return null;
+    try {
+      final sock = await Socket.connect(c.host, c.port, timeout: const Duration(seconds: 3));
+      sock.destroy();
+      return null;
+    } catch (_) {
+      if (c.isTor) {
+        return 'Nothing is listening on ${c.host}:${c.port}, so Tor is not running. Start Orbot, or run Tor in Termux '
+            '(the Start Tor button below). The Tor Browser app does not share its connection with other apps.';
+      }
+      return 'Could not reach the proxy at ${c.host}:${c.port}. Check the address and port.';
+    }
+  }
+
   /// Asks the Tor Project's checker which address the world sees, through the current route.
   Future<ProxyTestResult> test() async {
     final c = _config;
