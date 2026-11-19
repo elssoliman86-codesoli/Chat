@@ -95,6 +95,25 @@ class MainActivity : FlutterActivity() {
                         }
                         out.add(mapOf("package" to name, "label" to ri.loadLabel(packageManager).toString(), "version" to ver))
                     }
+                    // Some browsers (Tor Browser among them) do not answer the https probe above, so the launcher
+                    // apps are checked too and the ones that are clearly browsers are added.
+                    val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                    for (ri in packageManager.queryIntentActivities(launcher, PackageManager.MATCH_ALL)) {
+                        val name = ri.activityInfo.packageName
+                        val label = ri.loadLabel(packageManager).toString()
+                        val low = label.lowercase()
+                        val isTor = name.startsWith("org.torproject") && name != "org.torproject.android"
+                        val isBrowser = isTor || low.contains("tor browser") || low == "tor" || low.contains("firefox") || low.contains("browser")
+                        if (name == packageName || !isBrowser || !seen.add(name)) {
+                            continue
+                        }
+                        var ver = ""
+                        try {
+                            ver = packageManager.getPackageInfo(name, 0).versionName ?: ""
+                        } catch (e: Exception) {
+                        }
+                        out.add(mapOf("package" to name, "label" to label, "version" to ver))
+                    }
                     result.success(out)
                 } else {
                     result.notImplemented()

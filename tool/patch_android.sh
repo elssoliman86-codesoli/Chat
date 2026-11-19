@@ -40,6 +40,11 @@ if 'android.intent.category.BROWSABLE' not in s:
         '            <category android:name="android.intent.category.BROWSABLE" />\n'
         '            <data android:scheme="https" />\n        </intent>\n    </queries>\n'
     )
+if 'android.intent.category.LAUNCHER</' not in s and 'queries>\n        <intent>\n            <action android:name="android.intent.action.MAIN"' not in s:
+    lines += (
+        '    <queries>\n        <intent>\n            <action android:name="android.intent.action.MAIN" />\n'
+        '            <category android:name="android.intent.category.LAUNCHER" />\n        </intent>\n    </queries>\n'
+    )
 s = s.replace('<application', lines + '    <application', 1)
 # Allow http:// servers on the local network (Ollama, LM Studio).
 if 'usesCleartextTraffic' not in s:
