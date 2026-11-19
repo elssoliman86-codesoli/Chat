@@ -30,11 +30,13 @@ for name in perms:
         lines += f'    <uses-permission android:name="{name}" />\n'
 # Package-visibility declaration (Android 11+ / targetSdk 30+): without this, the app cannot even see
 # whether Termux is installed, let alone send it a command.
-# The same block lists the browsers (any app that opens https links) for Settings -> Change local browser.
-if '<queries>' not in s:
+# Flutter's own manifest already has a <queries> block, so each declaration is checked on its own (more than one
+# <queries> block is allowed). The https intent lists the browsers for Settings -> Change local browser.
+if '<package android:name="com.termux"' not in s:
+    lines += '    <queries>\n        <package android:name="com.termux" />\n    </queries>\n'
+if 'android.intent.category.BROWSABLE' not in s:
     lines += (
-        '    <queries>\n        <package android:name="com.termux" />\n'
-        '        <intent>\n            <action android:name="android.intent.action.VIEW" />\n'
+        '    <queries>\n        <intent>\n            <action android:name="android.intent.action.VIEW" />\n'
         '            <category android:name="android.intent.category.BROWSABLE" />\n'
         '            <data android:scheme="https" />\n        </intent>\n    </queries>\n'
     )
