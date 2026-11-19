@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
 
@@ -6,15 +7,38 @@ import 'data/auto_health.dart';
 import 'data/services.dart';
 import 'tools/ftp_service.dart';
 import 'ui/chat_screen.dart';
+import 'ui/startup_error.dart';
 import 'ui/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await store.load();
-  unawaited(FtpService.instance.ensureStartedIfEnabled(store.settings));
+  // A broken widget shows its real error instead of a grey/black box.
+  ErrorWidget.builder = readableErrorBox;
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint('Flutter error: ${details.exceptionAsString()}');
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('Uncaught error: $error\n$stack');
+    return true;
+  };
+  await _start();
+}
+
+Future<void> _start() async {
+  try {
+    await store.load().timeout(const Duration(seconds: 20));
+  } catch (e, s) {
+    runApp(StartupErrorApp(error: '$e\n\n$s', onRetry: _start));
+    return;
+  }
+  unawaited(FtpService.instance.ensureStartedIfEnabled(store.settings).catchError((Object _) {}));
   runApp(const OmniChatApp());
-  // Re-test every known model in the background each time the app opens.
-  AutoHealth.instance.start();
+  // Re-test the known models in the background each time the app opens — only after the first screen is
+  // up, so a slow network can never delay or break the start.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    Future<void>.delayed(const Duration(seconds: 2), AutoHealth.instance.start);
+  });
 }
 
 class OmniChatApp extends StatelessWidget {
