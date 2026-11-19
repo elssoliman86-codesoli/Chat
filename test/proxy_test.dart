@@ -260,7 +260,7 @@ void main() {
       seenHosts = [];
       web = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       web.listen((req) {
-        seenHosts.add(req.headers.host);
+        seenHosts.add(req.headers.host ?? '');
         req.response
           ..write('hello from target ${req.uri.path}')
           ..close();

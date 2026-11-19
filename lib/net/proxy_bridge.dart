@@ -140,7 +140,6 @@ String socksErrorText(int code) {
 /// sent to a SOCKS5 upstream as names, so the proxy — Tor — resolves them and nothing leaks through local DNS.
 class LocalProxyBridge {
   ServerSocket? _server;
-  ProxyConfig? _upstream;
   final Set<Socket> _open = <Socket>{};
 
   int get port => _server?.port ?? 0;
@@ -148,7 +147,6 @@ class LocalProxyBridge {
 
   Future<int> start(ProxyConfig upstream) async {
     await stop();
-    _upstream = upstream;
     final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     _server = server;
     server.listen((client) => _handle(client, upstream), onError: (Object _) {});
@@ -158,7 +156,6 @@ class LocalProxyBridge {
   Future<void> stop() async {
     final s = _server;
     _server = null;
-    _upstream = null;
     await s?.close();
     for (final sock in _open.toList()) {
       sock.destroy();
