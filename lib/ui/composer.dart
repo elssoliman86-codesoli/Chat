@@ -10,6 +10,7 @@ import '../data/services.dart';
 import '../files/attachment_service.dart';
 import '../tools/browser_service.dart';
 import 'theme.dart';
+import 'glass/glass.dart';
 
 /// The message box: text, attachments, send and stop.
 class Composer extends StatefulWidget {
@@ -222,7 +223,7 @@ class ComposerState extends State<Composer> {
   }
 
   void _attachMenu() {
-    showModalBottomSheet<void>(
+    showGlassSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (sheet) => SafeArea(
@@ -281,7 +282,6 @@ class ComposerState extends State<Composer> {
   @override
   Widget build(BuildContext context) {
     final pal = paletteOf(context);
-    final theme = Theme.of(context);
     final slashItems = _slashItems();
     final queue = engine.queued(widget.chat);
     return SafeArea(
@@ -339,7 +339,12 @@ class ComposerState extends State<Composer> {
             ]),
           ),
         Container(
-          decoration: BoxDecoration(color: pal.field, borderRadius: BorderRadius.circular(26)),
+          decoration: BoxDecoration(
+            color: pal.field,
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: pal.rim, width: GlassTokens.stroke),
+            boxShadow: [BoxShadow(color: pal.shadow.withValues(alpha: 0.25), blurRadius: 18, offset: const Offset(0, 6))],
+          ),
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             if (_files.isNotEmpty || _loading > 0)
@@ -379,55 +384,25 @@ class ComposerState extends State<Composer> {
               ),
             ),
             Row(children: [
-              _round(CupertinoIcons.plus, _attachMenu, pal.bubble, theme.colorScheme.onSurface),
+              GlassIconButton(icon: CupertinoIcons.plus, tooltip: 'Attach', size: 38, onPressed: _attachMenu),
               const SizedBox(width: 8),
-              GestureDetector(
-                onTap: widget.onToggleWeb,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  height: 36,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: widget.webOn ? pal.accent.withValues(alpha: 0.18) : pal.bubble,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(CupertinoIcons.globe, size: 17, color: widget.webOn ? pal.accent : pal.secondary),
-                    const SizedBox(width: 5),
-                    Text('Search',
-                        style: TextStyle(
-                            fontSize: 14.5, fontWeight: FontWeight.w500, color: widget.webOn ? pal.accent : pal.secondary)),
-                  ]),
-                ),
+              GlassButton(
+                label: 'Search',
+                icon: CupertinoIcons.globe,
+                compact: true,
+                selected: widget.webOn,
+                onPressed: widget.onToggleWeb,
               ),
               const Spacer(),
               if (widget.busy) ...[
-                _round(CupertinoIcons.stop_fill, widget.onStop, pal.bubble, theme.colorScheme.onSurface, small: true),
+                GlassIconButton(icon: CupertinoIcons.stop, tooltip: 'Stop', size: 36, onPressed: widget.onStop),
                 const SizedBox(width: 8),
               ],
-              _round(
-                CupertinoIcons.arrow_up,
-                _send,
-                theme.colorScheme.onSurface,
-                theme.colorScheme.surface,
-              ),
+              GlassIconButton(icon: CupertinoIcons.arrow_up, tooltip: 'Send', active: true, size: 38, onPressed: _send),
             ]),
           ]),
         ),
         ]),
-      ),
-    );
-  }
-
-  Widget _round(IconData icon, VoidCallback onTap, Color bg, Color fg, {bool small = false}) {
-    final size = small ? 30.0 : 36.0;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-        child: Icon(icon, size: small ? 15 : 19, color: fg),
       ),
     );
   }

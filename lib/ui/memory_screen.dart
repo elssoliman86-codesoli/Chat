@@ -5,6 +5,7 @@ import '../core/models.dart';
 import '../data/services.dart';
 import 'kit.dart';
 import 'theme.dart';
+import 'glass/glass.dart';
 
 class MemoryScreen extends StatelessWidget {
   const MemoryScreen({super.key});
@@ -13,7 +14,7 @@ class MemoryScreen extends StatelessWidget {
     final controller = TextEditingController();
     final text = await showDialog<String>(
       context: context,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         title: const Text('Add to memory'),
         content: TextField(controller: controller, autofocus: true, maxLines: 3),
         actions: [

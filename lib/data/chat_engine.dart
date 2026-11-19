@@ -16,6 +16,7 @@ import 'app_store.dart';
 import 'keep_alive.dart';
 import 'model_fallback.dart';
 import 'services.dart' show navigatorKey;
+import '../ui/glass/glass.dart';
 
 /// Prevent automatic web enrichment from hijacking local-device commands or short follow-ups.
 bool shouldSkipAutomaticWebSearchForLocalAction(String query, {String recentContext = ''}) {
@@ -52,6 +53,10 @@ class ChatEngine implements ToolHost {
 
   bool get busy => _running != null;
   Conversation? get running => _running;
+
+  /// The tool call being executed right now (null between calls). The steps timeline reads this, so its
+  /// "running" ring is the real state of the engine and not a guess.
+  String? runningCallId;
 
   /// Messages typed for [c] while the assistant was busy, waiting their turn.
   List<QueuedMessage> queued(Conversation c) => _queues[c.id] ?? const <QueuedMessage>[];
@@ -148,7 +153,7 @@ class ChatEngine implements ToolHost {
     if (ctx == null) return false;
     final ok = await showDialog<bool>(
       context: ctx,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         title: const Text('Approve?'),
         content: Text(message),
         actions: [
@@ -171,7 +176,7 @@ class ChatEngine implements ToolHost {
     final answer = await showDialog<String>(
       context: ctx,
       barrierDismissible: false,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         title: const Text('Needs you'),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(question),
@@ -1004,8 +1009,15 @@ class ChatEngine implements ToolHost {
         }
         lastWasNudge = false;
         for (final call in reply.toolCalls) {
-          final result = await _runOnce(call);
-          c.messages.add(ChatMessage(role: 'tool', text: result, toolCallId: call.id, toolName: call.name));
+          runningCallId = call.id;
+          store.changed();
+          final String result;
+          try {
+            result = await _runOnce(call);
+          } finally {
+            runningCallId = null;
+          }
+          c.messages.add(ChatMessage(role: 'tool', text: result, toolCallId: call.id, toolName: call.name, failed: toolResultFailed(result)));
           store.scheduleSave(c);
           store.changed();
           if (_abort?.aborted ?? false) break;
@@ -1036,6 +1048,11 @@ class ChatEngine implements ToolHost {
     }
   }
 }
+
+/// True when a tool's result text is one of the failure messages the app itself produces (an exception
+/// caught in runTool, an unknown tool, a tool that could not start). Used to mark the step as failed.
+bool toolResultFailed(String result) =>
+    result.startsWith('Tool failed:') || result.startsWith('Unknown tool:') || result.startsWith('Could not ');
 
 /// The continuity rule behind set_plan, as a plain function so it can be tested without a running
 /// conversation. Once a plan exists and is not finished (planCurrent < planSteps.length), its steps are

@@ -1,9 +1,11 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'glass/glass.dart';
 import 'theme.dart';
 
-/// Page background and padding of an iOS "inset grouped" settings page.
+/// A settings-style page: transparent so the midnight glass scene shows, with a frosted navigation bar
+/// that the content scrolls (and blurs) underneath.
 class GroupedPage extends StatelessWidget {
   const GroupedPage({super.key, required this.title, required this.children, this.actions, this.fab});
 
@@ -14,13 +16,15 @@ class GroupedPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = paletteOf(context);
+    final top = MediaQuery.paddingOf(context).top + kToolbarHeight + 10;
+    final bottom = MediaQuery.paddingOf(context).bottom + 100;
     return Scaffold(
-      backgroundColor: p.grouped,
-      appBar: AppBar(title: Text(title), backgroundColor: p.grouped, actions: actions),
+      backgroundColor: Colors.transparent,
+      extendBodyBehindAppBar: true,
+      appBar: GlassNavigation(title: title, actions: actions),
       floatingActionButton: fab,
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+        padding: EdgeInsets.fromLTRB(16, top, 16, bottom),
         children: children,
       ),
     );
@@ -51,11 +55,12 @@ class Group extends StatelessWidget {
         if (header != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-            child: Text(header!.toUpperCase(), style: TextStyle(fontSize: 13, color: p.secondary)),
+            child: Text(header!.toUpperCase(), style: TextStyle(fontSize: 12.5, letterSpacing: 0.6, fontWeight: FontWeight.w600, color: p.secondary)),
           ),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Container(color: p.cell, child: Column(children: rows)),
+        FrostedGlassCard(
+          padding: EdgeInsets.zero,
+          radius: GlassTokens.radiusMd,
+          child: Column(children: rows),
         ),
         if (footer != null)
           Padding(
@@ -76,16 +81,7 @@ class Badge29 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = paletteOf(context);
-    if (!p.glass) {
-      return Container(
-        width: 29,
-        height: 29,
-        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(7)),
-        child: Icon(icon, size: 18, color: Colors.white),
-      );
-    }
-    return GlassTile(size: 31, radius: 9, tint: color, child: Icon(icon, size: 18, color: Colors.white));
+    return GlassTile(size: 31, radius: 9, tint: color, child: Icon(icon, size: GlassTokens.iconMd - 2, color: Colors.white));
   }
 }
 
@@ -163,8 +159,10 @@ class Cell extends StatelessWidget {
     final p = paletteOf(context);
     return InkWell(
       onTap: onTap,
+      highlightColor: p.accent.withValues(alpha: 0.10),
+      splashColor: Colors.transparent,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(children: [
           if (icon != null) ...[Badge29(icon!, color ?? p.accent), const SizedBox(width: 12)],
           Expanded(
@@ -202,7 +200,7 @@ class SwitchCell extends StatelessWidget {
         icon: icon,
         color: color,
         onTap: () => onChanged(!value),
-        trailing: Switch(value: value, onChanged: onChanged),
+        trailing: GlassToggle(value: value, onChanged: onChanged, semanticLabel: title),
       );
 }
 
@@ -268,7 +266,7 @@ class FieldCell extends StatelessWidget {
   }
 }
 
-/// A filled iOS-style button used for main actions inside pages.
+/// A glass button used for main actions inside pages (kept under its old name so every screen gets the new look).
 class PillButton extends StatelessWidget {
   const PillButton({super.key, required this.label, required this.onPressed, this.icon, this.filled = false});
 
@@ -278,22 +276,11 @@ class PillButton extends StatelessWidget {
   final bool filled;
 
   @override
-  Widget build(BuildContext context) {
-    final p = paletteOf(context);
-    return Material(
-      color: filled ? p.accent : p.cell,
-      borderRadius: BorderRadius.circular(22),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            if (icon != null) ...[Icon(icon, size: 17, color: filled ? Colors.white : p.accent), const SizedBox(width: 6)],
-            Text(label, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: filled ? Colors.white : p.accent)),
-          ]),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => GlassButton(
+        label: label,
+        onPressed: onPressed,
+        icon: icon,
+        compact: true,
+        style: filled ? GlassButtonStyle.primary : GlassButtonStyle.secondary,
+      );
 }

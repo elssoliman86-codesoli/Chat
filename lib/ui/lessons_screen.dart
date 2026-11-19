@@ -5,6 +5,7 @@ import '../core/models.dart';
 import '../data/services.dart';
 import 'kit.dart';
 import 'theme.dart';
+import 'glass/glass.dart';
 
 /// Operational lessons the model has recorded about itself — not facts about the user (that is
 /// MemoryScreen). Kept on this phone and fed into every future chat under any model, so a mistake
@@ -16,7 +17,7 @@ class LessonsScreen extends StatelessWidget {
     final controller = TextEditingController();
     final text = await showDialog<String>(
       context: context,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         title: const Text('Add a lesson'),
         content: TextField(controller: controller, autofocus: true, maxLines: 3),
         actions: [

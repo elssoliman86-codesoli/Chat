@@ -16,6 +16,7 @@ import 'browser_dock.dart';
 import 'guides_screen.dart';
 import 'kit.dart';
 import 'theme.dart';
+import 'glass/glass.dart';
 
 class PluginsScreen extends StatefulWidget {
   const PluginsScreen({super.key});
@@ -578,7 +579,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
 
   Future<void> _chooseHelperProvider() async {
     if (store.providers.isEmpty) return;
-    final id = await showModalBottomSheet<String>(
+    final id = await showGlassSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (sheet) => SafeArea(
@@ -612,7 +613,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
 
   Future<void> _chooseAssistantProvider() async {
     if (store.providers.isEmpty) return;
-    final id = await showModalBottomSheet<String>(
+    final id = await showGlassSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (sheet) => SafeArea(
@@ -645,7 +646,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
   }
 
   Future<void> _addMenu() async {
-    final choice = await showModalBottomSheet<String>(
+    final choice = await showGlassSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (sheet) => SafeArea(
@@ -682,7 +683,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
     final text = TextEditingController();
     final go = await showDialog<bool>(
       context: context,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         title: const Text('Paste plugin or skill'),
         content: TextField(
           controller: text,
@@ -720,7 +721,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
   Future<void> _help() async {
     await showDialog<void>(
       context: context,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         title: const Text('How to add plugins'),
         content: SizedBox(
           width: double.maxFinite,
@@ -780,7 +781,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
   Future<void> _termuxHelp() async {
     await showDialog<void>(
       context: context,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         title: const Text('How Termux setup works'),
         content: SizedBox(
           width: double.maxFinite,
@@ -808,7 +809,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
     final purposeCtrl = TextEditingController();
     final saved = await showDialog<bool>(
       context: context,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         title: const Text('Add a site'),
         content: SizedBox(
           width: double.maxFinite,
@@ -855,7 +856,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
   }
 
   Future<void> _customSiteMenu(BuildContext context, CustomSite site) async {
-    final choice = await showModalBottomSheet<String>(
+    final choice = await showGlassSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -880,7 +881,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
     final ctrl = TextEditingController(text: current);
     final saved = await showDialog<bool>(
       context: context,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         title: Text(label),
         content: TextField(controller: ctrl, autofocus: true, obscureText: obscure, keyboardType: obscure ? null : TextInputType.text),
         actions: [
@@ -908,7 +909,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
     final saved = await showDialog<bool>(
       context: context,
       builder: (d) => StatefulBuilder(
-        builder: (d, setD) => AlertDialog(
+        builder: (d, setD) => GlassDialog(
           title: const Text('Add SSH host'),
           content: SizedBox(
             width: double.maxFinite,
@@ -1040,7 +1041,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
   void _showPublicKey(BuildContext context, SshHost host) {
     showDialog<void>(
       context: context,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         title: Text('Public key for "${host.alias}"'),
         content: SizedBox(
           width: double.maxFinite,
@@ -1073,7 +1074,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
   void _showSshResult(BuildContext context, String text) {
     showDialog<void>(
       context: context,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         content: Text(text),
         actions: [TextButton(onPressed: () => Navigator.pop(d), child: const Text('OK'))],
       ),
@@ -1081,7 +1082,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
   }
 
   Future<void> _sshHostMenu(BuildContext context, SshHost host) async {
-    final choice = await showModalBottomSheet<String>(
+    final choice = await showGlassSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -1142,7 +1143,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
     final token = TextEditingController();
     final go = await showDialog<bool>(
       context: context,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         title: const Text('Add plugin'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(controller: url, autofocus: true, keyboardType: TextInputType.url, decoration: const InputDecoration(hintText: 'MCP URL, plugin.json or GitHub repo')),

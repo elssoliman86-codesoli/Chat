@@ -10,6 +10,7 @@ import 'browser_dock.dart';
 import 'markdown_view.dart';
 import 'steps_card.dart';
 import 'theme.dart';
+import 'glass/glass.dart';
 
 void openLink(BuildContext context, String url) {
   showBrowser(context, address: url, full: false);
@@ -25,12 +26,14 @@ class MessageView extends StatefulWidget {
     this.onEditUser,
     this.onEditReply,
     this.resultOf,
+    this.msgOf,
   });
 
   final ChatMessage message;
 
   /// What a tool call returned, by call id, for the steps list.
   final String? Function(String callId)? resultOf;
+  final ChatMessage? Function(String callId)? msgOf;
   final bool streaming;
   final VoidCallback? onRegenerate;
 
@@ -84,7 +87,7 @@ class _MessageViewState extends State<MessageView> {
     return Container(
       margin: const EdgeInsets.fromLTRB(24, 6, 14, 6),
       padding: const EdgeInsets.fromLTRB(14, 10, 10, 8),
-      decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(22)),
+      decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(22), border: Border.all(color: pal.rim, width: 0.8)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
         TextField(
           controller: _controller,
@@ -118,7 +121,7 @@ class _MessageViewState extends State<MessageView> {
 
   Future<void> _editReply(BuildContext context) async {
     final controller = TextEditingController(text: message.text);
-    final result = await showModalBottomSheet<String>(
+    final result = await showGlassSheet<String>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -177,7 +180,7 @@ class _MessageViewState extends State<MessageView> {
         Container(
           margin: const EdgeInsets.fromLTRB(56, 6, 14, 2),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(color: paletteOf(context).bubble, borderRadius: BorderRadius.circular(22)),
+          decoration: BoxDecoration(color: paletteOf(context).bubble, borderRadius: BorderRadius.circular(22), border: Border.all(color: paletteOf(context).rim, width: 0.8)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: MainAxisSize.min,
@@ -258,7 +261,7 @@ class _MessageViewState extends State<MessageView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (stepsOnly(message.toolCalls).isNotEmpty)
-            StepsCard(calls: stepsOnly(message.toolCalls), resultOf: widget.resultOf ?? (_) => null, live: streaming),
+            StepsCard(calls: stepsOnly(message.toolCalls), resultOf: widget.resultOf ?? (_) => null, msgOf: widget.msgOf, live: streaming),
           for (final o in message.outputs) _OutputCard(entry: o),
           if (message.switched.isNotEmpty)
             Padding(
@@ -342,7 +345,7 @@ class _MessageViewState extends State<MessageView> {
                   child: Container(
                     margin: const EdgeInsets.only(right: 8),
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(17)),
+                    decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(17), border: Border.all(color: pal.rim, width: 0.8)),
                     alignment: Alignment.center,
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       Icon(CupertinoIcons.globe, size: 14, color: pal.accent),
@@ -399,7 +402,7 @@ class _OutputCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
-      decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(14), border: Border.all(color: pal.rim, width: 0.8)),
       child: Row(children: [
         Icon(CupertinoIcons.archivebox, size: 22, color: pal.accent),
         const SizedBox(width: 10),
@@ -437,7 +440,7 @@ class _NoteCardState extends State<_NoteCard> {
     final pal = paletteOf(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(14), border: Border.all(color: pal.rim, width: 0.8)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         InkWell(
           borderRadius: BorderRadius.circular(14),

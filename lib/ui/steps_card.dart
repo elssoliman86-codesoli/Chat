@@ -1,8 +1,10 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../core/models.dart';
+import '../data/services.dart';
+import 'glass/glass.dart';
+import 'glass/neon_timeline.dart';
 import 'theme.dart';
 
 /// Tool calls that are bookkeeping for other UI (the plan banner) rather than a real step the user
@@ -107,14 +109,69 @@ IconData _iconFor(String name) {
   return CupertinoIcons.wrench;
 }
 
-/// The wrench: one line that opens into every step the assistant took, with what each step returned.
+/// Turns the assistant's tool calls into timeline steps using only real execution state:
+/// a call with a result is completed (or failed, when the tool reported a failure); the call the engine is
+/// executing right now is running; calls still waiting their turn are pending; and calls that never got a
+/// result once the turn is over were cancelled.
+List<TimelineStep> timelineStepsFor({
+  required List<ToolCall> calls,
+  required String? Function(String callId) resultOf,
+  required ChatMessage? Function(String callId) msgOf,
+  required bool live,
+  required String? runningId,
+}) {
+  final out = <TimelineStep>[];
+  int prevEnd = 0;
+  for (final c in calls) {
+    final result = resultOf(c.id);
+    final msg = msgOf(c.id);
+    final info = describeCall(c, result);
+    final StepStatus status;
+    if (result != null) {
+      status = (msg?.failed ?? false) ? StepStatus.failed : StepStatus.completed;
+    } else if (runningId == c.id) {
+      status = StepStatus.running;
+    } else if (live) {
+      status = StepStatus.pending;
+    } else {
+      status = StepStatus.cancelled;
+    }
+    DateTime? started;
+    Duration? took;
+    if (status != StepStatus.pending && status != StepStatus.cancelled) {
+      final startMs = c.startedAt > prevEnd ? c.startedAt : prevEnd;
+      started = DateTime.fromMillisecondsSinceEpoch(startMs);
+      if (msg != null) {
+        final d = msg.at - startMs;
+        took = Duration(milliseconds: d < 0 ? 0 : d);
+        prevEnd = msg.at;
+      }
+    }
+    out.add(TimelineStep(
+      id: c.id,
+      title: info.title,
+      description: info.detail,
+      status: status,
+      startedAt: started,
+      duration: took,
+      details: result,
+      icon: _iconFor(c.name),
+    ));
+  }
+  return out;
+}
+
+/// The wrench: one line that opens into every step the assistant took, as a neon timeline.
 class StepsCard extends StatefulWidget {
-  const StepsCard({super.key, required this.calls, required this.resultOf, required this.live});
+  const StepsCard({super.key, required this.calls, required this.resultOf, required this.live, this.msgOf});
 
   final List<ToolCall> calls;
   final String? Function(String callId) resultOf;
 
-  /// True while the assistant is still working, so the last step shows a spinner.
+  /// The tool-result message of a call (its time and whether the tool failed).
+  final ChatMessage? Function(String callId)? msgOf;
+
+  /// True while the assistant is still working.
   final bool live;
 
   @override
@@ -123,187 +180,74 @@ class StepsCard extends StatefulWidget {
 
 class _StepsCardState extends State<StepsCard> {
   bool _open = false;
-  final Set<String> _expanded = <String>{};
 
   @override
   Widget build(BuildContext context) {
     final pal = paletteOf(context);
     final calls = widget.calls;
-    final last = calls.last;
-    final lastDone = widget.resultOf(last.id) != null;
-    final working = widget.live && !lastDone;
-    final lastInfo = describeCall(last, widget.resultOf(last.id));
-    final summary = _open
-        ? '${calls.length} step${calls.length == 1 ? '' : 's'}'
-        : (working ? lastInfo.title : '${calls.length} step${calls.length == 1 ? '' : 's'}');
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(14)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () => setState(() => _open = !_open),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(children: [
-              if (working)
-                const SizedBox(width: 16, height: 16, child: CupertinoActivityIndicator(radius: 7))
-              else
-                Icon(CupertinoIcons.wrench, size: 16, color: pal.accent),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(summary, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+    // Rebuilds when the engine starts or finishes a call (it calls store.changed()), so the running ring
+    // follows the engine's real state.
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
+        final steps = timelineStepsFor(
+          calls: calls,
+          resultOf: widget.resultOf,
+          msgOf: widget.msgOf ?? (_) => null,
+          live: widget.live,
+          runningId: widget.live ? engine.runningCallId : null,
+        );
+        final running = steps.where((s) => s.status == StepStatus.running).toList();
+        final failed = steps.where((s) => s.status == StepStatus.failed).length;
+        final doneCount = steps.where((s) => s.status == StepStatus.completed || s.status == StepStatus.failed).length;
+        final n = steps.length;
+        final String summary;
+        if (running.isNotEmpty) {
+          summary = running.first.title;
+        } else if (_open) {
+          summary = '$n step${n == 1 ? '' : 's'}';
+        } else {
+          summary = '$n step${n == 1 ? '' : 's'}${failed > 0 ? ' · $failed failed' : ''}';
+        }
+        final GlassStatus headStatus = running.isNotEmpty
+            ? GlassStatus.running
+            : (failed > 0 ? GlassStatus.error : (widget.live ? GlassStatus.running : (doneCount == n ? GlassStatus.success : GlassStatus.cancelled)));
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: FrostedGlassCard(
+            padding: EdgeInsets.zero,
+            radius: GlassTokens.radiusMd,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              InkWell(
+                borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
+                onTap: () => setState(() => _open = !_open),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                  child: Row(children: [
+                    GlassStatusIndicator(status: headStatus, size: 9),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(summary, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600))),
+                    Text('$doneCount/$n', style: TextStyle(fontSize: 12, color: pal.secondary)),
+                    const SizedBox(width: 8),
+                    Icon(_open ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down, size: 15, color: pal.secondary),
+                  ]),
+                ),
               ),
-              Icon(_open ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down, size: 15, color: pal.secondary),
+              if (_open)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+                  child: ConstrainedBox(
+                    // A long run of steps scrolls inside the card instead of pushing the chat off-screen.
+                    constraints: BoxConstraints(maxHeight: n <= 4 ? double.infinity : 360),
+                    child: n <= 4
+                        ? NeonProgressTimeline(steps: steps)
+                        : Scrollbar(child: SingleChildScrollView(child: NeonProgressTimeline(steps: steps))),
+                  ),
+                ),
             ]),
           ),
-        ),
-        if (_open)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-            child: ConstrainedBox(
-              // Cap the expanded list so a long run of steps scrolls inside the card instead of
-              // pushing the rest of the chat off-screen.
-              constraints: BoxConstraints(maxHeight: calls.length <= 4 ? double.infinity : 320),
-              child: calls.length <= 4
-                  ? Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: _stepRows(context, calls))
-                  : Scrollbar(
-                      child: SingleChildScrollView(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: _stepRows(context, calls)),
-                      ),
-                    ),
-            ),
-          ),
-      ]),
-    );
-  }
-
-  List<Widget> _stepRows(BuildContext context, List<ToolCall> calls) {
-    final pal = paletteOf(context);
-    return [
-      for (var i = 0; i < calls.length; i++) ...[
-        _step(context, i, calls[i]),
-        if (i < calls.length - 1 && widget.resultOf(calls[i].id) != null) _NeonArrowDown(color: pal.accent),
-      ],
-    ];
-  }
-
-  Widget _step(BuildContext context, int i, ToolCall c) {
-    final pal = paletteOf(context);
-    final result = widget.resultOf(c.id);
-    final info = describeCall(c, result);
-    final open = _expanded.contains(c.id);
-    final running = widget.live && result == null;
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      InkWell(
-        onTap: result == null ? null : () => setState(() => open ? _expanded.remove(c.id) : _expanded.add(c.id)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(width: 20, child: Text('${i + 1}', style: TextStyle(fontSize: 12, color: pal.secondary))),
-            Padding(
-              padding: const EdgeInsets.only(top: 1, right: 7),
-              child: running
-                  ? const SizedBox(width: 13, height: 13, child: CupertinoActivityIndicator(radius: 6))
-                  : Icon(_iconFor(c.name), size: 14, color: pal.secondary),
-            ),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(info.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500)),
-                if (info.detail.isNotEmpty)
-                  Text(info.detail, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: pal.secondary)),
-              ]),
-            ),
-            if (result != null) Icon(open ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down, size: 13, color: pal.secondary),
-          ]),
-        ),
-      ),
-      if (open && result != null)
-        Container(
-          width: double.infinity,
-          margin: const EdgeInsets.only(left: 22, bottom: 6),
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: pal.field, borderRadius: BorderRadius.circular(8)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 220),
-              child: SingleChildScrollView(
-                child: SelectableText(
-                  result.length > 3000 ? '${result.substring(0, 3000)}\n…(${result.length - 3000} more characters)' : result,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 11.5, height: 1.35),
-                ),
-              ),
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: GestureDetector(
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: result));
-                  ScaffoldMessenger.of(context)
-                    ..hideCurrentSnackBar()
-                    ..showSnackBar(const SnackBar(content: Text('Copied'), duration: Duration(seconds: 1)));
-                },
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text('Copy', style: TextStyle(fontSize: 12.5, color: pal.accent)),
-                ),
-              ),
-            ),
-          ]),
-        ),
-    ]);
-  }
-}
-
-/// A small neon chevron that pulses and drifts downward between two finished steps, showing the plan
-/// is actively moving to the next one.
-class _NeonArrowDown extends StatefulWidget {
-  const _NeonArrowDown({required this.color});
-  final Color color;
-
-  @override
-  State<_NeonArrowDown> createState() => _NeonArrowDownState();
-}
-
-class _NeonArrowDownState extends State<_NeonArrowDown> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..repeat();
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 20),
-      child: SizedBox(
-        width: 20,
-        height: 10,
-        child: AnimatedBuilder(
-          animation: _c,
-          builder: (context, _) {
-            final t = _c.value;
-            final pulse = 1 - (2 * t - 1).abs(); // 0 -> 1 -> 0 triangle wave
-            return Opacity(
-              opacity: 0.35 + 0.65 * pulse,
-              child: Transform.translate(
-                offset: Offset(0, t * 4 - 1),
-                child: Icon(
-                  CupertinoIcons.chevron_down,
-                  size: 10,
-                  color: widget.color,
-                  shadows: [
-                    Shadow(color: widget.color.withValues(alpha: 0.9), blurRadius: 6),
-                    Shadow(color: widget.color.withValues(alpha: 0.5), blurRadius: 10),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ),
+        );
+      },
     );
   }
 }

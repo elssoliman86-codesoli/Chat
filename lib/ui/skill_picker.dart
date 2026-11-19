@@ -5,9 +5,10 @@ import '../core/models.dart';
 import '../data/services.dart';
 import 'skills_screen.dart';
 import 'theme.dart';
+import 'glass/glass.dart';
 
 Future<void> showSkillPicker(BuildContext context, Conversation c) {
-  return showModalBottomSheet<void>(
+  return showGlassSheet<void>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,

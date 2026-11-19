@@ -11,6 +11,7 @@ import '../data/services.dart';
 import '../tools/tools.dart';
 import 'kit.dart';
 import 'theme.dart';
+import 'glass/glass.dart';
 
 /// Groups skills into folders: "Built-in" first, then one folder per GitHub repo (or site) a skill
 /// was installed from, then a single "Manual" folder last for anything written or pasted by hand.
@@ -97,7 +98,7 @@ class SkillsScreen extends StatelessWidget {
   }
 
   Future<void> _import(BuildContext context) async {
-    final choice = await showModalBottomSheet<String>(
+    final choice = await showGlassSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (sheet) => SafeArea(

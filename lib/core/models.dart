@@ -248,18 +248,23 @@ class Attachment {
 }
 
 class ToolCall {
-  ToolCall({required this.id, required this.name, required this.args});
+  ToolCall({required this.id, required this.name, required this.args, int? startedAt})
+      : startedAt = startedAt ?? DateTime.now().millisecondsSinceEpoch;
 
   final String id;
   final String name;
   final Map<String, dynamic> args;
 
-  Map<String, dynamic> toJson() => <String, dynamic>{'id': id, 'name': name, 'args': args};
+  /// When the model asked for this call (milliseconds since epoch); the steps timeline shows real times.
+  final int startedAt;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{'id': id, 'name': name, 'args': args, 'at': startedAt};
 
   factory ToolCall.fromJson(Map<String, dynamic> j) => ToolCall(
         id: j['id'] as String? ?? newId(),
         name: j['name'] as String? ?? '',
         args: (j['args'] as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{},
+        startedAt: (j['at'] as num?)?.toInt(),
       );
 }
 
@@ -274,6 +279,7 @@ class ChatMessage extends ChangeNotifier {
     this.toolName = '',
     int? at,
     this.error = false,
+    this.failed = false,
     this.auto = false,
     this.model = '',
     List<String>? sources,
@@ -303,6 +309,10 @@ class ChatMessage extends ChangeNotifier {
   final String toolName;
   final int at;
   bool error;
+
+  /// On a tool-result message: the tool failed (shown as a failed step). Separate from [error] on purpose —
+  /// the providers drop messages marked [error] from the history they send, and a tool result must stay.
+  bool failed;
 
   /// A user turn the app wrote itself (long-task mode nudging the model to carry on) rather than the
   /// person; shown as a small "continuing automatically" line instead of a speech bubble.
@@ -337,6 +347,7 @@ class ChatMessage extends ChangeNotifier {
         'toolName': toolName,
         'at': at,
         'error': error,
+        'failed': failed,
         'auto': auto,
         'model': model,
         'sources': sources,
@@ -363,6 +374,7 @@ class ChatMessage extends ChangeNotifier {
         toolName: j['toolName'] as String? ?? '',
         at: (j['at'] as num?)?.toInt(),
         error: j['error'] as bool? ?? false,
+        failed: j['failed'] as bool? ?? false,
         auto: j['auto'] as bool? ?? false,
         model: j['model'] as String? ?? '',
         sources: (j['sources'] as List?)?.whereType<String>().toList(),

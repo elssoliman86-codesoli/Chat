@@ -6,6 +6,7 @@ import '../core/models.dart';
 import '../tools/browser_service.dart';
 import 'devtools_pane.dart';
 import 'theme.dart';
+import 'glass/glass.dart';
 
 /// Opens the shared browser. Called from anywhere: pages above the chat are closed first so the dock is visible.
 void showBrowser(BuildContext context, {String address = '', bool full = true}) {
@@ -113,7 +114,7 @@ class _AskBannerState extends State<_AskBanner> {
         return Material(
           elevation: 10,
           borderRadius: BorderRadius.circular(16),
-          color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF242426) : Colors.white,
+          color: pal.surface,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 10, 8),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -180,7 +181,7 @@ class _Card extends StatelessWidget {
   Widget build(BuildContext context) {
     final b = BrowserService.instance;
     final pal = paletteOf(context);
-    final solid = Theme.of(context).brightness == Brightness.dark ? const Color(0xFF111111) : Colors.white;
+    final solid = Color.alphaBlend(pal.surface, Theme.of(context).brightness == Brightness.dark ? const Color(0xFF060B1A) : const Color(0xFFEFF4FD));
     return Material(
       color: solid,
       elevation: full ? 0 : 12,
@@ -226,7 +227,7 @@ class _Card extends StatelessWidget {
                     height: 32,
                     alignment: Alignment.centerLeft,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(10)),
+                    decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(10), border: Border.all(color: pal.rim, width: 0.8)),
                     child: ValueListenableBuilder<String>(
                       valueListenable: b.url,
                       builder: (context, u, _) => Text(
@@ -284,7 +285,7 @@ class _Card extends StatelessWidget {
     final controller = TextEditingController(text: b.url.value);
     final text = await showDialog<String>(
       context: context,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         title: const Text('Go to'),
         content: TextField(
           controller: controller,

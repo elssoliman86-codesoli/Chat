@@ -6,6 +6,7 @@ import '../tools/browser_service.dart';
 import '../tools/devtools_log.dart';
 import 'syntax.dart';
 import 'theme.dart';
+import 'glass/glass.dart';
 
 Color statusColor(NetEntry e) {
   if (e.error.isNotEmpty) return iosRed;
@@ -52,7 +53,7 @@ class _DevToolsPaneState extends State<DevToolsPane> {
   }
 
   void _open(NetEntry e) {
-    showModalBottomSheet<void>(
+    showGlassSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -83,7 +84,7 @@ class _DevToolsPaneState extends State<DevToolsPane> {
   @override
   Widget build(BuildContext context) {
     final pal = paletteOf(context);
-    final solid = Theme.of(context).brightness == Brightness.dark ? const Color(0xFF16181D) : const Color(0xFFF4F5F7);
+    final solid = Color.alphaBlend(pal.surface, Theme.of(context).brightness == Brightness.dark ? const Color(0xFF060B1A) : const Color(0xFFEFF4FD));
     return Container(
       color: solid,
       child: ValueListenableBuilder<int>(

@@ -17,6 +17,7 @@ import 'project_screens.dart';
 import 'steps_card.dart';
 import 'providers_screen.dart';
 import 'skill_picker.dart';
+import 'glass/glass.dart';
 import 'theme.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -62,8 +63,12 @@ class _ChatScreenState extends State<ChatScreen> {
         final c = _chat;
         final provider = store.providerById(c.providerId) ?? store.defaultProvider;
         final results = <String, String>{};
+        final toolMsgs = <String, ChatMessage>{};
         for (final m in c.messages) {
-          if (m.role == 'tool') results[m.toolCallId] = m.text;
+          if (m.role == 'tool') {
+            results[m.toolCallId] = m.text;
+            toolMsgs[m.toolCallId] = m;
+          }
         }
         // Replies that only call tools are folded into one steps card.
         final items = <Object>[];
@@ -99,10 +104,10 @@ class _ChatScreenState extends State<ChatScreen> {
         return Scaffold(
           drawer: HistoryDrawer(onNewChat: _newChat),
           appBar: AppBar(
+            leadingWidth: 56,
             leading: Builder(
-              builder: (ctx) => IconButton(
-                icon: const Icon(CupertinoIcons.line_horizontal_3),
-                onPressed: () => Scaffold.of(ctx).openDrawer(),
+              builder: (ctx) => Center(
+                child: GlassIconButton(icon: CupertinoIcons.line_horizontal_3, tooltip: 'Chats', size: 38, onPressed: () => Scaffold.of(ctx).openDrawer()),
               ),
             ),
             title: GestureDetector(
@@ -127,22 +132,16 @@ class _ChatScreenState extends State<ChatScreen> {
               ]),
             ),
             actions: [
-              IconButton(
-                tooltip: 'Skills',
-                icon: Badge(
-                  isLabelVisible: c.activeSkillIds.isNotEmpty,
-                  label: Text('${c.activeSkillIds.length}'),
-                  child: const Icon(CupertinoIcons.bolt),
-                ),
-                onPressed: () => showSkillPicker(context, c),
+              Badge(
+                isLabelVisible: c.activeSkillIds.isNotEmpty,
+                label: Text('${c.activeSkillIds.length}'),
+                child: GlassIconButton(icon: CupertinoIcons.bolt, tooltip: 'Skills', size: 36, active: c.activeSkillIds.isNotEmpty, onPressed: () => showSkillPicker(context, c)),
               ),
-              IconButton(
-                tooltip: 'New chat',
-                icon: const Icon(CupertinoIcons.square_pencil),
-                onPressed: _newChat,
-              ),
+              const SizedBox(width: 6),
+              GlassIconButton(icon: CupertinoIcons.square_pencil, tooltip: 'New chat', size: 36, onPressed: _newChat),
               PopupMenuButton<String>(
-                icon: const Icon(CupertinoIcons.ellipsis),
+                tooltip: 'More',
+                icon: const Icon(CupertinoIcons.ellipsis, size: GlassTokens.iconMd),
                 onSelected: (v) async {
                   if (v == 'temp') _newChat(temporary: true);
                   if (v == 'long') {
@@ -199,6 +198,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             key: ValueKey('g${item.first.id}'),
                             messages: item,
                             resultOf: (id) => results[id],
+                            msgOf: (id) => toolMsgs[id],
                             live: running && identical(item.last, lastNonTool),
                           );
                         }
@@ -212,6 +212,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           key: ValueKey(m.id),
                           message: m,
                           resultOf: (id) => results[id],
+                          msgOf: (id) => toolMsgs[id],
                           streaming: streaming,
                           onRegenerate: isLastAssistant && !running ? () => engine.regenerate(c) : null,
                           onContinue: isLastMessage && !running && m.error ? () => engine.continueReply(c) : null,
@@ -277,10 +278,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
 /// Several tool-only replies shown as one list of steps.
 class _StepGroup extends StatelessWidget {
-  const _StepGroup({super.key, required this.messages, required this.resultOf, required this.live});
+  const _StepGroup({super.key, required this.messages, required this.resultOf, required this.msgOf, required this.live});
 
   final List<ChatMessage> messages;
   final String? Function(String id) resultOf;
+  final ChatMessage? Function(String id) msgOf;
   final bool live;
 
   @override
@@ -292,7 +294,7 @@ class _StepGroup extends StatelessWidget {
         if (calls.isEmpty) return const SizedBox.shrink();
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: StepsCard(calls: calls, resultOf: resultOf, live: live),
+          child: StepsCard(calls: calls, resultOf: resultOf, msgOf: msgOf, live: live),
         );
       },
     );
@@ -349,9 +351,13 @@ class _Empty extends StatelessWidget {
                   onTap: () => onSuggestion(text),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(color: pal.field, borderRadius: BorderRadius.circular(18)),
+                    decoration: BoxDecoration(
+                      color: pal.field,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: pal.rim, width: GlassTokens.stroke),
+                    ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(icon, size: 16, color: pal.secondary),
+                      Icon(icon, size: 16, color: pal.accent),
                       const SizedBox(width: 8),
                       Flexible(child: Text(text, style: const TextStyle(fontSize: 14.5))),
                     ]),

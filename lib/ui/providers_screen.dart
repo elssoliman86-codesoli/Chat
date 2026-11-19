@@ -7,12 +7,13 @@ import '../llm/llm.dart';
 import 'kit.dart';
 import 'model_list.dart';
 import 'theme.dart';
+import 'glass/glass.dart';
 
 class ProvidersScreen extends StatelessWidget {
   const ProvidersScreen({super.key});
 
   Future<void> _add(BuildContext context) async {
-    final preset = await showModalBottomSheet<ProviderPreset>(
+    final preset = await showGlassSheet<ProviderPreset>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -217,7 +218,7 @@ class _ProviderEditScreenState extends State<ProviderEditScreen> {
   Future<void> _delete() async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         title: Text('Delete ${_p.name}?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),

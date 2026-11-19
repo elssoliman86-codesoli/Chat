@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -12,6 +14,7 @@ import 'providers_screen.dart';
 import 'settings_screen.dart';
 import 'skills_screen.dart';
 import 'theme.dart';
+import 'glass/glass.dart';
 
 class HistoryDrawer extends StatefulWidget {
   const HistoryDrawer({super.key, required this.onNewChat});
@@ -34,7 +37,7 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
     final controller = TextEditingController(text: c.title);
     final name = await showDialog<String>(
       context: context,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         title: const Text('Rename chat'),
         content: TextField(controller: controller, autofocus: true),
         actions: [
@@ -84,20 +87,35 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
       rows.add(c);
     }
     return Drawer(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      child: ClipRRect(
+        borderRadius: const BorderRadius.horizontal(right: Radius.circular(GlassTokens.radiusLg)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: GlassTokens.blurStrong, sigmaY: GlassTokens.blurStrong),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: pal.surface,
+              border: Border(right: BorderSide(color: pal.rim, width: GlassTokens.stroke)),
+            ),
+            child: _drawerBody(context, pal, q, rows),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _drawerBody(BuildContext context, Palette pal, String q, List<Object> rows) {
+    return Material(
+      type: MaterialType.transparency,
       child: SafeArea(
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
-            child: TextField(
+            child: GlassInput(
+              hint: 'Search',
+              icon: CupertinoIcons.search,
               onChanged: (v) => setState(() => _query = v),
-              decoration: InputDecoration(
-                hintText: 'Search',
-                isDense: true,
-                filled: true,
-                fillColor: pal.bubble,
-                prefixIcon: const Icon(CupertinoIcons.search, size: 18),
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              ),
             ),
           ),
           _nav(CupertinoIcons.square_pencil, 'New chat', () {
@@ -149,8 +167,9 @@ class _HistoryDrawerState extends State<HistoryDrawer> {
                             margin: const EdgeInsets.symmetric(horizontal: 8),
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
                             decoration: BoxDecoration(
-                              color: selected ? pal.bubble : Colors.transparent,
-                              borderRadius: BorderRadius.circular(10),
+                              color: selected ? pal.accent.withValues(alpha: 0.16) : Colors.transparent,
+                              borderRadius: BorderRadius.circular(GlassTokens.radiusSm),
+                              border: Border.all(color: selected ? pal.accent.withValues(alpha: 0.55) : Colors.transparent, width: GlassTokens.stroke),
                             ),
                             child: Text(c.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16)),
                           ),

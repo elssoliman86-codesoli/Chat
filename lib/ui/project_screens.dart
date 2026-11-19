@@ -13,6 +13,7 @@ import '../projects/projects.dart';
 import 'code_view.dart';
 import 'syntax.dart';
 import 'theme.dart';
+import 'glass/glass.dart';
 
 void _toast(BuildContext context, String text) {
   ScaffoldMessenger.of(context)
@@ -89,7 +90,7 @@ class _ProjectBarState extends State<ProjectBar> {
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
       padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
-      decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(14), border: Border.all(color: pal.rim, width: 0.8)),
       child: Row(children: [
         Icon(CupertinoIcons.folder_fill, size: 17, color: pal.accent),
         const SizedBox(width: 8),
@@ -242,7 +243,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => AlertDialog(
+      builder: (_) => GlassDialog(
         content: Row(children: [const CupertinoActivityIndicator(), const SizedBox(width: 16), Expanded(child: Text(label))]),
       ),
     );
@@ -269,7 +270,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     final c = TextEditingController();
     final repo = await showDialog<String>(
       context: context,
-      builder: (d) => AlertDialog(
+      builder: (d) => GlassDialog(
         title: const Text('Download a GitHub repo'),
         content: TextField(
           controller: c,
@@ -331,7 +332,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                 confirmDismiss: (_) async =>
                     await showDialog<bool>(
                       context: context,
-                      builder: (d) => AlertDialog(
+                      builder: (d) => GlassDialog(
                         title: Text('Delete "${p.name}"?'),
                         content: const Text('All its files are removed from the phone.'),
                         actions: [

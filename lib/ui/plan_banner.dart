@@ -4,6 +4,9 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../core/models.dart';
+import '../data/services.dart';
+import 'glass/glass.dart';
+import 'glass/neon_timeline.dart';
 import 'theme.dart';
 
 /// The most recent use_skill call in [turnMessages] (everything since the last user message) — what
@@ -66,52 +69,34 @@ class PlanBadge extends StatelessWidget {
   }
 }
 
-/// The full plan as a popup: each step marked done, in progress, or still ahead.
+/// The full plan as a popup: a neon timeline where each step is completed, being worked on, or still
+/// waiting. The state is the real plan state (Conversation.planCurrent); the active step only shows the
+/// running ring while the engine is actually busy.
 Future<void> showPlanDialog(BuildContext context, List<String> steps, int current) {
-  final pal = paletteOf(context);
   final total = steps.length;
   final done = current.clamp(0, total);
   final allDone = done >= total;
+  final busy = engine.busy;
+  final items = <TimelineStep>[
+    for (var i = 0; i < steps.length; i++)
+      TimelineStep(
+        id: 'plan$i',
+        title: steps[i],
+        status: i < done ? StepStatus.completed : (i == done && !allDone && busy ? StepStatus.running : StepStatus.pending),
+      ),
+  ];
   return showDialog<void>(
     context: context,
-    builder: (d) => AlertDialog(
+    builder: (d) => GlassDialog(
       title: Text(allDone ? 'Plan complete — $total/$total' : 'Plan — step ${done + 1} of $total'),
       content: SizedBox(
         width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            for (var i = 0; i < steps.length; i++)
-              _planStep(pal, steps[i], i < done ? _StepState.done : (i == done && !allDone ? _StepState.doing : _StepState.ahead)),
-          ]),
-        ),
+        child: SingleChildScrollView(child: NeonProgressTimeline(steps: items)),
       ),
       actions: [TextButton(onPressed: () => Navigator.pop(d), child: const Text('Close'))],
     ),
   );
 }
-
-Widget _planStep(Palette pal, String text, _StepState state) {
-  final Widget icon = switch (state) {
-    _StepState.done => Icon(CupertinoIcons.check_mark_circled_solid, size: 16, color: pal.accent),
-    _StepState.doing => const SizedBox(width: 14, height: 14, child: CupertinoActivityIndicator(radius: 6.5)),
-    _StepState.ahead => Icon(CupertinoIcons.circle, size: 15, color: pal.secondary),
-  };
-  final style = TextStyle(
-    fontSize: 14,
-    color: state == _StepState.ahead ? pal.secondary : null,
-    fontWeight: state == _StepState.doing ? FontWeight.w600 : FontWeight.w400,
-  );
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SizedBox(width: 22, child: icon),
-      const SizedBox(width: 8),
-      Expanded(child: Text(text, style: style)),
-    ]),
-  );
-}
-
-enum _StepState { done, doing, ahead }
 
 /// A brief pop-up above the chat the moment a skill loads: shows the model reading it, then a short
 /// "loaded" confirmation that fades on its own — so it is visible that it was read and stored, not
@@ -175,7 +160,7 @@ class _SkillLoadBannerState extends State<SkillLoadBanner> {
       child: Container(
         margin: const EdgeInsets.fromLTRB(10, 8, 10, 0),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(14)),
+        decoration: BoxDecoration(color: pal.bubble, borderRadius: BorderRadius.circular(14), border: Border.all(color: pal.rim, width: 0.8)),
         child: Row(children: [
           if (!loaded)
             const SizedBox(width: 15, height: 15, child: CupertinoActivityIndicator(radius: 7))

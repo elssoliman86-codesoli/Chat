@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'glass/glass.dart';
 
 /// What a broken widget shows instead of a grey or black box: the actual error, readable.
 Widget readableErrorBox(FlutterErrorDetails details) {
@@ -87,7 +88,7 @@ class StartupErrorApp extends StatelessWidget {
                     onPressed: () async {
                       final ok = await showDialog<bool>(
                         context: context,
-                        builder: (ctx) => AlertDialog(
+                        builder: (ctx) => GlassDialog(
                           title: const Text('Erase everything?'),
                           content: const Text('This deletes all chats, providers, keys and settings on this phone, then starts fresh.'),
                           actions: [

@@ -6,9 +6,10 @@ import '../data/services.dart';
 import 'kit.dart';
 import 'model_list.dart';
 import 'providers_screen.dart';
+import 'glass/glass.dart';
 
 Future<void> showModelPicker(BuildContext context, Conversation c) {
-  return showModalBottomSheet<void>(
+  return showGlassSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
