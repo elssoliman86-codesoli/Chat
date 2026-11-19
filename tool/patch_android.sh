@@ -166,4 +166,20 @@ android {
 }
 GRV
 fi
+# The built-in browser is pointed at the proxy/Tor bridge through androidx.webkit's ProxyController (see keepalive.py).
+if [ -f "$APP_KTS" ]; then
+  cat >> "$APP_KTS" <<'KTS'
+
+dependencies {
+    implementation("androidx.webkit:webkit:1.12.1")
+}
+KTS
+elif [ -f "$APP_GRV" ]; then
+  cat >> "$APP_GRV" <<'GRV'
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.12.1'
+}
+GRV
+fi
 grep -n "applicationId" "$APP_KTS" "$APP_GRV" 2>/dev/null || true

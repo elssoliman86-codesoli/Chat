@@ -46,9 +46,10 @@ Omni Chat تطبيق أندرويد شخصي بيجمع كل مزودي الذك
 2. [Chat](#chat)
 3. [How to use each plugin](#how-to-use-each-plugin)
    - [Web search and pages](#web-search-and-pages) · [Built-in browser and DevTools](#built-in-browser-and-devtools) · [Termux shell](#termux-shell) · [SSH hosts](#ssh-hosts-and-the-setupguides) · [FTP server](#ftp-server) · [Python](#python-sandbox) · [GitHub](#github) · [Gmail, Canva, Facebook, Instagram, YouTube](#gmail-canva-facebook-instagram-youtube) · [Custom sites](#custom-sites) · [Assistant model](#assistant-model-second-opinion) · [Image helper](#image-helper-for-text-only-models) · [Projects](#projects) · [Skills](#skills) · [Memory and lessons](#memory-and-lessons) · [Add other plugins (MCP)](#other-plugins-mcp-and-web-apis)
-4. [Privacy](#privacy-and-security)
-5. [Troubleshooting](#troubleshooting)
-6. [Build and contribute](#build-from-source)
+4. [Proxy and Tor](#proxy-and-tor)
+5. [Privacy](#privacy-and-security)
+6. [Troubleshooting](#troubleshooting)
+7. [Build and contribute](#build-from-source)
 
 ---
 
@@ -255,6 +256,42 @@ switch one on for a chat, or let the assistant load it when it fits. Install fro
 **Plugins → Add plugin or skill**: paste the URL of a remote **MCP server** (with a token if it needs one) or
 a `plugin.json` that describes a simple web API. Its tools appear to the assistant immediately and can be
 turned on/off under *Installed plugins*.
+
+---
+
+## Proxy and Tor
+
+**Settings → Proxy & Tor** sends the app's traffic through a proxy or through Tor. Everything the app does on
+the network — AI providers, web search and pages, GitHub, downloads and the image helper — goes through it;
+the built-in browser is pointed at it too (switch it off with *Use for the built-in browser*).
+
+| Mode | What it does |
+|---|---|
+| **Off** | Direct connection (default). |
+| **Proxy** | An HTTP or SOCKS5 proxy: host, port and an optional username and password. |
+| **Tor** | A SOCKS5 connection to Tor, on `127.0.0.1:9050` by default. Names are resolved by Tor, so `.onion` addresses work and DNS does not leak. |
+
+**Running Tor on the phone.** Tor is a separate program; the app only connects to it. Either:
+
+- start **Orbot** and use its SOCKS port (9050 unless you changed it), or
+- use **Start Tor in Termux** on the Tor screen (needs the Termux plugin allowed), or run it by hand in Termux:
+  `pkg install tor`, then `tor`.
+
+Wait about a minute for Tor to connect, then tap **Test connection** — it asks check.torproject.org which
+address it sees and tells you whether the traffic really came out of Tor.
+
+**Good to know**
+
+- **No leaks.** While a proxy or Tor is on and it is not reachable, requests fail; they never fall back to a
+  direct connection.
+- **Local network stays direct** (default): Ollama, LM Studio, a PC's FTP and other `192.168.x.x`/`10.x.x.x`
+  addresses skip the proxy, because a remote proxy cannot reach them. Turn it off to route those too. The
+  phone itself (`localhost`) is always direct.
+- **Browser coverage.** Android's web view can only be redirected on phones with a recent WebView. If yours
+  cannot, the screen says so and the built-in browser connects directly.
+- **Not a VPN.** Only Omni Chat's own traffic is covered, not other apps, and Termux commands run by the agent
+  use their own network unless you set a proxy there.
+- Tor is slow; long AI answers still work but expect a delay on the first byte.
 
 ---
 

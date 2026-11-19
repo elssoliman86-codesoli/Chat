@@ -678,6 +678,16 @@ class AppSettings {
     this.browserVisible = false,
     this.keepAlive = true,
     this.autoSwitchModel = true,
+    this.proxyMode = 'off',
+    this.proxyKind = 'http',
+    this.proxyHost = '',
+    this.proxyPort = 0,
+    this.proxyUser = '',
+    this.proxyPass = '',
+    this.torHost = '127.0.0.1',
+    this.torPort = 9050,
+    this.proxyBypassLan = true,
+    this.proxyBrowser = true,
     this.termuxTools = false,
     this.assistantProviderId = '',
     this.assistantModel = '',
@@ -735,6 +745,22 @@ class AppSettings {
   /// that passed the last health check.
   bool autoSwitchModel;
 
+  /// Network route: off, custom (an HTTP or SOCKS5 proxy) or tor (a Tor SOCKS5 port on this phone).
+  String proxyMode;
+  String proxyKind;
+  String proxyHost;
+  int proxyPort;
+  String proxyUser;
+  String proxyPass;
+  String torHost;
+  int torPort;
+
+  /// Keep addresses on the local network off the proxy.
+  bool proxyBypassLan;
+
+  /// Send the built-in browser through it too.
+  bool proxyBrowser;
+
   /// Let the assistant run real shell commands through a separately installed Termux app (off by
   /// default: unlike the other tools, this reaches a real Linux environment on the device, not a sandbox).
   bool termuxTools;
@@ -783,6 +809,16 @@ class AppSettings {
         'browserVisible': browserVisible,
         'keepAlive': keepAlive,
         'autoSwitchModel': autoSwitchModel,
+        'proxyMode': proxyMode,
+        'proxyKind': proxyKind,
+        'proxyHost': proxyHost,
+        'proxyPort': proxyPort,
+        'proxyUser': proxyUser,
+        'proxyPass': proxyPass,
+        'torHost': torHost,
+        'torPort': torPort,
+        'proxyBypassLan': proxyBypassLan,
+        'proxyBrowser': proxyBrowser,
         'termuxTools': termuxTools,
         'assistantProviderId': assistantProviderId,
         'assistantModel': assistantModel,
@@ -819,6 +855,16 @@ class AppSettings {
         browserVisible: j['browserVisible'] as bool? ?? false,
         keepAlive: j['keepAlive'] as bool? ?? true,
         autoSwitchModel: j['autoSwitchModel'] as bool? ?? true,
+        proxyMode: j['proxyMode'] as String? ?? 'off',
+        proxyKind: j['proxyKind'] as String? ?? 'http',
+        proxyHost: j['proxyHost'] as String? ?? '',
+        proxyPort: (j['proxyPort'] as num?)?.toInt() ?? 0,
+        proxyUser: j['proxyUser'] as String? ?? '',
+        proxyPass: j['proxyPass'] as String? ?? '',
+        torHost: j['torHost'] as String? ?? '127.0.0.1',
+        torPort: (j['torPort'] as num?)?.toInt() ?? 9050,
+        proxyBypassLan: j['proxyBypassLan'] as bool? ?? true,
+        proxyBrowser: j['proxyBrowser'] as bool? ?? true,
         termuxTools: j['termuxTools'] as bool? ?? false,
         assistantProviderId: j['assistantProviderId'] as String? ?? '',
         assistantModel: j['assistantModel'] as String? ?? '',

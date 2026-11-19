@@ -19,6 +19,10 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.webkit.ProxyConfig
+import androidx.webkit.ProxyController
+import androidx.webkit.WebViewFeature
+import java.util.concurrent.Executor
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -43,6 +47,33 @@ class MainActivity : FlutterActivity() {
                 }
             } catch (e: Exception) {
                 result.error("keepalive", e.message, null)
+            }
+        }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "omni/proxy").setMethodCallHandler { call, result ->
+            try {
+                if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+                    result.success(false)
+                } else if (call.method == "set") {
+                    val port = (call.argument<Any>("port") as? Number)?.toInt() ?: 0
+                    val bypassLan = call.argument<Boolean>("bypassLan") ?: true
+                    val builder = ProxyConfig.Builder().addProxyRule("http://127.0.0.1:" + port)
+                    if (bypassLan) {
+                        builder.bypassSimpleHostnames()
+                        for (rule in listOf("*.local", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16")) {
+                            try {
+                                builder.addBypassRule(rule)
+                            } catch (e: Exception) {
+                            }
+                        }
+                    }
+                    ProxyController.getInstance().setProxyOverride(builder.build(), Executor { it.run() }, Runnable { result.success(true) })
+                } else if (call.method == "clear") {
+                    ProxyController.getInstance().clearProxyOverride(Executor { it.run() }, Runnable { result.success(true) })
+                } else {
+                    result.notImplemented()
+                }
+            } catch (e: Exception) {
+                result.error("proxy", e.message, null)
             }
         }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "omni/termux").setMethodCallHandler { call, result ->

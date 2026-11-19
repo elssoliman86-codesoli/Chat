@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../data/services.dart';
 import 'kit.dart';
 import 'plugins_screen.dart';
+import 'proxy_screen.dart';
 import 'theme.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -93,6 +94,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             color: iosIndigo,
             chevron: true,
             onTap: () => Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => const PluginsScreen())),
+          ),
+          Cell(
+            title: 'Proxy & Tor',
+            subtitle: proxySummary(),
+            icon: CupertinoIcons.lock_shield,
+            color: iosPurple,
+            chevron: true,
+            onTap: () async {
+              await Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => const ProxyScreen()));
+              if (mounted) setState(() {});
+            },
           ),
         ],
       ),
