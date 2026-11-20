@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
+import 'browser_cursor.dart';
 import 'browser_identity.dart';
 import 'devtools_log.dart';
 
@@ -63,6 +64,9 @@ class BrowserService {
   /// When true the panel slides up while the assistant works. Default is the background.
   bool showWhileWorking = false;
 
+  /// Draw a visible mouse cursor in the page while the assistant clicks, types and drags.
+  bool showCursor = true;
+
   /// Network requests and console output of the current page (the browser's DevTools), shown in the panel
   /// and readable by the model through browser_devtools.
   final DevLog dev = DevLog();
@@ -102,6 +106,7 @@ class BrowserService {
   Future<void> _injectScripts() async {
     try {
       await controller.runJavaScript(devToolsScript);
+      await controller.runJavaScript(omniCursorScript);
       if (_desktop) await controller.runJavaScript(desktopViewportScript);
     } catch (_) {}
   }
@@ -269,12 +274,30 @@ class BrowserService {
 
   Future<String> read() => _serial(snapshot);
 
+  /// Glides the visible cursor to element [id] (scrolling it into view first) and waits for the glide to
+  /// finish. Returns false when the element is not there. Does nothing when the cursor is switched off.
+  Future<bool> _cursorGo(int id, String label) async {
+    if (!showCursor) return true;
+    try {
+      await controller.runJavaScript(omniCursorScript);
+      final r = await _eval('''
+(function(id,l){var e=document.querySelector('[data-oid="'+id+'"]');if(!e)return 'no';
+ e.scrollIntoView({block:'center',behavior:'instant'});
+ if(window.__omniCursor)window.__omniCursor.go(e,l);return 'ok';})($id,${jsonEncode(label)})
+''');
+      if (r.toString().contains('no')) return false;
+      await Future<void>.delayed(const Duration(milliseconds: 780));
+    } catch (_) {}
+    return true;
+  }
+
   Future<String> click(int id) => _serial(() async {
         _revealIfWanted();
+        await _cursorGo(id, 'Click');
         _loaded = Completer<void>();
         final r = await _eval('''
 (function(id){var e=document.querySelector('[data-oid="'+id+'"]');if(!e)return 'Element $id not found. Read the page again.';
- e.scrollIntoView({block:'center'});if(e.focus)e.focus();
+ e.scrollIntoView({block:'center'});if(e.focus)e.focus();if(window.__omniCursor)window.__omniCursor.press();
  ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(t){e.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window}));});
  return 'Clicked: '+((e.innerText||e.getAttribute('aria-label')||e.tagName)+'').slice(0,60);})($id)
 ''');
@@ -284,6 +307,18 @@ class BrowserService {
 
   Future<String> type(int id, String text, bool submit) => _serial(() async {
         _revealIfWanted();
+        if (await _cursorGo(id, 'Type') && showCursor && text.isNotEmpty) {
+          try {
+            if (text.length > 1) {
+              final ms = await _eval('''
+(function(id,text){var e=document.querySelector('[data-oid="'+id+'"]');if(!e||!window.__omniCursor)return 0;
+ window.__omniCursor.press();return window.__omniCursor.typeInto(e,text,1400);})($id,${jsonEncode(text)})
+''');
+              final wait = (double.tryParse(ms.toString().replaceAll('"', '')) ?? 0).round();
+              await Future<void>.delayed(Duration(milliseconds: wait + 150));
+            }
+          } catch (_) {}
+        }
         final t = jsonEncode(text);
         final r = await _eval('''
 (function(id,text,submit){var e=document.querySelector('[data-oid="'+id+'"]');if(!e)return 'Element '+id+' not found. Read the page again.';
@@ -307,11 +342,13 @@ class BrowserService {
   /// accepting a drag will ignore this — that is a real limit of browser automation, not a bug here.
   Future<String> drag(int id, int dx, int dy) => _serial(() async {
         _revealIfWanted();
+        await _cursorGo(id, 'Drag');
         final r = await _eval('''
 (function(id,dx,dy){
  var e=document.querySelector('[data-oid="'+id+'"]');if(!e)return 'Element '+id+' not found. Read the page again.';
  e.scrollIntoView({block:'center'});
  var r=e.getBoundingClientRect();var x0=r.left+r.width/2,y0=r.top+r.height/2;var steps=12;
+ if(window.__omniCursor){window.__omniCursor.press();window.__omniCursor.move(x0+dx,y0+dy,550,'Drag');}
  function fire(type,x,y){
   var mouseType=type.replace('pointer','mouse');
   var opts={bubbles:true,cancelable:true,view:window,clientX:x,clientY:y,button:0,buttons:1};
@@ -324,7 +361,7 @@ class BrowserService {
  return 'Dragged element '+id+' by ('+dx+', '+dy+') pixels.';
 })($id,$dx,$dy)
 ''');
-        await Future<void>.delayed(const Duration(milliseconds: 600));
+        await Future<void>.delayed(Duration(milliseconds: showCursor ? 700 : 600));
         return '$r\n\n${await snapshot()}';
       });
 

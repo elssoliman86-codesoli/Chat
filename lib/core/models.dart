@@ -688,6 +688,7 @@ class AppSettings {
     this.helperProviderId = '',
     this.helperModel = '',
     this.browserVisible = false,
+    this.browserCursor = true,
     this.keepAlive = true,
     this.autoSwitchModel = true,
     this.proxyMode = 'off',
@@ -752,6 +753,9 @@ class AppSettings {
 
   /// Show the browser panel while the assistant works in it. Off: it works in the background.
   bool browserVisible;
+
+  /// Show an animated mouse cursor in the built-in browser while the assistant works.
+  bool browserCursor;
 
   /// Keep long tasks running when the app is in the background.
   bool keepAlive;
@@ -828,6 +832,7 @@ class AppSettings {
         'helperProviderId': helperProviderId,
         'helperModel': helperModel,
         'browserVisible': browserVisible,
+        'browserCursor': browserCursor,
         'keepAlive': keepAlive,
         'autoSwitchModel': autoSwitchModel,
         'proxyMode': proxyMode,
@@ -877,6 +882,7 @@ class AppSettings {
         helperProviderId: j['helperProviderId'] as String? ?? '',
         helperModel: j['helperModel'] as String? ?? '',
         browserVisible: j['browserVisible'] as bool? ?? false,
+        browserCursor: j['browserCursor'] as bool? ?? true,
         keepAlive: j['keepAlive'] as bool? ?? true,
         autoSwitchModel: j['autoSwitchModel'] as bool? ?? true,
         proxyMode: j['proxyMode'] as String? ?? 'off',

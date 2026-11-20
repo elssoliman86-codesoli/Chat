@@ -148,6 +148,14 @@ class _PluginsScreenState extends State<PluginsScreen> {
             onChanged: (v) => set(() => s.browserVisible = v),
           ),
           SwitchCell(
+            title: 'Show the mouse cursor',
+            subtitle: 'An animated cursor moves, clicks, types and drags in the browser so you can follow along',
+            icon: CupertinoIcons.hand_raised,
+            color: iosBlue,
+            value: s.browserCursor,
+            onChanged: (v) => set(() => s.browserCursor = v),
+          ),
+          SwitchCell(
             title: 'Keep working in the background',
             subtitle: 'Long tasks continue when you leave the app (shows a notification)',
             icon: CupertinoIcons.bolt_horizontal,

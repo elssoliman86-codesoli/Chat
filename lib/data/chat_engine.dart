@@ -855,6 +855,7 @@ class ChatEngine implements ToolHost {
     _seenCalls.clear();
     _browserEpoch = 0;
     BrowserService.instance.showWhileWorking = store.settings.browserVisible;
+    BrowserService.instance.showCursor = store.settings.browserCursor;
     if (store.settings.keepAlive) await BackgroundWork.start();
     // Marks the turn as not yet concluded, and keeps saving the real, current state of the
     // conversation to disk every ~1.5s for as long as it runs — not just once at the very end.
