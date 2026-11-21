@@ -689,6 +689,7 @@ class AppSettings {
     this.helperModel = '',
     this.browserVisible = false,
     this.browserCursor = true,
+    this.downloadConnections = 8,
     this.keepAlive = true,
     this.autoSwitchModel = true,
     this.proxyMode = 'off',
@@ -756,6 +757,9 @@ class AppSettings {
 
   /// Show an animated mouse cursor in the built-in browser while the assistant works.
   bool browserCursor;
+
+  /// How many parts of a file the download manager fetches at the same time (1–32).
+  int downloadConnections;
 
   /// Keep long tasks running when the app is in the background.
   bool keepAlive;
@@ -833,6 +837,7 @@ class AppSettings {
         'helperModel': helperModel,
         'browserVisible': browserVisible,
         'browserCursor': browserCursor,
+        'downloadConnections': downloadConnections,
         'keepAlive': keepAlive,
         'autoSwitchModel': autoSwitchModel,
         'proxyMode': proxyMode,
@@ -883,6 +888,7 @@ class AppSettings {
         helperModel: j['helperModel'] as String? ?? '',
         browserVisible: j['browserVisible'] as bool? ?? false,
         browserCursor: j['browserCursor'] as bool? ?? true,
+        downloadConnections: ((j['downloadConnections'] as num?)?.toInt() ?? 8).clamp(1, 32),
         keepAlive: j['keepAlive'] as bool? ?? true,
         autoSwitchModel: j['autoSwitchModel'] as bool? ?? true,
         proxyMode: j['proxyMode'] as String? ?? 'off',

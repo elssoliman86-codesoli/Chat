@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../core/models.dart';
+import '../downloads/download_manager.dart';
 import '../tools/browser_service.dart';
 import 'devtools_pane.dart';
+import 'downloads_screen.dart';
 import 'theme.dart';
 import 'glass/glass.dart';
 
@@ -241,14 +243,31 @@ class _Card extends StatelessWidget {
                 ),
               ),
               IconButton(visualDensity: VisualDensity.compact, icon: const Icon(CupertinoIcons.arrow_clockwise, size: 19), onPressed: b.controller.reload),
-              ValueListenableBuilder<bool>(
-                valueListenable: b.devToolsOpen,
-                builder: (context, open, _) => IconButton(
-                  visualDensity: VisualDensity.compact,
-                  tooltip: 'DevTools (network and console)',
-                  icon: Icon(CupertinoIcons.hammer, size: 19, color: open ? pal.accent : null),
-                  onPressed: () => b.devToolsOpen.value = !open,
-                ),
+              ListenableBuilder(
+                listenable: DownloadManager.instance,
+                builder: (context, _) {
+                  final n = DownloadManager.instance.activeCount;
+                  return PopupMenuButton<String>(
+                    tooltip: 'More',
+                    padding: EdgeInsets.zero,
+                    icon: Badge(
+                      isLabelVisible: n > 0,
+                      label: Text('$n'),
+                      child: Icon(CupertinoIcons.ellipsis_circle, size: 20, color: (n > 0 || b.devToolsOpen.value) ? pal.accent : null),
+                    ),
+                    onSelected: (v) {
+                      if (v == 'downloads') {
+                        Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => const DownloadsScreen()));
+                      } else if (v == 'devtools') {
+                        b.devToolsOpen.value = !b.devToolsOpen.value;
+                      }
+                    },
+                    itemBuilder: (_) => <PopupMenuEntry<String>>[
+                      PopupMenuItem<String>(value: 'downloads', child: Text(n > 0 ? 'Downloads ($n active)' : 'Downloads')),
+                      const PopupMenuItem<String>(value: 'devtools', child: Text('DevTools (network and console)')),
+                    ],
+                  );
+                },
               ),
               IconButton(
                 visualDensity: VisualDensity.compact,
