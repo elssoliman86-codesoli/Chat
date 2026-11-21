@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../core/models.dart';
 import '../llm/llm.dart';
+import '../llm/resilient.dart';
+import '../llm/stream_metrics.dart';
 import '../plugins/plugin.dart';
 import '../tools/advisor_service.dart';
 import '../tools/browser_service.dart';
@@ -48,6 +50,9 @@ class ChatEngine implements ToolHost {
   final AppStore store;
   AbortHandle? _abort;
   Timer? _notifyTimer;
+
+  /// Live numbers of the reply being streamed (first-token latency, tokens/second, connection state).
+  final StreamMetrics metrics = StreamMetrics();
   Conversation? _running;
   final Map<String, List<QueuedMessage>> _queues = <String, List<QueuedMessage>>{};
 
@@ -273,7 +278,11 @@ class ChatEngine implements ToolHost {
   void _notifySoon(ChatMessage m) {
     _streaming = m;
     if (_notifyTimer?.isActive ?? false) return;
-    _notifyTimer = Timer(const Duration(milliseconds: 100), () {
+    // Redrawing a long Markdown reply is the costly part, so the longer it gets the less often it is
+    // redrawn — the text still arrives in full and in order, it is just painted in bigger steps.
+    final n = m.text.length;
+    final ms = n > 40000 ? 220 : (n > 12000 ? 150 : (n > 3000 ? 110 : 70));
+    _notifyTimer = Timer(Duration(milliseconds: ms), () {
       _streaming?.touch();
     });
   }
@@ -944,10 +953,12 @@ class ChatEngine implements ToolHost {
         );
         final abort = AbortHandle();
         _abort = abort;
+        metrics.begin(c.model);
         try {
-          await for (final event in client.stream(request, abort)) {
+          await for (final event in resilientStream(client: client, request: request, abort: abort)) {
             if (event is TextDelta) {
               reply.text += event.text;
+              metrics.onText(event.text);
               _notifySoon(reply);
             } else if (event is ToolCallDone) {
               reply.toolCalls.add(event.call);
@@ -956,9 +967,20 @@ class ChatEngine implements ToolHost {
             } else if (event is ThinkingDone) {
               reply.thinking = event.text;
               reply.thinkingSignature = event.signature;
+            } else if (event is ReasoningDelta) {
+              metrics.onReasoning(event.chars);
+            } else if (event is UsageEvent) {
+              metrics.onUsage(input: event.inputTokens, output: event.outputTokens);
+            } else if (event is StreamStatusEvent) {
+              metrics.setPhase(event.phase, detail: event.detail, attempt: event.attempt);
             }
           }
+          metrics.finish(abort.aborted ? StreamPhase.stopped : StreamPhase.done);
+          if (reply.text.isNotEmpty || reply.toolCalls.isNotEmpty) {
+            reply.stats = metrics.summary;
+          }
         } catch (e) {
+          metrics.finish(abort.aborted ? StreamPhase.stopped : StreamPhase.failed);
           final hadImages = history.any((m) => m.attachments.any((a) => a.kind == AttachmentKind.image));
           if (!abort.aborted && hadImages && request.vision && reply.text.isEmpty && _looksLikeNoVision(e)) {
             // This model cannot see images: remember that and try again without them.

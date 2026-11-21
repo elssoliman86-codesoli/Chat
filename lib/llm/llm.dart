@@ -45,6 +45,30 @@ class ThinkingDone extends LlmEvent {
   final String signature;
 }
 
+/// Token counts the provider reported for this request (not every provider sends them).
+class UsageEvent extends LlmEvent {
+  const UsageEvent({this.inputTokens, this.outputTokens});
+  final int? inputTokens;
+  final int? outputTokens;
+}
+
+/// The model is producing reasoning the provider does not hand over as text (a reasoning_content stream, a
+/// thinking block). Only used to tell the person it is alive; its content is never shown.
+class ReasoningDelta extends LlmEvent {
+  const ReasoningDelta(this.chars);
+  final int chars;
+}
+
+enum StreamPhase { idle, connecting, waiting, streaming, reconnecting, done, stopped, failed }
+
+/// A change in the connection while a reply is streaming (connecting, first data, reconnecting after a drop).
+class StreamStatusEvent extends LlmEvent {
+  const StreamStatusEvent(this.phase, {this.attempt = 0, this.detail = ''});
+  final StreamPhase phase;
+  final int attempt;
+  final String detail;
+}
+
 class LlmRequest {
   const LlmRequest({
     required this.system,
@@ -69,6 +93,17 @@ class LlmRequest {
 
   /// False when the model cannot read images: they are replaced by a short note.
   final bool vision;
+
+  LlmRequest withMessages(List<ChatMessage> next) => LlmRequest(
+        system: system,
+        messages: next,
+        model: model,
+        tools: tools,
+        temperature: temperature,
+        pdfNative: pdfNative,
+        vision: vision,
+        reasoningEffort: reasoningEffort,
+      );
 }
 
 class LlmException implements Exception {
@@ -77,6 +112,25 @@ class LlmException implements Exception {
 
   @override
   String toString() => message;
+}
+
+/// The connection ended before the provider said the reply was finished (the network dropped, or the
+/// server hung up). The reply so far is kept and the request can be continued.
+class StreamDropped extends LlmException {
+  StreamDropped(super.message);
+}
+
+/// True for a failure of the connection itself — as opposed to the provider answering with an error (bad key,
+/// rate limit, unknown model), which retrying cannot fix.
+bool isNetworkDrop(Object e) {
+  if (e is StreamDropped || e is TimeoutException) return true;
+  final t = e.toString();
+  if (RegExp(r'^HTTP \d{3}').hasMatch(t)) return false;
+  return RegExp(
+    r'SocketException|ClientException|HandshakeException|TlsException|Connection (closed|reset|terminated|refused|timed out)|'
+    r'Broken pipe|Failed host lookup|Network is unreachable|timed out|TimeoutException|HttpException|Software caused connection abort',
+    caseSensitive: false,
+  ).hasMatch(t);
 }
 
 /// Lets the Stop button cut a running request.
@@ -137,6 +191,13 @@ LlmClient createClient(ProviderConfig config) {
     case ProviderKind.openai:
       return OpenAiCompatClient(config);
   }
+}
+
+/// An error from a provider that says the request cannot be streamed.
+bool looksLikeNoStreaming(String message) {
+  final m = message.toLowerCase();
+  if (!(m.startsWith('http 400') || m.startsWith('http 422') || m.startsWith('http 501'))) return false;
+  return m.contains('stream') && (m.contains('not support') || m.contains('unsupported') || m.contains('not allowed') || m.contains('invalid') || m.contains('unknown') || m.contains('unrecognized'));
 }
 
 String joinUrl(String base, String path) {

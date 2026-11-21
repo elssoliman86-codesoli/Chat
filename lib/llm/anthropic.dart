@@ -123,6 +123,8 @@ class AnthropicClient implements LlmClient {
       final res = await postStream(client, Uri.parse(joinUrl(config.baseUrl, '/v1/messages')), _headers, body);
       final pending = <int, PendingToolCall>{};
       final pendingThinking = <int, _PendingThinking>{};
+      var sawStop = false;
+      var sawAny = false;
       await for (final data in sseData(res)) {
         if (data.isEmpty || data == '[DONE]') continue;
         Map<String, dynamic> j;
@@ -131,9 +133,18 @@ class AnthropicClient implements LlmClient {
         } catch (_) {
           continue;
         }
+        sawAny = true;
         final type = j['type'];
         final index = (j['index'] as num?)?.toInt() ?? 0;
-        if (type == 'content_block_start') {
+        if (type == 'message_start') {
+          final u = (j['message'] is Map) ? (j['message'] as Map)['usage'] : null;
+          if (u is Map) yield UsageEvent(inputTokens: (u['input_tokens'] as num?)?.toInt(), outputTokens: (u['output_tokens'] as num?)?.toInt());
+        } else if (type == 'message_delta') {
+          final u = j['usage'];
+          if (u is Map && u['output_tokens'] is num) yield UsageEvent(outputTokens: (u['output_tokens'] as num).toInt());
+        } else if (type == 'message_stop') {
+          sawStop = true;
+        } else if (type == 'content_block_start') {
           final block = j['content_block'];
           if (block is Map && block['type'] == 'tool_use') {
             pending[index] = PendingToolCall(block['id']?.toString() ?? '', block['name']?.toString() ?? '');
@@ -149,6 +160,7 @@ class AnthropicClient implements LlmClient {
               pending[index]?.args.write(d['partial_json'] as String);
             } else if (d['type'] == 'thinking_delta' && d['thinking'] is String) {
               pendingThinking[index]?.text.write(d['thinking'] as String);
+              yield ReasoningDelta((d['thinking'] as String).length);
             } else if (d['type'] == 'signature_delta' && d['signature'] is String) {
               pendingThinking[index]?.signature.write(d['signature'] as String);
             }
@@ -163,6 +175,7 @@ class AnthropicClient implements LlmClient {
           throw LlmException(err is Map ? (err['message']?.toString() ?? 'Provider error') : 'Provider error');
         }
       }
+      if (sawAny && !sawStop) throw StreamDropped('The connection closed before the reply was finished');
       yield const LlmDone();
     } catch (e) {
       if (abort.aborted) {

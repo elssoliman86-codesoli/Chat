@@ -288,6 +288,7 @@ class ChatMessage extends ChangeNotifier {
     List<String>? outputs,
     this.thinking = '',
     this.thinkingSignature = '',
+    this.stats = '',
   })  : id = id ?? newId(),
         sources = sources ?? <String>[],
         outputs = outputs ?? <String>[],
@@ -337,6 +338,9 @@ class ChatMessage extends ChangeNotifier {
   String thinking;
   String thinkingSignature;
 
+  /// How the reply streamed in (time to first token, tokens per second…), shown under the message.
+  String stats;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'role': role,
@@ -356,6 +360,7 @@ class ChatMessage extends ChangeNotifier {
         'outputs': outputs,
         'thinking': thinking,
         'thinkingSignature': thinkingSignature,
+        if (stats.isNotEmpty) 'stats': stats,
       };
 
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
@@ -382,6 +387,7 @@ class ChatMessage extends ChangeNotifier {
         switched: j['switched'] as String? ?? '',
         outputs: (j['outputs'] as List?)?.whereType<String>().toList(),
         thinking: j['thinking'] as String? ?? '',
+        stats: j['stats'] as String? ?? '',
         thinkingSignature: j['thinkingSignature'] as String? ?? '',
       );
 }

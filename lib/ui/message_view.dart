@@ -9,6 +9,7 @@ import '../core/models.dart';
 import 'browser_dock.dart';
 import 'markdown_view.dart';
 import 'steps_card.dart';
+import 'stream_bar.dart';
 import 'theme.dart';
 import 'glass/glass.dart';
 
@@ -285,6 +286,7 @@ class _MessageViewState extends State<MessageView> {
                 : streaming
                     ? MarkdownText(text: message.text, onLink: (u) => openLink(context, u))
                     : SelectionArea(child: MarkdownText(text: message.text, onLink: (u) => openLink(context, u))),
+          if (streaming && !message.error) const LiveStreamBar(compact: true),
           if (message.error && widget.onContinue != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -310,6 +312,11 @@ class _MessageViewState extends State<MessageView> {
                     ),
                   ),
               ]),
+            ),
+          if (!empty && !streaming && message.stats.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 12, bottom: 2),
+              child: Text(message.stats, style: TextStyle(fontSize: 11, color: pal.secondary)),
             ),
         ],
       ),

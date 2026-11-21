@@ -110,6 +110,8 @@ class GeminiClient implements LlmClient {
       final url = Uri.parse(joinUrl(
           config.baseUrl, '/v1beta/models/${_model(request.model)}:streamGenerateContent?alt=sse'));
       final res = await postStream(client, url, _headers, body);
+      var sawFinish = false;
+      var sawAny = false;
       await for (final data in sseData(res)) {
         if (data.isEmpty || data == '[DONE]') continue;
         Map<String, dynamic> j;
@@ -121,15 +123,27 @@ class GeminiClient implements LlmClient {
         if (j['error'] is Map) {
           throw LlmException((j['error'] as Map)['message']?.toString() ?? 'Provider error');
         }
+        sawAny = true;
+        final usage = j['usageMetadata'];
+        if (usage is Map) {
+          yield UsageEvent(
+            inputTokens: (usage['promptTokenCount'] as num?)?.toInt(),
+            outputTokens: (usage['candidatesTokenCount'] as num?)?.toInt(),
+          );
+        }
         final candidates = j['candidates'];
         if (candidates is! List || candidates.isEmpty) continue;
+        if ((candidates.first as Map)['finishReason'] != null) sawFinish = true;
         final content = (candidates.first as Map)['content'];
         if (content is! Map) continue;
         final parts = content['parts'];
         if (parts is! List) continue;
         for (final part in parts) {
           if (part is! Map) continue;
-          if (part['thought'] == true) continue;
+          if (part['thought'] == true) {
+            if (part['text'] is String) yield ReasoningDelta((part['text'] as String).length);
+            continue;
+          }
           if (part['text'] is String) {
             yield TextDelta(part['text'] as String);
           } else if (part['functionCall'] is Map) {
@@ -142,6 +156,7 @@ class GeminiClient implements LlmClient {
           }
         }
       }
+      if (sawAny && !sawFinish) throw StreamDropped('The connection closed before the reply was finished');
       yield const LlmDone();
     } catch (e) {
       if (abort.aborted) {

@@ -113,11 +113,30 @@ class OpenAiCompatClient implements LlmClient {
                 })
             .toList();
       }
-      final res = await postStream(client, Uri.parse(joinUrl(config.baseUrl, '/chat/completions')), _headers, body);
+      final url = Uri.parse(joinUrl(config.baseUrl, '/chat/completions'));
+      http.StreamedResponse res;
+      try {
+        res = await postStream(client, url, _headers, body);
+      } on LlmException catch (e) {
+        // A few OpenAI-compatible servers (some local ones, some gateways) reject stream=true: ask once for
+        // the whole reply instead, so the model still answers.
+        if (!abort.aborted && looksLikeNoStreaming(e.message)) {
+          yield* _wholeReply(client, url, body);
+          return;
+        }
+        rethrow;
+      }
       final pending = <int, PendingToolCall>{};
+      var sawFinish = false;
+      var sawDone = false;
+      var sawAny = false;
       await for (final data in sseData(res)) {
         if (data.isEmpty) continue;
-        if (data == '[DONE]') break;
+        if (data == '[DONE]') {
+          sawDone = true;
+          break;
+        }
+        sawAny = true
         Map<String, dynamic> j;
         try {
           j = jsonDecode(data) as Map<String, dynamic>;
@@ -127,14 +146,25 @@ class OpenAiCompatClient implements LlmClient {
         if (j['error'] is Map) {
           throw LlmException((j['error'] as Map)['message']?.toString() ?? 'Provider error');
         }
+        final usage = j['usage'];
+        if (usage is Map) {
+          final pt = (usage['prompt_tokens'] as num?)?.toInt();
+          final ct = (usage['completion_tokens'] as num?)?.toInt();
+          if (pt != null || ct != null) yield UsageEvent(inputTokens: pt, outputTokens: ct);
+        }
         final choices = j['choices'];
         if (choices is! List || choices.isEmpty) continue;
         final choice = choices.first;
         if (choice is! Map) continue;
+        if (choice['finish_reason'] != null) sawFinish = true;
         final delta = choice['delta'];
         if (delta is Map) {
           final content = delta['content'];
           if (content is String && content.isNotEmpty) yield TextDelta(content);
+          // Reasoning models (DeepSeek, NVIDIA, OpenRouter…) stream their reasoning in a separate field.
+          // It is not shown, only counted so the app can tell the model is working.
+          final reasoning = delta['reasoning_content'] ?? delta['reasoning'];
+          if (reasoning is String && reasoning.isNotEmpty) yield ReasoningDelta(reasoning.length);
           final calls = delta['tool_calls'];
           if (calls is List) {
             for (final raw in calls) {
@@ -150,6 +180,10 @@ class OpenAiCompatClient implements LlmClient {
             }
           }
         }
+      }
+      if (sawAny && !sawFinish && !sawDone) {
+        // The server hung up in the middle of the reply.
+        throw StreamDropped('The connection closed before the reply was finished');
       }
       final order = pending.keys.toList()..sort();
       for (final i in order) {
@@ -167,6 +201,42 @@ class OpenAiCompatClient implements LlmClient {
     } finally {
       client.close();
     }
+  }
+
+  /// The same request without streaming; the answer arrives all at once.
+  Stream<LlmEvent> _wholeReply(http.Client client, Uri url, Map<String, dynamic> body) async* {
+    final plain = Map<String, dynamic>.of(body)..['stream'] = false;
+    final res = await client
+        .post(url, headers: <String, String>{..._headers, 'Content-Type': 'application/json'}, body: jsonEncode(plain))
+        .timeout(const Duration(minutes: 10));
+    final raw = utf8.decode(res.bodyBytes, allowMalformed: true);
+    if (res.statusCode < 200 || res.statusCode >= 300) throw LlmException(errorMessage(res.statusCode, raw));
+    final j = jsonDecode(raw);
+    if (j is! Map) throw LlmException('Unexpected reply from the provider');
+    final usage = j['usage'];
+    if (usage is Map) {
+      yield UsageEvent(inputTokens: (usage['prompt_tokens'] as num?)?.toInt(), outputTokens: (usage['completion_tokens'] as num?)?.toInt());
+    }
+    final choices = j['choices'];
+    if (choices is List && choices.isNotEmpty && choices.first is Map) {
+      final msg = (choices.first as Map)['message'];
+      if (msg is Map) {
+        final content = msg['content'];
+        if (content is String && content.isNotEmpty) yield TextDelta(content);
+        final calls = msg['tool_calls'];
+        if (calls is List) {
+          for (final rc in calls) {
+            if (rc is! Map) continue;
+            final fn = rc['function'];
+            if (fn is! Map) continue;
+            final p = PendingToolCall(rc['id']?.toString() ?? '', fn['name']?.toString() ?? '');
+            if (fn['arguments'] is String) p.args.write(fn['arguments'] as String);
+            if (p.name.isNotEmpty) yield ToolCallDone(p.build());
+          }
+        }
+      }
+    }
+    yield const LlmDone();
   }
 
   @override

@@ -75,10 +75,13 @@ class _Run {
 /// Downloads a file in many slices over several connections at once, like a download accelerator, and can
 /// be stopped and continued at any time without starting over.
 class DownloadEngine {
-  DownloadEngine({required this.saver, this.maxRetries = 5, HttpClient Function()? clientFactory}) : _factory = clientFactory ?? HttpClient.new;
+  DownloadEngine({required this.saver, this.maxRetries = 5, this.stallTimeout = const Duration(seconds: 30), HttpClient Function()? clientFactory}) : _factory = clientFactory ?? HttpClient.new;
 
   final DownloadSaver saver;
   final int maxRetries;
+
+  /// A connection that delivers nothing for this long is treated as dropped and retried.
+  final Duration stallTimeout;
   final HttpClient Function() _factory;
   final Map<String, _Run> _runs = <String, _Run>{};
 
@@ -352,7 +355,7 @@ class DownloadEngine {
       req.headers.set(HttpHeaders.rangeHeader, 'bytes=${c.start + c.done}-${c.end}');
       if (t.etag.isNotEmpty && !t.etag.startsWith('W/')) req.headers.set(HttpHeaders.ifRangeHeader, t.etag);
     }
-    final res = await req.close();
+    final res = await req.close().timeout(stallTimeout);
     if (t.resumable) {
       if (res.statusCode == 200) throw const _RangeIgnored();
       if (res.statusCode != 206) throw HttpException('HTTP ${res.statusCode}');
@@ -362,7 +365,7 @@ class DownloadEngine {
     final sink = file.openWrite(mode: FileMode.append);
     var unflushed = 0;
     try {
-      await for (final data in res) {
+      await for (final data in res.timeout(stallTimeout)) {
         if (r.halted) break;
         var bytes = data;
         if (c.bounded) {

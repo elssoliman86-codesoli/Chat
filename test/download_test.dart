@@ -66,6 +66,22 @@ class _Server {
         }
       }
       final res = req.response;
+      if (partial && dropFirst > 0 && to - from > 200000) {
+        // Answer with the start of the body, then hang up: the way a dropped connection looks to the client.
+        dropFirst--;
+        final socket = await res.detachSocket(writeHeaders: false);
+        final head = 'HTTP/1.1 206 Partial Content\r\n'
+            'content-type: application/octet-stream\r\n'
+            'etag: "v1"\r\n'
+            'content-range: bytes $from-$to/${data.length}\r\n'
+            'content-length: ${to - from + 1}\r\n\r\n';
+        socket.add(head.codeUnits);
+        socket.add(data.sublist(from, from + 100000));
+        served += 100000;
+        await socket.flush();
+        socket.destroy();
+        return;
+      }
       res.headers.set('etag', '"v1"');
       res.headers.contentType = ContentType.binary;
       if (ranges) res.headers.set('accept-ranges', 'bytes');
@@ -74,22 +90,12 @@ class _Server {
         res.headers.set('content-range', 'bytes $from-$to/${data.length}');
       }
       res.contentLength = to - from + 1;
-      var cut = false;
-      if (partial && dropFirst > 0 && to - from > 200000) {
-        dropFirst--;
-        cut = true;
-      }
       var pos = from;
       while (pos <= to) {
         final end = min(pos + 65536, to + 1);
         res.add(data.sublist(pos, end));
         served += end - pos;
         pos = end;
-        if (cut && pos - from > 100000) {
-          await res.flush();
-          (await res.detachSocket()).destroy();
-          return;
-        }
         if (delayPerPiece > Duration.zero) {
           await res.flush();
           await Future<void>.delayed(delayPerPiece);
