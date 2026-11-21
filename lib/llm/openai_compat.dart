@@ -136,7 +136,7 @@ class OpenAiCompatClient implements LlmClient {
           sawDone = true;
           break;
         }
-        sawAny = true
+        sawAny = true;
         Map<String, dynamic> j;
         try {
           j = jsonDecode(data) as Map<String, dynamic>;
