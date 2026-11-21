@@ -375,14 +375,16 @@ void main() {
       final c = OpenAiCompatClient(_cfg(ProviderKind.openai, s.base));
       final abort = AbortHandle();
       var chars = 0;
-      final watch = Stopwatch()..start();
+      Stopwatch? watch;
       await for (final e in resilientStream(client: c, request: _req(), abort: abort)) {
         if (e is TextDelta) {
+          watch ??= Stopwatch()..start();
           chars += e.text.length;
           if (chars > 30) abort.abort();
         }
       }
-      expect(watch.elapsedMilliseconds, lessThan(2500), reason: 'it must not wait for the rest of the 4 seconds of text');
+      expect(watch, isNotNull);
+      expect(watch!.elapsedMilliseconds, lessThan(1500), reason: 'it must not wait for the rest of the 4 seconds of text');
     });
   });
 

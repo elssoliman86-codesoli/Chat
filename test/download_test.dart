@@ -39,6 +39,9 @@ class _Server {
   int maxOpen = 0;
   int requests = 0;
 
+  /// Bytes asked for by ranged requests (what a client really wants to receive).
+  int requested = 0;
+
   String get url => 'http://127.0.0.1:${server.port}/files/big%20file.bin';
 
   Future<void> start() async {
@@ -63,6 +66,7 @@ class _Server {
           from = int.parse(m.group(1)!);
           if (m.group(2)!.isNotEmpty) to = min(int.parse(m.group(2)!), data.length - 1);
           partial = true;
+          requested += to - from + 1;
         }
       }
       final res = req.response;
@@ -266,14 +270,14 @@ void main() {
       expect(kept, greaterThan(0));
       expect(kept, lessThan(data.length));
       expect(Directory(t.partsDir).existsSync(), isTrue);
-      final servedBefore = s.served;
+      final requestedBefore = s.requested;
 
       manager.resume(t);
       await manager.settle(t);
       expect(t.state, DownloadState.completed, reason: t.error);
       expect(await File(t.target).readAsBytes(), data);
-      // Only the missing part was fetched again (a little slack for the part that was cut).
-      expect(s.served - servedBefore, lessThan(data.length - kept + (4 << 20)));
+      // Only what was still missing was asked for again; the bytes already on disk were not.
+      expect(s.requested - requestedBefore, lessThanOrEqualTo(data.length - kept + (1 << 20)));
     });
 
     test('the list is saved and a half-done download comes back paused', () async {
