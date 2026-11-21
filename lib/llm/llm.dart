@@ -137,9 +137,14 @@ bool isNetworkDrop(Object e) {
 class AbortHandle {
   bool aborted = false;
   http.Client? client;
+  final Completer<void> _signal = Completer<void>();
+
+  /// Completes the moment Stop is pressed, so waiting code can give up at once.
+  Future<void> get whenAborted => _signal.future;
 
   void abort() {
     aborted = true;
+    if (!_signal.isCompleted) _signal.complete();
     client?.close();
   }
 }

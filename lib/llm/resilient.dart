@@ -93,7 +93,8 @@ Stream<LlmEvent> resilientStream({
       it = StreamIterator<LlmEvent>(client.stream(req, abort));
       while (true) {
         final wait = (gotAny || emitted.isNotEmpty) ? idleTimeout : firstTokenTimeout;
-        final has = await it.moveNext().timeout(wait);
+        // Stop wins over everything: it must not wait for a socket that may never answer.
+        final has = await Future.any<bool>(<Future<bool>>[it.moveNext(), abort.whenAborted.then((_) => false)]).timeout(wait);
         if (!has) break;
         final e = it.current;
         if (!gotAny) {

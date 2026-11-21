@@ -253,9 +253,10 @@ void main() {
       resilientStream(client: c, request: _req(), abort: abort).listen(got.add, onDone: done.complete);
       await Future<void>.delayed(const Duration(milliseconds: 50));
       abort.abort();
-      // The provider notices its socket closed; here the fake is stuck, so nudge the wrapper with a timeout.
-      await done.future.timeout(const Duration(seconds: 5), onTimeout: () {});
+      // The fake never answers again; Stop must end the stream anyway.
+      await done.future.timeout(const Duration(seconds: 2));
       expect(c.requests.length, 1);
+      expect(got.last, isA<LlmDone>());
     });
 
     test('classifies failures: connection problems retry, provider answers do not', () {
