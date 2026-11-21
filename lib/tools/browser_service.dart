@@ -8,6 +8,7 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'browser_cursor.dart';
 import 'browser_identity.dart';
 import 'devtools_log.dart';
+import 'web_native.dart';
 
 /// The browser always presents itself as desktop Chrome on Windows, so Facebook, WhatsApp Web and other sites
 /// that check the device give their full computer version.
@@ -103,6 +104,24 @@ class BrowserService {
     } catch (_) {}
   }
 
+  /// Sets up the native side of the web view once it exists on screen (it is not there yet at the very
+  /// first page start, so it is tried a few times).
+  bool _nativeBusy = false;
+
+  Future<void> _prepareNative() async {
+    if (_nativeBusy) return;
+    _nativeBusy = true;
+    try {
+      for (var i = 0; i < 4; i++) {
+        final r = await WebNative.prepare();
+        if (r != null && ((r['webViews'] as num?) ?? 0) > 0) return;
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+      }
+    } finally {
+      _nativeBusy = false;
+    }
+  }
+
   Future<void> _injectScripts() async {
     try {
       await controller.runJavaScript(devToolsScript);
@@ -143,6 +162,7 @@ class BrowserService {
           url.value = u;
           dev.newPage();
           _injectScripts();
+          _prepareNative();
         },
         onPageFinished: (u) async {
           url.value = u;

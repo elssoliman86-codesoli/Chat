@@ -15,6 +15,9 @@ void main() {
     expect(phoneUserAgent, contains('Mobile'));
     expect(browserUserAgent, desktopUserAgent);
     expect(desktopViewportScript, contains('width=1280'));
+    // The 1280 px layout is scaled to the screen so the page fits instead of sliding off to the right.
+    expect(desktopViewportScript, contains('initial-scale='));
+    expect(desktopViewportScript, contains('minimum-scale='));
   });
 
   test('a fetch request is tracked from start to end', () {

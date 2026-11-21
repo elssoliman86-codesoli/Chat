@@ -19,6 +19,11 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.CookieManager
+import android.webkit.WebView
+import androidx.webkit.WebSettingsCompat
 import androidx.webkit.ProxyConfig
 import androidx.webkit.ProxyController
 import androidx.webkit.WebViewFeature
@@ -28,6 +33,37 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private var webChannel: MethodChannel? = null
+    private var pendingSave: MethodChannel.Result? = null
+
+    private fun findWebViews(v: View, out: MutableList<WebView>) {
+        if (v is WebView) {
+            out.add(v)
+            return
+        }
+        if (v is ViewGroup) {
+            for (i in 0 until v.childCount) {
+                findWebViews(v.getChildAt(i), out)
+            }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 4711) {
+            val r = pendingSave
+            pendingSave = null
+            val uri = if (resultCode == RESULT_OK) data?.data else null
+            if (uri != null) {
+                try {
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                } catch (e: Exception) {
+                }
+            }
+            r?.success(uri?.toString())
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "omni/keepalive").setMethodCallHandler { call, result ->
@@ -120,6 +156,119 @@ class MainActivity : FlutterActivity() {
                 }
             } catch (e: Exception) {
                 result.error("browsers", e.message, null)
+            }
+        }
+        webChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "omni/webview")
+        webChannel!!.setMethodCallHandler { call, result ->
+            try {
+                if (call.method == "prepare") {
+                    // Best effort for signing in to sites that refuse embedded browsers: stop the web view from
+                    // announcing itself with the X-Requested-With header, accept third-party cookies, and hand
+                    // downloads over to the app's own download manager.
+                    val downloads = call.argument<Boolean>("downloads") ?: false
+                    val list = ArrayList<WebView>()
+                    findWebViews(window.decorView, list)
+                    var header = false
+                    for (w in list) {
+                        try {
+                            CookieManager.getInstance().setAcceptThirdPartyCookies(w, true)
+                        } catch (e: Exception) {
+                        }
+                        try {
+                            if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+                                WebSettingsCompat.setRequestedWithHeaderOriginAllowList(w.settings, HashSet<String>())
+                                header = true
+                            }
+                        } catch (e: Exception) {
+                        }
+                        if (downloads) {
+                            w.setDownloadListener { url, ua, disposition, mime, length ->
+                                val cookie = try {
+                                    CookieManager.getInstance().getCookie(url) ?: ""
+                                } catch (e: Exception) {
+                                    ""
+                                }
+                                runOnUiThread {
+                                    webChannel?.invokeMethod("download", mapOf(
+                                        "url" to url,
+                                        "ua" to (ua ?: ""),
+                                        "disposition" to (disposition ?: ""),
+                                        "mime" to (mime ?: ""),
+                                        "length" to length,
+                                        "cookie" to cookie,
+                                        "referer" to (w.url ?: "")))
+                                }
+                            }
+                        }
+                    }
+                    result.success(mapOf("webViews" to list.size, "headerRemoved" to header))
+                } else {
+                    result.notImplemented()
+                }
+            } catch (e: Exception) {
+                result.error("webview", e.message, null)
+            }
+        }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "omni/files").setMethodCallHandler { call, result ->
+            try {
+                if (call.method == "pickSave") {
+                    if (pendingSave != null) {
+                        pendingSave?.success(null)
+                    }
+                    pendingSave = result
+                    val i = Intent(Intent.ACTION_CREATE_DOCUMENT)
+                    i.addCategory(Intent.CATEGORY_OPENABLE)
+                    i.type = call.argument<String>("mime") ?: "application/octet-stream"
+                    i.putExtra(Intent.EXTRA_TITLE, call.argument<String>("name") ?: "download")
+                    startActivityForResult(i, 4711)
+                } else if (call.method == "mergeInto") {
+                    // Joins the downloaded parts, in order, into the file the person chose.
+                    val uri = Uri.parse(call.argument<String>("uri") ?: "")
+                    val parts = call.argument<List<String>>("parts") ?: ArrayList<String>()
+                    val deleteParts = call.argument<Boolean>("deleteParts") ?: true
+                    Thread {
+                        var failure: String? = null
+                        try {
+                            val out = contentResolver.openOutputStream(uri, "wt") ?: throw Exception("Cannot open the save location")
+                            out.use { o ->
+                                val buf = ByteArray(1024 * 1024)
+                                for (path in parts) {
+                                    java.io.FileInputStream(path).use { input ->
+                                        while (true) {
+                                            val n = input.read(buf)
+                                            if (n < 0) {
+                                                break
+                                            }
+                                            o.write(buf, 0, n)
+                                        }
+                                    }
+                                }
+                                o.flush()
+                            }
+                            if (deleteParts) {
+                                for (path in parts) {
+                                    java.io.File(path).delete()
+                                }
+                            }
+                        } catch (e: Exception) {
+                            failure = e.message ?: e.toString()
+                        }
+                        runOnUiThread {
+                            if (failure == null) result.success(true) else result.error("merge", failure, null)
+                        }
+                    }.start()
+                } else if (call.method == "open") {
+                    val uri = Uri.parse(call.argument<String>("uri") ?: "")
+                    val i = Intent(Intent.ACTION_VIEW)
+                    i.setDataAndType(uri, call.argument<String>("mime") ?: "*/*")
+                    i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(i)
+                    result.success(true)
+                } else {
+                    result.notImplemented()
+                }
+            } catch (e: Exception) {
+                result.error("files", e.message, null)
             }
         }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "omni/termux").setMethodCallHandler { call, result ->

@@ -274,16 +274,28 @@ const String devToolsScript = r'''
 })();
 ''';
 
-/// Makes a page lay out like on a desktop: a wide viewport instead of the phone's width, kept even if
-/// the page later rewrites its viewport tag.
+/// Makes a page lay out like on a desktop (a 1280 px wide layout) and then scales that layout to fit the
+/// screen, so the whole page is visible instead of being pushed off to the right. The viewport tag is
+/// kept even if the page rewrites it, and recomputed when the screen rotates.
 const String desktopViewportScript = r'''
 (function(){
  if(window.__omniDesktop)return;window.__omniDesktop=true;
+ var W=1280,last='';
+ function want(){
+  var sw=(window.screen&&screen.width)||0;
+  if(window.innerWidth&&(!sw||window.innerWidth<sw))sw=window.innerWidth;
+  if(!sw||sw>=W)return 'width='+W+', initial-scale=1';
+  var s=Math.floor(sw/W*1000)/1000;
+  return 'width='+W+', initial-scale='+s+', minimum-scale='+s+', maximum-scale=5, user-scalable=yes';
+ }
  function fix(){
   var h=document.head;if(!h)return;
   var m=document.querySelector('meta[name=viewport]');
   if(!m){m=document.createElement('meta');m.name='viewport';h.appendChild(m);}
-  if(m.content!=='width=1280')m.content='width=1280';
+  var c=want();
+  if(m.content!==c){last=c;m.content=c;}
+  var d=document.documentElement;
+  if(d&&d.style.overflowX!=='hidden'){d.style.overflowX='hidden';}
  }
  function watch(){
   var h=document.head;
@@ -296,5 +308,8 @@ const String desktopViewportScript = r'''
   var o=new MutationObserver(function(){if(watch())o.disconnect();});
   o.observe(document.documentElement,{childList:true});
  }
+ window.addEventListener('orientationchange',function(){setTimeout(fix,250);});
+ window.addEventListener('load',fix);
 })();
 ''';
+
