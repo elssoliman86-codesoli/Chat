@@ -493,3 +493,21 @@ class ExecutionTrace extends ChangeNotifier {
     }
   }
 }
+
+/// The latest trace of each conversation, so the Thinking panel can show the running task or the last one.
+class TraceHub extends ChangeNotifier {
+  final Map<String, ExecutionTrace> _byConversation = <String, ExecutionTrace>{};
+
+  ExecutionTrace? of(String conversationId) => _byConversation[conversationId];
+
+  void put(ExecutionTrace t) {
+    _byConversation.remove(t.conversationId);
+    _byConversation[t.conversationId] = t;
+    // Old traces are dropped so they cannot pile up in memory.
+    while (_byConversation.length > 30) {
+      final oldest = _byConversation.keys.first;
+      _byConversation.remove(oldest);
+    }
+    notifyListeners();
+  }
+}

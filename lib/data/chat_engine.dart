@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../agents/trace.dart';
 import '../core/models.dart';
 import '../llm/llm.dart';
 import '../llm/resilient.dart';
@@ -19,6 +20,7 @@ import 'keep_alive.dart';
 import 'model_fallback.dart';
 import 'services.dart' show navigatorKey;
 import '../ui/glass/glass.dart';
+import '../ui/steps_card.dart' show describeCall;
 
 /// Prevent automatic web enrichment from hijacking local-device commands or short follow-ups.
 bool shouldSkipAutomaticWebSearchForLocalAction(String query, {String recentContext = ''}) {
@@ -53,6 +55,11 @@ class ChatEngine implements ToolHost {
 
   /// Live numbers of the reply being streamed (first-token latency, tokens/second, connection state).
   final StreamMetrics metrics = StreamMetrics();
+
+  /// What really happened in each conversation's latest task: model passes, tools, commands, files, workers.
+  final TraceHub traces = TraceHub();
+  ExecutionTrace? _trace;
+  ExecutionTrace? get activeTrace => _trace;
   Conversation? _running;
   final Map<String, List<QueuedMessage>> _queues = <String, List<QueuedMessage>>{};
 
@@ -881,6 +888,26 @@ class ChatEngine implements ToolHost {
       unawaited(store.flush());
     });
     store.changed();
+    final lastUser = c.messages.lastWhere((m) => m.role == 'user' && !m.auto, orElse: () => ChatMessage(role: 'user'));
+    final trace = ExecutionTrace(
+      conversationId: c.id,
+      request: lastUser.text,
+      attachments: lastUser.attachments.length,
+      model: c.model,
+    );
+    _trace = trace;
+    traces.put(trace);
+    trace.log(
+      Stage.analyzing,
+      TraceKind.status,
+      'Read your message',
+      detail: '${lastUser.text.length} characters'
+          '${lastUser.attachments.isEmpty ? '' : ', ${lastUser.attachments.length} attachment${lastUser.attachments.length == 1 ? '' : 's'}'}'
+          ', ${c.messages.length} message${c.messages.length == 1 ? '' : 's'} of context',
+    );
+    var stopped = false;
+    var failedTurn = false;
+    var failureText = '';
     try {
       if (initialProvider == null) {
         throw LlmException('Add a provider first: menu > Providers.');
@@ -929,15 +956,22 @@ class ChatEngine implements ToolHost {
           contextDone = true;
           try {
             context = await _webContext(c, reply);
+            if (context != null && context.trim().isNotEmpty) {
+              trace.log(Stage.researching, TraceKind.status, 'Looked up web context for your message', detail: '${context.length} characters collected');
+            }
           } catch (_) {
             context = null;
           }
           store.changed();
         }
         if (provider.noVision.contains(c.model)) {
+          final imgEvent = trace.log(Stage.files, TraceKind.file, 'Read the attached images', detail: 'This model cannot see images, so they are read by another tool', running: true);
           try {
             await _readImages(c, reply, provider);
-          } catch (_) {}
+            trace.finishEvent(imgEvent);
+          } catch (e) {
+            trace.finishEvent(imgEvent, failed: true, detail: e.toString());
+          }
         }
         final request = LlmRequest(
           system: buildSystem(c) + (provider.supportsTools
@@ -954,11 +988,17 @@ class ChatEngine implements ToolHost {
         final abort = AbortHandle();
         _abort = abort;
         metrics.begin(c.model);
+        trace.passStart(c.model);
+        var firstReported = false;
         try {
           await for (final event in resilientStream(client: client, request: request, abort: abort)) {
             if (event is TextDelta) {
               reply.text += event.text;
               metrics.onText(event.text);
+              if (!firstReported && metrics.firstTokenLatency != null) {
+                firstReported = true;
+                trace.passFirstToken(metrics.firstTokenLatency!);
+              }
               _notifySoon(reply);
             } else if (event is ToolCallDone) {
               reply.toolCalls.add(event.call);
@@ -973,14 +1013,22 @@ class ChatEngine implements ToolHost {
               metrics.onUsage(input: event.inputTokens, output: event.outputTokens);
             } else if (event is StreamStatusEvent) {
               metrics.setPhase(event.phase, detail: event.detail, attempt: event.attempt);
+              if (event.phase == StreamPhase.reconnecting) trace.passReconnecting(event.attempt);
             }
           }
           metrics.finish(abort.aborted ? StreamPhase.stopped : StreamPhase.done);
           if (reply.text.isNotEmpty || reply.toolCalls.isNotEmpty) {
             reply.stats = metrics.summary;
           }
+          trace.passEnd(
+            hadTools: reply.toolCalls.isNotEmpty,
+            outputTokens: metrics.totalTokens,
+            took: metrics.generation,
+            summary: metrics.summary,
+          );
         } catch (e) {
           metrics.finish(abort.aborted ? StreamPhase.stopped : StreamPhase.failed);
+          trace.passEnd(hadTools: false, outputTokens: metrics.totalTokens, took: metrics.generation, failed: !abort.aborted, summary: abort.aborted ? 'Stopped' : e.toString());
           final hadImages = history.any((m) => m.attachments.any((a) => a.kind == AttachmentKind.image));
           if (!abort.aborted && hadImages && request.vision && reply.text.isEmpty && _looksLikeNoVision(e)) {
             // This model cannot see images: remember that and try again without them.
@@ -994,6 +1042,7 @@ class ChatEngine implements ToolHost {
           if (!abort.aborted && reply.text.isEmpty && reply.toolCalls.isEmpty && isModelFailure(e.toString())) {
             final reason = e.toString().replaceAll('\n', ' ');
             if (switchModel(reason.length > 140 ? '${reason.substring(0, 140)}…' : reason)) {
+              trace.log(Stage.understanding, TraceKind.warning, 'Switched to ${c.model}', detail: reason.length > 140 ? '${reason.substring(0, 140)}…' : reason);
               c.messages.remove(reply);
               continue;
             }
@@ -1001,7 +1050,13 @@ class ChatEngine implements ToolHost {
           if (!abort.aborted) {
             reply.error = true;
             reply.text = reply.text.isEmpty ? e.toString() : '${reply.text}\n\n⚠️ $e';
+            trace.log(Stage.finalizing, TraceKind.error, 'The model request failed', detail: e.toString(), failed: true);
           }
+        }
+        if (abort.aborted) stopped = true;
+        if (reply.error) {
+          failedTurn = true;
+          failureText = reply.text;
         }
         if (abort.aborted || reply.error) break;
         if (reply.toolCalls.isEmpty) {
@@ -1034,18 +1089,30 @@ class ChatEngine implements ToolHost {
         for (final call in reply.toolCalls) {
           runningCallId = call.id;
           store.changed();
+          final info = describeCall(call, null);
+          final toolEvent = trace.toolStart(call, title: info.title, detail: info.detail);
           final String result;
           try {
             result = await _runOnce(call);
+          } catch (e) {
+            trace.toolEnd(toolEvent, result: e.toString(), failed: true);
+            rethrow;
           } finally {
             runningCallId = null;
           }
+          trace.toolEnd(toolEvent, result: result, failed: toolResultFailed(result));
           c.messages.add(ChatMessage(role: 'tool', text: result, toolCallId: call.id, toolName: call.name, failed: toolResultFailed(result)));
           store.scheduleSave(c);
           store.changed();
-          if (_abort?.aborted ?? false) break;
+          if (_abort?.aborted ?? false) {
+            stopped = true;
+            break;
+          }
         }
-        if (_abort?.aborted ?? false) break;
+        if (_abort?.aborted ?? false) {
+          stopped = true;
+          break;
+        }
         step++;
         if (step == maxSteps) {
           c.messages.add(ChatMessage(
@@ -1053,8 +1120,11 @@ class ChatEngine implements ToolHost {
         }
       }
     } catch (e) {
+      failedTurn = true;
+      failureText = e.toString();
       c.messages.add(ChatMessage(role: 'assistant', error: true, text: e.toString()));
     } finally {
+      trace.end(stopped ? TraceOutcome.cancelled : (failedTurn ? TraceOutcome.failed : TraceOutcome.completed), error: failureText);
       periodicSave.cancel();
       c.turnInProgress = false;
       await BackgroundWork.stop();
