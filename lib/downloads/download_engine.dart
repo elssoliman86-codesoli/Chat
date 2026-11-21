@@ -237,7 +237,8 @@ class DownloadEngine {
         r.client = null;
         r.busy.clear();
         r.restart = false;
-        return _execute(r, restarts: restarts + 1);
+        await _execute(r, restarts: restarts + 1);
+        return;
       }
       r.ticker?.cancel();
 
