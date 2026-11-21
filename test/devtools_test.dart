@@ -14,7 +14,8 @@ void main() {
     expect(desktopUserAgent, isNot(contains('Mobile')));
     expect(phoneUserAgent, contains('Mobile'));
     expect(browserUserAgent, desktopUserAgent);
-    expect(desktopViewportScript, contains('width=1280'));
+    expect(desktopViewportScript, contains('W=1280'));
+    expect(desktopViewportScript, contains("'width='+W"));
     // The 1280 px layout is scaled to the screen so the page fits instead of sliding off to the right.
     expect(desktopViewportScript, contains('initial-scale='));
     expect(desktopViewportScript, contains('minimum-scale='));
