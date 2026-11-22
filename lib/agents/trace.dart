@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../core/models.dart';
+import 'orchestrator.dart';
 
 /// The stages a task moves through. Each real event (a tool call, a model pass, a worker) is filed under the
 /// stage it belongs to, so the timeline is a summary of what actually happened — not a script.
@@ -193,6 +194,9 @@ class ExecutionTrace extends ChangeNotifier {
 
   /// Set while the assistant is waiting for the person (a question, an approval, the browser).
   bool waiting = false;
+
+  /// The workers of this task, when it split work across them (drawn by the Multi-Agent Monitor).
+  Orchestrator? orchestrator;
 
   int activeAgents = 0;
   int activeWorkers = 0;

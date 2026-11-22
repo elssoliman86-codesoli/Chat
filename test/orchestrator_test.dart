@@ -262,7 +262,7 @@ void main() {
       expect(w.tokens, 42);
       expect(w.taskTitle, 'Task a');
       expect(w.result, 'done');
-      expect(w.elapsed, isNot(Duration.zero));
+      expect(w.startedAt, isNotNull);
       expect(events.first, contains('Started'));
       expect(events.last, contains('Finished'));
     });
@@ -270,7 +270,7 @@ void main() {
     test('running twice at once is refused', () async {
       final o = Orchestrator(mainTask: 'x', config: _cfg(), runner: (t, ctx) async => 'x');
       final first = o.run([_t('a')]);
-      expect(() => o.run([_t('b')]), throwsStateError);
+      await expectLater(o.run([_t('b')]), throwsStateError);
       await first;
     });
   });

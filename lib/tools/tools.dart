@@ -59,6 +59,9 @@ abstract class ToolHost {
 
   /// Attaches a file made by a tool to the assistant's reply so the person can save it.
   void deliver(String name, String path);
+
+  /// Runs several independent tasks at once with worker agents and returns every result in one report.
+  Future<String> runParallel(List<Map<String, dynamic>> tasks);
 }
 
 Map<String, dynamic> _obj(Map<String, dynamic> props, [List<String> required = const <String>[]]) =>
@@ -504,6 +507,49 @@ final List<ToolDef> builtinTools = <ToolDef>[
       parameters: _obj(<String, dynamic>{'question': _str('What you need from them, short and clear')}, <String>['question']),
     ),
     run: (a, host) => host.askUser(_s(a, 'question')),
+  ),
+  ToolDef(
+    id: 'run_parallel',
+    title: 'Run tasks in parallel',
+    group: 'agents',
+    spec: ToolSpec(
+      name: 'run_parallel',
+      description: 'Split a big job into independent parts and run them AT THE SAME TIME with separate worker agents (a few at once, '
+          'as the person configured), then get every result back in one report. Use it when there are 2 or more parts that do not '
+          'need each other\'s output — researching several sources or topics, writing several separate files, checking several '
+          'pages. Do NOT use it for a single small step, or for steps that must happen in order (use depends_on for the few that '
+          'do). Each worker can search the web, read pages, read and write project files; it cannot use the browser, the terminal, '
+          'Python or ask the person. Write each prompt so a worker with no other context can do it: say exactly what to produce. '
+          'Name the files a task will change in "files" so no two workers edit the same file at once. After the report comes back, '
+          'check the results fit together, fix conflicts it lists, and give the person the final answer yourself.',
+      parameters: <String, dynamic>{
+        'type': 'object',
+        'properties': <String, dynamic>{
+          'tasks': <String, dynamic>{
+            'type': 'array',
+            'description': 'The parts, 1 to 12.',
+            'items': <String, dynamic>{
+              'type': 'object',
+              'properties': <String, dynamic>{
+                'id': _str('Short unique id, e.g. "research" (used by depends_on)'),
+                'title': _str('A few words naming the part'),
+                'prompt': _str('Complete instructions for this part'),
+                'depends_on': <String, dynamic>{'type': 'array', 'items': <String, dynamic>{'type': 'string'}, 'description': 'Ids of parts that must finish first; their results are passed to this one'},
+                'priority': _str('low, normal or high'),
+                'files': <String, dynamic>{'type': 'array', 'items': <String, dynamic>{'type': 'string'}, 'description': 'Project files this part will change'},
+              },
+              'required': <String>['title', 'prompt'],
+            },
+          },
+        },
+        'required': <String>['tasks'],
+      },
+    ),
+    run: (a, host) {
+      final raw = a['tasks'];
+      final list = raw is List ? raw.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList() : <Map<String, dynamic>>[];
+      return host.runParallel(list);
+    },
   ),
   ToolDef(
     id: 'ask_advisor',

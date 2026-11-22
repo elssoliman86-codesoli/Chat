@@ -3,7 +3,9 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../agents/orchestrator.dart';
 import '../agents/trace.dart';
+import '../agents/worker_agent.dart';
 import '../core/models.dart';
 import '../llm/llm.dart';
 import '../llm/resilient.dart';
@@ -725,7 +727,88 @@ class ChatEngine implements ToolHost {
     return removed;
   }
 
-  void stop() => _abort?.abort();
+  void stop() {
+    _abort?.abort();
+    _trace?.orchestrator?.cancel();
+  }
+
+  @override
+  Future<String> runParallel(List<Map<String, dynamic>> raw) async {
+    final c = _running;
+    final trace = _trace;
+    if (c == null || trace == null) return 'No active conversation.';
+    if (trace.orchestrator?.running ?? false) return 'Workers are already running for this task.';
+    if (raw.isEmpty) return 'Give at least one task.';
+    if (raw.length > 12) return 'At most 12 tasks at a time. Group some of them.';
+    final st = store.settings;
+    final provider = store.providerById(c.providerId) ?? store.defaultProvider;
+    if (provider == null) return 'Add a provider first.';
+    final fallback = priorityFrom(st.workersPriority);
+    final tasks = <SubTask>[];
+    for (var i = 0; i < raw.length; i++) {
+      final m = raw[i];
+      List<String> strings(Object? v) => v is List ? v.map((e) => e.toString()).where((e) => e.trim().isNotEmpty).toList() : <String>[];
+      final id = (m['id'] ?? '').toString().trim();
+      tasks.add(SubTask(
+        id: id.isEmpty ? 't${i + 1}' : id,
+        title: (m['title'] ?? 'Task ${i + 1}').toString().trim(),
+        prompt: (m['prompt'] ?? '').toString(),
+        dependsOn: strings(m['depends_on']),
+        priority: priorityFrom(m['priority'], fallback),
+        files: strings(m['files']),
+      ));
+    }
+    final client = createClient(provider);
+    final specs = ToolRegistry.specsFor(c, store, provider).where((t) => kWorkerTools.contains(t.name)).toList();
+    final lastUser = c.messages.lastWhere((m) => m.role == 'user' && !m.auto, orElse: () => ChatMessage(role: 'user'));
+    late final Orchestrator orch;
+    orch = Orchestrator(
+      mainTask: lastUser.text,
+      model: c.model,
+      config: OrchestratorConfig(
+        maxWorkers: st.workersMax,
+        maxAgents: st.agentsMax,
+        mode: st.workersMode,
+        timeout: Duration(seconds: st.workerTimeoutSec),
+        retries: st.workerRetries,
+        defaultPriority: fallback,
+      ),
+      runner: (task, ctx) => runWorkerAgent(
+        task: task,
+        ctx: ctx,
+        client: client,
+        model: c.model,
+        tools: specs,
+        runTool: (call) => runTool(call, this),
+      ),
+    );
+    void sync() => trace.setWorkers(agents: orch.running ? 1 + orch.activeWorkers : 0, workers: orch.activeWorkers);
+    orch.onEvent = (worker, text, failed) {
+      trace.log(
+        Stage.delegating,
+        failed ? TraceKind.error : TraceKind.delegate,
+        text,
+        agent: worker,
+        failed: failed,
+        tool: 'run_parallel',
+      );
+    };
+    orch.addListener(sync);
+    trace.orchestrator = orch;
+    trace.log(Stage.delegating, TraceKind.plan, 'Split the job into ${tasks.length} task${tasks.length == 1 ? '' : 's'}', detail: tasks.map((t) => t.title).join(' · '));
+    try {
+      final outcome = await orch.run(tasks);
+      for (final n in orch.notes) {
+        trace.log(Stage.delegating, TraceKind.warning, n);
+      }
+      return outcome.report;
+    } on ArgumentError catch (e) {
+      return 'The task list is not valid: ${e.message}';
+    } finally {
+      orch.removeListener(sync);
+      trace.setWorkers(agents: 0, workers: 0);
+    }
+  }
 
   /// Searches the web for the last question and returns text to put in front of it.
   Future<String?> _webContext(Conversation c, ChatMessage reply) async {
