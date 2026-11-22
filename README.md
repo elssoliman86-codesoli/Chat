@@ -366,7 +366,7 @@ own file, so nothing starts over, even after the app is closed. Servers without 
 plain stream. Open **Settings → Downloads** (or the ⋯ menu of the browser) to see speed, per-part progress and to paste
 a link by hand. Browser fixes: desktop mode is scaled to the screen width, and the web view stops sending the
 `X-Requested-With` header and accepts third-party cookies, which helps with sites that refuse embedded browsers.
-Google may still refuse sign-in in any embedded browser; that is Google's policy and cannot be guaranteed.
+The browser also sends matching Chrome client hints (Sec-CH-UA) to look like a desktop browser. Google may still refuse sign-in in any embedded browser; that is Google's policy and cannot be guaranteed.
 
 ## AI execution experience: streaming, Thinking panel, workers
 
@@ -378,13 +378,11 @@ is one unbroken reply. A server that refuses `stream=true` is asked for the whol
 first token, tokens/second, total tokens (provider-reported when available, otherwise estimated), connection state — show
 under the reply and in the Thinking panel; a finished reply keeps a one-line summary.
 
-**Thinking panel** (chat menu → *Thinking panel*, or Settings → Plugins). Built from the real events of the task, not a
-script: an *Execution Overview* bar (elapsed time, steps done/running, agents, workers, tokens, tokens/s, status), a
-vertical *Thinking Timeline* of stages (Analyzing Request, Understanding Requirements, Planning, Researching, Analyzing
-Files, Delegating Tasks, Executing Commands, Reviewing Results, Testing, Finalizing — each with time, status and its
-events), and a *Step Inspector* (task, events, tools used, terminal commands and output, results, modified files, errors
-and warnings, stage summary). It shows what the app recorded; it does not claim to reveal the model's hidden reasoning.
-Drag the handles to resize, hide it entirely with ✕, and switch auto-scroll on or off.
+**Thinking panel** (chat menu → *Thinking panel*, or Settings → Plugins). Deliberately plain: one status line (what is
+happening now, workers, elapsed time) and the live text itself — the model's own reasoning when the provider sends it, and
+the file or command being written, streamed as it is typed (even before the tool call finishes). No cards or shapes. It
+stays pinned to the newest line, never covers more than a third of the screen, can be selected and copied, folds to
+"Thought for Ns" when the answer is done, and is hidden entirely with ✕.
 
 **Agents & Workers** (Settings → Agents & Workers). For jobs with independent parts the assistant can call
 `run_parallel`: the orchestrator splits the job into tasks, runs independent ones on worker agents side by side (default
@@ -392,7 +390,7 @@ Drag the handles to resize, hide it entirely with ✕, and switch auto-scroll on
 same file together, queues file writes per file and reports files two workers both wrote, retries failures, times out
 stuck workers, and returns every result in one report for the assistant to check and combine. Workers can search the web,
 read pages and read/write project files; the browser, terminal and Python stay with the main assistant. Stop cancels all
-workers. The Multi-Agent Monitor in the Thinking panel shows one card per worker.
+workers. The Thinking panel shows how many workers are running.
 
 ## Full Windows scan
 

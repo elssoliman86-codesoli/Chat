@@ -80,10 +80,10 @@ class WebNative {
   /// Finds the browser's web view and sets it up: no "X-Requested-With" header (sites that block embedded
   /// browsers look for it), third-party cookies on (sign-in flows need them) and downloads handed to the app.
   /// Returns what was done, or null when nothing could be reached.
-  static Future<Map<String, dynamic>?> prepare({bool downloads = true}) async {
+  static Future<Map<String, dynamic>?> prepare({bool downloads = true, String userAgent = '', bool desktop = true}) async {
     _wire();
     try {
-      final r = await _channel.invokeMethod<Map<dynamic, dynamic>>('prepare', <String, dynamic>{'downloads': downloads});
+      final r = await _channel.invokeMethod<Map<dynamic, dynamic>>('prepare', <String, dynamic>{'downloads': downloads, 'ua': userAgent, 'desktop': desktop});
       return r?.map((k, v) => MapEntry(k.toString(), v));
     } catch (_) {
       return null;

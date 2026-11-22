@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'download_task.dart';
@@ -33,6 +34,25 @@ Future<void> mergeFiles(String path, List<String> parts) async {
     } catch (_) {}
   }
 }
+
+/// A header value the HTTP client will accept: it refuses anything outside printable ASCII (a cookie or
+/// referer with Arabic text in it would otherwise make every request fail), so other characters are
+/// percent-encoded and control characters dropped.
+String sanitizeHeaderValue(String v) {
+  final b = StringBuffer();
+  for (final r in v.runes) {
+    if ((r > 31 && r < 127) || r == 9) {
+      b.writeCharCode(r);
+    } else if (r >= 127) {
+      for (final byte in _utf8(r)) {
+        b.write('%${byte.toRadixString(16).toUpperCase().padLeft(2, '0')}');
+      }
+    }
+  }
+  return b.toString().trim();
+}
+
+List<int> _utf8(int rune) => const Utf8Encoder().convert(String.fromCharCode(rune));
 
 class _RangeIgnored implements Exception {
   const _RangeIgnored();
@@ -100,7 +120,8 @@ class DownloadEngine {
 
   void _apply(HttpClientRequest req, DownloadTask t) {
     t.headers.forEach((k, v) {
-      if (v.isNotEmpty) req.headers.set(k, v);
+      final value = sanitizeHeaderValue(v);
+      if (value.isNotEmpty) req.headers.set(k, value);
     });
     req.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
   }
@@ -112,7 +133,8 @@ class DownloadEngine {
     try {
       final req = await c.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 30));
       headers.forEach((k, v) {
-        if (v.isNotEmpty) req.headers.set(k, v);
+        final value = sanitizeHeaderValue(v);
+        if (value.isNotEmpty) req.headers.set(k, value);
       });
       req.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
       req.headers.set(HttpHeaders.rangeHeader, 'bytes=0-0');
@@ -245,6 +267,20 @@ class DownloadEngine {
       }
       r.ticker?.cancel();
 
+      if (r.error != null && !r.stopped && restarts < 1 && t.resumable && t.received == 0) {
+        // Nothing got through using ranges and several connections, which some servers refuse outright.
+        // Try again as one plain connection before giving up.
+        await _wipeParts(t);
+        t
+          ..resumable = false
+          ..chunks = <Chunk>[Chunk(0, 0, -1)];
+        r.client?.close(force: true);
+        r.client = null;
+        r.busy.clear();
+        r.error = null;
+        await _execute(r, restarts: restarts + 1);
+        return;
+      }
       if (r.stopped) {
         _state(t, DownloadState.paused);
         return;

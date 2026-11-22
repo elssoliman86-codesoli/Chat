@@ -26,6 +26,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebView
+import androidx.webkit.UserAgentMetadata
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.ProxyConfig
 import androidx.webkit.ProxyController
@@ -169,9 +170,12 @@ class MainActivity : FlutterActivity() {
                     // announcing itself with the X-Requested-With header, accept third-party cookies, and hand
                     // downloads over to the app's own download manager.
                     val downloads = call.argument<Boolean>("downloads") ?: false
+                    val ua = call.argument<String>("ua") ?: ""
+                    val desktop = call.argument<Boolean>("desktop") ?: true
                     val list = ArrayList<WebView>()
                     findWebViews(window.decorView, list)
                     var header = false
+                    var hints = false
                     for (w in list) {
                         try {
                             CookieManager.getInstance().setAcceptThirdPartyCookies(w, true)
@@ -181,6 +185,39 @@ class MainActivity : FlutterActivity() {
                             if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
                                 WebSettingsCompat.setRequestedWithHeaderOriginAllowList(w.settings, HashSet<String>())
                                 header = true
+                            }
+                        } catch (e: Exception) {
+                        }
+                        try {
+                            // Google also reads the client hints (Sec-CH-UA) and refuses embedded web views. Make them say the
+                            // same thing as the user agent: a desktop Chrome/Edge, with no "Android WebView" brand.
+                            if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) {
+                                val md = UserAgentMetadata.Builder()
+                                var major = ""
+                                val at = ua.indexOf("Chrome/")
+                                if (at >= 0) {
+                                    var e = at + 7
+                                    while (e < ua.length && ua[e] >= '0' && ua[e] <= '9') e++
+                                    major = ua.substring(at + 7, e)
+                                }
+                                if (desktop && major.isNotEmpty() && ua.contains("Windows")) {
+                                    val full = major + ".0.0.0"
+                                    val brands = ArrayList<UserAgentMetadata.BrandVersion>()
+                                    brands.add(UserAgentMetadata.BrandVersion.Builder().setBrand("Not-A.Brand").setMajorVersion("99").setFullVersion("99.0.0.0").build())
+                                    brands.add(UserAgentMetadata.BrandVersion.Builder().setBrand("Chromium").setMajorVersion(major).setFullVersion(full).build())
+                                    val own = if (ua.contains("Edg/")) "Microsoft Edge" else "Google Chrome"
+                                    brands.add(UserAgentMetadata.BrandVersion.Builder().setBrand(own).setMajorVersion(major).setFullVersion(full).build())
+                                    md.setBrandVersionList(brands)
+                                    md.setFullVersion(full)
+                                    md.setPlatform("Windows")
+                                    md.setPlatformVersion("10.0.0")
+                                    md.setArchitecture("x86")
+                                    md.setBitness(64)
+                                    md.setModel("")
+                                    md.setMobile(false)
+                                }
+                                WebSettingsCompat.setUserAgentMetadata(w.settings, md.build())
+                                hints = true
                             }
                         } catch (e: Exception) {
                         }
@@ -204,7 +241,7 @@ class MainActivity : FlutterActivity() {
                             }
                         }
                     }
-                    result.success(mapOf("webViews" to list.size, "headerRemoved" to header))
+                    result.success(mapOf("webViews" to list.size, "headerRemoved" to header, "hints" to hints))
                 } else {
                     result.notImplemented()
                 }

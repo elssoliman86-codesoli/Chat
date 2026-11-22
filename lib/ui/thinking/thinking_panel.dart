@@ -3,17 +3,12 @@ import 'package:flutter/material.dart';
 
 import '../../agents/trace.dart';
 import '../../data/services.dart';
-import '../glass/tokens.dart';
 import '../theme.dart';
-import 'agent_monitor.dart';
-import 'overview_bar.dart';
-import 'stage_timeline.dart';
-import 'step_inspector.dart';
 
-/// The Thinking panel under the chat: an execution overview, the stage timeline, and the step inspector.
-/// It is drawn from the real trace of the conversation's latest task. Collapsed it is one line; opened it
-/// has two panes (timeline and inspector) that can be resized by dragging, and it can be hidden entirely
-/// from Settings, the chat menu, or its own close button.
+/// The live view under the chat: just the model's thinking and whatever it is writing right now (a file, a
+/// command), as plain streaming text. Nothing else. While the assistant works it shows one status line and the
+/// stream; when it is done it shrinks to "Thought for 12s", which opens the text again. It can be hidden from
+/// Settings, the chat menu, or its own close button.
 class ThinkingPanel extends StatefulWidget {
   const ThinkingPanel({super.key, required this.conversationId});
 
@@ -24,13 +19,17 @@ class ThinkingPanel extends StatefulWidget {
 }
 
 class _ThinkingPanelState extends State<ThinkingPanel> {
-  bool _open = false;
-  double _height = 0.5; // share of the screen height when open
-  double _split = 0.5; // share of the panel given to the timeline
-  Stage? _stage;
-  TraceEvent? _event;
+  /// What the person chose by tapping; null follows the default (open while text is streaming in).
+  bool? _expanded;
+  bool _dismissed = false;
   ExecutionTrace? _seen;
-  ExecutionTrace? _autoOpened;
+
+  static const TextStyle _mono = TextStyle(fontFamily: 'monospace', fontSize: 12, height: 1.4);
+
+  String _clock(Duration d) {
+    final s = d.inSeconds;
+    return s >= 60 ? '${s ~/ 60}m ${(s % 60).toString().padLeft(2, '0')}s' : '${s}s';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,178 +40,97 @@ class _ThinkingPanelState extends State<ThinkingPanel> {
         final trace = engine.traces.of(widget.conversationId);
         if (trace == null) return const SizedBox.shrink();
         if (!identical(trace, _seen)) {
-          // A new task started: forget the old selection, and open the panel for a task that is running.
           _seen = trace;
-          _stage = null;
-          _event = null;
+          _expanded = null;
+          _dismissed = false;
         }
-        final p = paletteOf(context);
-        final media = MediaQuery.of(context);
-        // With the keyboard up there is little room: the panel shrinks to what is left instead of covering the chat.
-        final screen = Size(media.size.width, (media.size.height - media.viewInsets.bottom).clamp(240.0, media.size.height));
-        final panelHeight = (screen.height * _height).clamp(160.0, screen.height * 0.78);
-        return ListenableBuilder(
-          listenable: trace,
-          builder: (context, _) {
-            // The first time something is being written or reasoned live, open the panel so it can be watched.
-            if (trace.running && !identical(_autoOpened, trace) && trace.events.any((e) => e.preview || e.reasoningLength > 0)) {
-              _autoOpened = trace;
-              _open = true;
-              _split = 0.3;
-            }
-            return _shell(context, trace, p, screen, panelHeight);
-          },
-        );
+        if (_dismissed) return const SizedBox.shrink();
+        return ListenableBuilder(listenable: trace, builder: (context, _) => _body(context, trace));
       },
     );
   }
 
-  Widget _shell(BuildContext context, ExecutionTrace trace, Palette p, Size screen, double panelHeight) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-          child: Container(
-            decoration: BoxDecoration(
-              color: p.surface,
-              borderRadius: BorderRadius.circular(GlassTokens.radiusMd),
-              border: Border.all(color: p.rim, width: GlassTokens.stroke),
-              boxShadow: [BoxShadow(color: p.shadow, blurRadius: 18, offset: const Offset(0, 6))],
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              if (_open)
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onVerticalDragUpdate: (d) => setState(() => _height = (_height - d.delta.dy / screen.height).clamp(0.25, 0.78)),
-                  child: SizedBox(
-                    height: 16,
-                    child: Center(child: Container(width: 38, height: 4, decoration: BoxDecoration(color: p.secondary.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(2)))),
-                  ),
-                ),
-              _Header(
-                trace: trace,
-                open: _open,
-                onToggle: () => setState(() => _open = !_open),
-                onHide: () {
-                  store.settings.thinkingPanel = false;
-                  store.saveSettings();
-                  store.changed();
-                },
-              ),
-              if (_open) ...[
-                Padding(padding: const EdgeInsets.fromLTRB(12, 2, 12, 10), child: ExecutionOverview(trace: trace)),
-                AgentMonitor(trace: trace),
-                SizedBox(
-                  height: panelHeight,
-                  child: LayoutBuilder(builder: (context, box) {
-                    final wide = box.maxWidth >= 640;
-                    final timeline = StageTimeline(
-                      trace: trace,
-                      autoScroll: store.settings.thinkingAutoScroll,
-                      selectedStage: _stage,
-                      selectedEvent: _event,
-                      onSelectStage: (s) => setState(() {
-                        _stage = s;
-                        _event = null;
-                      }),
-                      onSelectEvent: (e) => setState(() {
-                        _event = e;
-                        _stage = e.stage;
-                      }),
-                    );
-                    final inspector = StepInspector(trace: trace, stage: _stage, event: _event);
-                    if (wide) {
-                      final w = box.maxWidth;
-                      return Row(children: [
-                        SizedBox(width: w * _split - 5, child: timeline),
-                        _Divider(
-                          vertical: true,
-                          onDrag: (d) => setState(() => _split = (_split + d / w).clamp(0.28, 0.72)),
-                        ),
-                        Expanded(child: inspector),
-                      ]);
-                    }
-                    final h = box.maxHeight;
-                    return Column(children: [
-                      SizedBox(height: h * _split - 5, child: timeline),
-                      _Divider(
-                        vertical: false,
-                        onDrag: (d) => setState(() => _split = (_split + d / h).clamp(0.25, 0.75)),
-                      ),
-                      Expanded(child: inspector),
-                    ]);
-                  }),
-                ),
-              ],
-            ]),
-          ),
-        );
-  }
-}
+  Widget _body(BuildContext context, ExecutionTrace trace) {
+    // Something being written right now (a file, a command) comes first, then the model's own thinking.
+    TraceEvent? writing;
+    TraceEvent? thought;
+    for (final e in trace.events.reversed) {
+      if (writing == null && e.preview) writing = e;
+      if (thought == null && e.reasoningLength > 0) thought = e;
+    }
+    final running = trace.running;
+    final text = writing != null && writing.output.isNotEmpty ? writing.output : (thought?.reasoning ?? '');
+    // Nothing to read and nothing happening: stay out of the way.
+    if (!running && text.isEmpty) return const SizedBox.shrink();
 
-class _Header extends StatelessWidget {
-  const _Header({required this.trace, required this.open, required this.onToggle, required this.onHide});
-
-  final ExecutionTrace trace;
-  final bool open;
-  final VoidCallback onToggle;
-  final VoidCallback onHide;
-
-  @override
-  Widget build(BuildContext context) {
     final p = paletteOf(context);
-    return InkWell(
-      onTap: onToggle,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-        child: Row(children: [
-          Icon(CupertinoIcons.waveform_path_ecg, size: 16, color: p.accent),
-          const SizedBox(width: 8),
-          Expanded(child: open ? const Text('Thinking', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)) : ExecutionOverview(trace: trace, compact: true)),
-          if (open)
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              tooltip: store.settings.thinkingAutoScroll ? 'Auto-scroll is on' : 'Auto-scroll is off',
-              icon: Icon(CupertinoIcons.arrow_down_to_line, size: 18, color: store.settings.thinkingAutoScroll ? p.accent : p.secondary),
-              onPressed: () {
-                store.settings.thinkingAutoScroll = !store.settings.thinkingAutoScroll;
-                store.saveSettings();
-                store.changed();
-              },
-            ),
-          Icon(open ? CupertinoIcons.chevron_down : CupertinoIcons.chevron_up, size: 15, color: p.secondary),
-          IconButton(visualDensity: VisualDensity.compact, tooltip: 'Hide the Thinking panel', icon: Icon(CupertinoIcons.xmark, size: 16, color: p.secondary), onPressed: onHide),
-        ]),
-      ),
-    );
-  }
-}
+    final media = MediaQuery.of(context);
+    final room = (media.size.height - media.viewInsets.bottom) * 0.33;
+    final open = _expanded ?? (running && text.isNotEmpty);
 
-class _Divider extends StatelessWidget {
-  const _Divider({required this.vertical, required this.onDrag});
+    String label;
+    if (writing != null) {
+      label = writing.title;
+    } else if (running && thought != null && thought.running) {
+      label = 'Thinking…';
+    } else if (running) {
+      label = trace.statusText;
+    } else {
+      label = 'Thought for ${_clock(trace.elapsed)}';
+    }
+    if (running && trace.activeWorkers > 0) label = '$label · ${trace.activeWorkers} workers';
 
-  final bool vertical;
-  final void Function(double delta) onDrag;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = paletteOf(context);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onVerticalDragUpdate: vertical ? null : (d) => onDrag(d.delta.dy),
-      onHorizontalDragUpdate: vertical ? (d) => onDrag(d.delta.dx) : null,
-      child: MouseRegion(
-        cursor: vertical ? SystemMouseCursors.resizeColumn : SystemMouseCursors.resizeRow,
-        child: SizedBox(
-          width: vertical ? 10 : double.infinity,
-          height: vertical ? double.infinity : 10,
-          child: Center(
-            child: Container(
-              width: vertical ? 3 : 36,
-              height: vertical ? 36 : 3,
-              decoration: BoxDecoration(color: p.accent.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(2)),
-            ),
-          ),
+    final shown = text.length > 9000 ? '…${text.substring(text.length - 9000)}' : text;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 4, 10, 4),
+      child: Container(
+        decoration: BoxDecoration(
+          color: p.fill,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: p.rim.withValues(alpha: 0.5), width: 0.6),
         ),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: text.isEmpty ? null : () => setState(() => _expanded = !open),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+              child: Row(children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: running ? p.accent : p.secondary),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: p.secondary)),
+                ),
+                if (running) Text(_clock(trace.elapsed), style: TextStyle(fontSize: 12, color: p.secondary)),
+                if (text.isNotEmpty) Icon(open ? CupertinoIcons.chevron_down : CupertinoIcons.chevron_up, size: 14, color: p.secondary),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  iconSize: 16,
+                  color: p.secondary,
+                  tooltip: 'Hide',
+                  icon: const Icon(CupertinoIcons.xmark),
+                  onPressed: () => setState(() => _dismissed = true),
+                ),
+              ]),
+            ),
+          ),
+          if (open && text.isNotEmpty)
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: room.clamp(90.0, 260.0)),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                // Anchored to the bottom, so the newest text is always in view while it streams.
+                child: SingleChildScrollView(
+                  reverse: running,
+                  child: SelectableText(shown, style: _mono.copyWith(color: p.secondary)),
+                ),
+              ),
+            ),
+        ]),
       ),
     );
   }

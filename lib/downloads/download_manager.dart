@@ -73,7 +73,7 @@ class DownloadManager extends ChangeNotifier {
 
   /// For tests: a manager with its own folder and saver.
   @visibleForTesting
-  DownloadManager.forTest({required DownloadSaver saver, required Directory root, this.maxActive = 3}) {
+  DownloadManager.forTest({required DownloadSaver saver, required Directory root, this.maxActive = 3, this.autoHandOff = false}) {
     _saverOverride = saver;
     _root = root;
   }
@@ -84,6 +84,9 @@ class DownloadManager extends ChangeNotifier {
 
   final List<DownloadTask> tasks = <DownloadTask>[];
   int maxActive = 3;
+
+  /// When a download fails before any data arrived, hand it to Android's own download manager.
+  bool autoHandOff = true;
   Directory? _root;
   bool _loaded = false;
   Timer? _saveTimer;
@@ -125,6 +128,27 @@ class DownloadManager extends ChangeNotifier {
     _scheduleSave();
     notifyListeners();
     _pump();
+    if (autoHandOff && t.state == DownloadState.failed && !t.handedOff && t.received == 0) {
+      t.handedOff = true;
+      unawaited(handOff(t));
+    }
+  }
+
+  /// Gives a link to Android's download manager (Downloads folder, with a notification). When it accepts, the
+  /// task here is closed with a note saying so; when it does not, the task stays failed with its own error.
+  Future<bool> handOff(DownloadTask t) async {
+    final reason = t.error;
+    final err = await PlatformSaver.systemDownload(t.url, name: t.fileName, mime: t.mime, headers: t.headers);
+    if (err != null) return false;
+    t
+      ..handedOff = true
+      ..state = DownloadState.cancelled
+      ..error = 'It could not be downloaded inside the app${reason.isEmpty ? '' : ' ($reason)'}, so Android\'s download manager took over. '
+          'Watch the notification; the file will be in your Downloads folder.';
+    t.changed();
+    _scheduleSave();
+    notifyListeners();
+    return true;
   }
 
   void _scheduleSave() {
@@ -217,6 +241,7 @@ class DownloadManager extends ChangeNotifier {
     if (!t.canResume) return;
     t.state = DownloadState.queued;
     t.error = '';
+    t.handedOff = false;
     t.changed();
     _onState(t);
   }

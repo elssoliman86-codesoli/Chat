@@ -201,7 +201,7 @@ class _TaskCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(color: color.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(8)),
-                  child: Text(_stateLabel(t.state), style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color)),
+                  child: Text(t.handedOff && t.state == DownloadState.cancelled ? 'Sent to Android' : _stateLabel(t.state), style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color)),
                 ),
               ]),
               const SizedBox(height: 10),
@@ -223,12 +223,14 @@ class _TaskCard extends StatelessWidget {
               if (t.error.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text(t.error, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, color: Color(0xFFFF453A))),
+                  child: SelectableText(t.error, maxLines: 6, style: TextStyle(fontSize: 12.5, color: t.handedOff ? p.secondary : const Color(0xFFFF453A))),
                 ),
               const SizedBox(height: 6),
               Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                 if (t.state == DownloadState.downloading || t.state == DownloadState.probing || t.state == DownloadState.queued)
                   GlassButton(label: 'Pause', icon: CupertinoIcons.pause_fill, compact: true, onPressed: () => m.pause(t)),
+                if (t.state == DownloadState.failed)
+                  GlassButton(label: 'Use Android', icon: CupertinoIcons.arrow_down_circle, compact: true, onPressed: () => m.handOff(t)),
                 if (t.canResume)
                   GlassButton(label: 'Resume', icon: CupertinoIcons.play_fill, compact: true, style: GlassButtonStyle.primary, onPressed: () => m.resume(t)),
                 if (t.state == DownloadState.completed && t.target.startsWith('content://'))

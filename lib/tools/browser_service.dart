@@ -113,7 +113,7 @@ class BrowserService {
     _nativeBusy = true;
     try {
       for (var i = 0; i < 4; i++) {
-        final r = await WebNative.prepare();
+        final r = await WebNative.prepare(userAgent: _desktop ? _desktopUa : phoneUserAgent, desktop: _desktop);
         if (r != null && ((r['webViews'] as num?) ?? 0) > 0) return;
         await Future<void>.delayed(const Duration(milliseconds: 600));
       }
@@ -125,8 +125,14 @@ class BrowserService {
   Future<void> _handOverDownload(String link) async {
     var cookie = '';
     try {
-      final r = await controller.runJavaScriptReturningResult('document.cookie');
-      cookie = r.toString().replaceAll(RegExp(r'^"|"$'), '');
+      final r = (await controller.runJavaScriptReturningResult('document.cookie')).toString();
+      try {
+        // Android hands the string back JSON-encoded.
+        final d = jsonDecode(r);
+        cookie = d is String ? d : r;
+      } catch (_) {
+        cookie = r.replaceAll(RegExp(r'^"|"$'), '');
+      }
     } catch (_) {}
     WebNative.emit(WebDownloadRequest(url: link, userAgent: _desktop ? _desktopUa : phoneUserAgent, cookie: cookie, referer: url.value));
   }

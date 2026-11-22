@@ -95,6 +95,9 @@ class DownloadTask extends ChangeNotifier {
 
   DownloadState state = DownloadState.queued;
   String error = '';
+
+  /// Set once the download was passed to Android's own download manager after it failed here.
+  bool handedOff = false;
   List<Chunk> chunks = <Chunk>[];
 
   /// Bytes per second right now.
@@ -145,6 +148,7 @@ class DownloadTask extends ChangeNotifier {
         'finished': finishedAt?.millisecondsSinceEpoch,
         'state': state.name,
         'error': error,
+        'handoff': handedOff,
         'dir': partsDir,
         'chunks': chunks.map((c) => c.toJson()).toList(),
       };
@@ -168,6 +172,7 @@ class DownloadTask extends ChangeNotifier {
     if (fin != null) t.finishedAt = DateTime.fromMillisecondsSinceEpoch(fin);
     t.state = DownloadState.values.firstWhere((s) => s.name == j['state'], orElse: () => DownloadState.paused);
     t.error = j['error'] as String? ?? '';
+    t.handedOff = j['handoff'] as bool? ?? false;
     t.partsDir = j['dir'] as String? ?? '';
     final list = j['chunks'];
     if (list is List) {

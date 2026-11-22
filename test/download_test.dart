@@ -22,13 +22,16 @@ class _FileSaver implements DownloadSaver {
 
 /// A small file server for tests: byte ranges, optional throttling, and a few ways to misbehave.
 class _Server {
-  _Server(this.data, {this.ranges = true, this.delayPerPiece = Duration.zero, this.ignoreRangeAfter, this.dropFirst = 0});
+  _Server(this.data, {this.ranges = true, this.delayPerPiece = Duration.zero, this.ignoreRangeAfter, this.dropFirst = 0, this.rejectRangeAfter});
 
   final Uint8List data;
   final bool ranges;
   final Duration delayPerPiece;
   /// After this many requests (the probe is the first) ranged requests are answered with the whole file.
   final int? ignoreRangeAfter;
+
+  /// After this many requests, ranged requests are refused with 403 (a plain request still works).
+  final int? rejectRangeAfter;
 
   /// How many ranged requests are cut off half-way before behaving.
   int dropFirst;
@@ -57,6 +60,11 @@ class _Server {
     if (open > maxOpen) maxOpen = open;
     try {
       final range = req.headers.value('range');
+      if (range != null && rejectRangeAfter != null && requests > rejectRangeAfter!) {
+        req.response.statusCode = 403;
+        await req.response.close();
+        return;
+      }
       var from = 0;
       var to = data.length - 1;
       var partial = false;
@@ -123,6 +131,14 @@ Uint8List _bytes(int n) {
 }
 
 void main() {
+  test('header values with Arabic letters or control characters become safe ASCII', () {
+    expect(sanitizeHeaderValue('a=b; c=d'), 'a=b; c=d');
+    expect(sanitizeHeaderValue('name=\u0645'), 'name=%D9%85');
+    expect(sanitizeHeaderValue('x\r\ny'), 'xy');
+    expect(sanitizeHeaderValue('  tab\there  '), 'tab\there');
+    expect(sanitizeHeaderValue(''), '');
+  });
+
   late Directory tmp;
   late DownloadManager manager;
 
@@ -226,6 +242,17 @@ void main() {
       expect(t.resumable, isTrue, reason: 'the probe was answered with a range');
       await manager.settle(t);
       expect(t.resumable, isFalse, reason: 'it fell back to one plain stream');
+      expect(t.state, DownloadState.completed, reason: t.error);
+      expect(await File(t.target).readAsBytes(), data);
+    });
+
+    test('a server that refuses ranged requests after the probe is retried as one plain connection', () async {
+      final data = _bytes(5 << 20);
+      final s = _Server(data, rejectRangeAfter: 1);
+      await s.start();
+      addTearDown(s.stop);
+      final t = await begin(s);
+      await manager.settle(t);
       expect(t.state, DownloadState.completed, reason: t.error);
       expect(await File(t.target).readAsBytes(), data);
     });
