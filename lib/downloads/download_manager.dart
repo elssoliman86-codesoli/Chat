@@ -36,6 +36,26 @@ class PlatformSaver implements DownloadSaver {
     }
   }
 
+  /// Hands the link to Android's own download manager (Downloads folder, with a notification). Returns an error
+  /// text, or null when it was accepted.
+  static Future<String?> systemDownload(String url, {String name = '', String mime = '', Map<String, String> headers = const <String, String>{}}) async {
+    try {
+      await _channel.invokeMethod<bool>('systemDownload', <String, dynamic>{
+        'url': url,
+        'name': name,
+        'mime': mime,
+        'cookie': headers['Cookie'] ?? '',
+        'ua': headers['User-Agent'] ?? '',
+        'referer': headers['Referer'] ?? '',
+      });
+      return null;
+    } on PlatformException catch (e) {
+      return e.message ?? e.code;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
   @override
   Future<void> open(String target, String mime) async {
     if (!target.startsWith('content://')) return;

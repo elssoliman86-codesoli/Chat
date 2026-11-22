@@ -1092,17 +1092,24 @@ class ChatEngine implements ToolHost {
               reply.thinkingSignature = event.signature;
             } else if (event is ReasoningDelta) {
               metrics.onReasoning(event.chars);
+              trace.addReasoning(event.text, chars: event.chars);
+            } else if (event is ToolArgsDelta) {
+              trace.previewTool(event.index, event.name, event.chunk);
             } else if (event is UsageEvent) {
               metrics.onUsage(input: event.inputTokens, output: event.outputTokens);
             } else if (event is StreamStatusEvent) {
               metrics.setPhase(event.phase, detail: event.detail, attempt: event.attempt);
-              if (event.phase == StreamPhase.reconnecting) trace.passReconnecting(event.attempt);
+              if (event.phase == StreamPhase.reconnecting) {
+                trace.clearPreviews();
+                trace.passReconnecting(event.attempt);
+              }
             }
           }
           metrics.finish(abort.aborted ? StreamPhase.stopped : StreamPhase.done);
           if (reply.text.isNotEmpty || reply.toolCalls.isNotEmpty) {
             reply.stats = metrics.summary;
           }
+          trace.clearPreviews();
           trace.passEnd(
             hadTools: reply.toolCalls.isNotEmpty,
             outputTokens: metrics.totalTokens,

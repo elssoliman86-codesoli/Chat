@@ -355,6 +355,24 @@ class _PromptDialogState extends State<_PromptDialog> {
     }
   }
 
+  /// Android's own downloader: works even when this one could not reach the link.
+  Future<void> _useSystem() async {
+    final name = _name.text.trim().isEmpty ? widget.nameHint : _name.text.trim();
+    setState(() => _saving = true);
+    final err = await PlatformSaver.systemDownload(widget.url, name: name, mime: _probe?.mime ?? '', headers: widget.headers);
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (err != null) {
+      setState(() {
+        _saving = false;
+        _error = 'Android could not start the download: $err';
+      });
+      return;
+    }
+    Navigator.of(context).pop();
+    messenger?.showSnackBar(SnackBar(content: Text('Downloading ${name.isEmpty ? 'the file' : name} with Android — see the notification and your Downloads folder')));
+  }
+
   Future<void> _start() async {
     final p = _probe;
     if (p == null) return;
@@ -423,7 +441,8 @@ class _PromptDialogState extends State<_PromptDialog> {
       ]),
       actions: [
         TextButton(onPressed: _saving ? null : () => Navigator.pop(context), child: const Text('Cancel')),
-        if (_error.isNotEmpty) TextButton(onPressed: _look, child: const Text('Retry')),
+        if (_error.isNotEmpty) TextButton(onPressed: _saving ? null : _look, child: const Text('Retry')),
+        TextButton(onPressed: _saving ? null : _useSystem, child: const Text('Use Android')),
         TextButton(onPressed: (pr == null || _saving) ? null : _start, child: const Text('Choose location')),
       ],
     );

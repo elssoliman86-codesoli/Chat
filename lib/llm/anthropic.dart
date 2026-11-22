@@ -157,10 +157,15 @@ class AnthropicClient implements LlmClient {
             if (d['type'] == 'text_delta' && d['text'] is String) {
               yield TextDelta(d['text'] as String);
             } else if (d['type'] == 'input_json_delta' && d['partial_json'] is String) {
-              pending[index]?.args.write(d['partial_json'] as String);
+              final chunk = d['partial_json'] as String;
+              final pc = pending[index];
+              if (pc != null) {
+                pc.args.write(chunk);
+                if (chunk.isNotEmpty && pc.name.isNotEmpty) yield ToolArgsDelta(index, pc.name, chunk);
+              }
             } else if (d['type'] == 'thinking_delta' && d['thinking'] is String) {
               pendingThinking[index]?.text.write(d['thinking'] as String);
-              yield ReasoningDelta((d['thinking'] as String).length);
+              yield ReasoningDelta((d['thinking'] as String).length, text: d['thinking'] as String);
             } else if (d['type'] == 'signature_delta' && d['signature'] is String) {
               pendingThinking[index]?.signature.write(d['signature'] as String);
             }

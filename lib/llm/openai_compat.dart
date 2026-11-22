@@ -162,9 +162,9 @@ class OpenAiCompatClient implements LlmClient {
           final content = delta['content'];
           if (content is String && content.isNotEmpty) yield TextDelta(content);
           // Reasoning models (DeepSeek, NVIDIA, OpenRouter…) stream their reasoning in a separate field.
-          // It is not shown, only counted so the app can tell the model is working.
+          // The text is passed on so the Thinking panel can show it.
           final reasoning = delta['reasoning_content'] ?? delta['reasoning'];
-          if (reasoning is String && reasoning.isNotEmpty) yield ReasoningDelta(reasoning.length);
+          if (reasoning is String && reasoning.isNotEmpty) yield ReasoningDelta(reasoning.length, text: reasoning);
           final calls = delta['tool_calls'];
           if (calls is List) {
             for (final raw in calls) {
@@ -175,7 +175,11 @@ class OpenAiCompatClient implements LlmClient {
               if (raw['id'] is String && (raw['id'] as String).isNotEmpty) p.id = raw['id'] as String;
               if (fn is Map) {
                 if (fn['name'] is String && (fn['name'] as String).isNotEmpty) p.name = fn['name'] as String;
-                if (fn['arguments'] is String) p.args.write(fn['arguments'] as String);
+                if (fn['arguments'] is String) {
+                  final chunk = fn['arguments'] as String;
+                  p.args.write(chunk);
+                  if (chunk.isNotEmpty && p.name.isNotEmpty) yield ToolArgsDelta(index, p.name, chunk);
+                }
               }
             }
           }

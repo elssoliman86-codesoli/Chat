@@ -14,10 +14,13 @@ pkg = re.search(r"^package\s+([\w.]+)", main.read_text(), re.M).group(1)
 MAIN = """package PKG
 
 import android.Manifest
+import android.app.DownloadManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
@@ -257,6 +260,37 @@ class MainActivity : FlutterActivity() {
                             if (failure == null) result.success(true) else result.error("merge", failure, null)
                         }
                     }.start()
+                } else if (call.method == "systemDownload") {
+                    // Hands a link to Android's own download manager (saves into the Downloads folder and shows
+                    // a notification). Used when the app's own downloader cannot fetch a link.
+                    val link = call.argument<String>("url") ?: ""
+                    var name = call.argument<String>("name") ?: "download"
+                    if (name.isBlank()) {
+                        name = "download"
+                    }
+                    val req = DownloadManager.Request(Uri.parse(link))
+                    val mime = call.argument<String>("mime") ?: ""
+                    if (mime.isNotEmpty()) {
+                        req.setMimeType(mime)
+                    }
+                    val cookie = call.argument<String>("cookie") ?: ""
+                    if (cookie.isNotEmpty()) {
+                        req.addRequestHeader("Cookie", cookie)
+                    }
+                    val ua = call.argument<String>("ua") ?: ""
+                    if (ua.isNotEmpty()) {
+                        req.addRequestHeader("User-Agent", ua)
+                    }
+                    val referer = call.argument<String>("referer") ?: ""
+                    if (referer.isNotEmpty()) {
+                        req.addRequestHeader("Referer", referer)
+                    }
+                    req.setTitle(name)
+                    req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
+                    val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                    dm.enqueue(req)
+                    result.success(true)
                 } else if (call.method == "open") {
                     val uri = Uri.parse(call.argument<String>("uri") ?: "")
                     val i = Intent(Intent.ACTION_VIEW)

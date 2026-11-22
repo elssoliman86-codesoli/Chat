@@ -141,7 +141,7 @@ class GeminiClient implements LlmClient {
         for (final part in parts) {
           if (part is! Map) continue;
           if (part['thought'] == true) {
-            if (part['text'] is String) yield ReasoningDelta((part['text'] as String).length);
+            if (part['text'] is String) yield ReasoningDelta((part['text'] as String).length, text: part['text'] as String);
             continue;
           }
           if (part['text'] is String) {

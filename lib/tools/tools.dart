@@ -1,6 +1,8 @@
 import 'package:flutter/services.dart';
 
 import '../core/models.dart';
+import '../downloads/download_manager.dart';
+import '../downloads/download_task.dart' show fileNameFrom;
 import '../llm/llm.dart';
 import '../plugins/installer.dart';
 import '../plugins/plugin.dart';
@@ -507,6 +509,32 @@ final List<ToolDef> builtinTools = <ToolDef>[
       parameters: _obj(<String, dynamic>{'question': _str('What you need from them, short and clear')}, <String>['question']),
     ),
     run: (a, host) => host.askUser(_s(a, 'question')),
+  ),
+  ToolDef(
+    id: 'download_file',
+    title: 'Download a file',
+    group: 'core',
+    spec: ToolSpec(
+      name: 'download_file',
+      description: 'Download a file from a direct http(s) link to the phone\'s Downloads folder with Android\'s own download manager '
+          '(a notification shows progress). Use it when the person asks you to download or save a file for them. It cannot read the '
+          'file afterwards: to work on a file\'s contents, fetch it with termux_run (curl -L -o name URL) instead.',
+      parameters: _obj(<String, dynamic>{
+        'url': _str('Direct link to the file'),
+        'name': _str('File name to save as (optional)'),
+      }, <String>['url']),
+    ),
+    run: (a, host) async {
+      final url = _s(a, 'url').trim();
+      final u = Uri.tryParse(url);
+      if (u == null || (u.scheme != 'http' && u.scheme != 'https')) return 'Give a full http(s) link to the file.';
+      final given = _s(a, 'name').trim();
+      final name = given.isNotEmpty ? given : fileNameFrom(url: url);
+      final err = await PlatformSaver.systemDownload(url, name: name);
+      return err == null
+          ? 'Download started: "$name" is being saved to the Downloads folder by Android (see the notification for progress).'
+          : 'Could not start the download: $err';
+    },
   ),
   ToolDef(
     id: 'run_parallel',

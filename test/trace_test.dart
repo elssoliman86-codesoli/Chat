@@ -161,4 +161,51 @@ void main() {
       expect(hub.of('c39'), isNotNull);
     });
   });
+
+  group('live writing and reasoning', () {
+    test('a half-written file call shows its name and the text so far', () {
+      final d = describeToolArgs('project_write', '{"files":[{"path":"index.html","content":"<h1>Hi</h1>\\n<p>wor');
+      expect(d.title, 'Writing index.html');
+      expect(d.body, '<h1>Hi</h1>\n<p>wor');
+      expect(d.files, 1);
+    });
+
+    test('the second file replaces the first in the preview', () {
+      final d = describeToolArgs(
+          'project_write', '{"files":[{"path":"a.css","content":"body{}"},{"path":"b.js","content":"let x = \\"1\\";'
+              );
+      expect(d.title, 'Writing b.js');
+      expect(d.body, 'let x = "1";');
+      expect(d.files, 2);
+    });
+
+    test('previews appear while writing and are gone once the call is complete', () {
+      final t = _trace();
+      t.passStart('m');
+      t.previewTool(0, 'project_write', '{"files":[{"path":"x.txt","content":"he');
+      t.previewTool(0, 'project_write', 'llo');
+      expect(t.events.where((e) => e.preview).length, 1);
+      expect(t.events.firstWhere((e) => e.preview).output, 'hello');
+      expect(t.statusText, contains('x.txt'));
+      t.clearPreviews();
+      expect(t.events.where((e) => e.preview), isEmpty);
+    });
+
+    test('reasoning text is kept on the pass that produced it', () {
+      final t = _trace();
+      final pass = t.passStart('m');
+      t.addReasoning('First, ', chars: 7);
+      t.addReasoning('think.', chars: 6);
+      expect(pass.reasoning, 'First, think.');
+      expect(t.hiddenReasoning, 0);
+    });
+
+    test('reasoning the provider does not send is only counted', () {
+      final t = _trace();
+      t.passStart('m');
+      t.addReasoning('', chars: 120);
+      expect(t.hiddenReasoning, 120);
+      expect(t.events.every((e) => e.reasoningLength == 0), isTrue);
+    });
+  });
 }

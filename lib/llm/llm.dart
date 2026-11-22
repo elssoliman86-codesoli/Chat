@@ -52,11 +52,22 @@ class UsageEvent extends LlmEvent {
   final int? outputTokens;
 }
 
-/// The model is producing reasoning the provider does not hand over as text (a reasoning_content stream, a
-/// thinking block). Only used to tell the person it is alive; its content is never shown.
+/// Reasoning the provider streams while the model works (a reasoning_content stream, a thinking block, Gemini
+/// thought parts). [text] is what the provider sent; some providers only report that reasoning is happening
+/// and send no text, in which case it is empty and only [chars] is known.
 class ReasoningDelta extends LlmEvent {
-  const ReasoningDelta(this.chars);
+  const ReasoningDelta(this.chars, {this.text = ''});
   final int chars;
+  final String text;
+}
+
+/// A piece of a tool call's arguments while the model is still writing them (for example the content of a file
+/// being written), so the app can show it as it arrives instead of only when the call is complete.
+class ToolArgsDelta extends LlmEvent {
+  const ToolArgsDelta(this.index, this.name, this.chunk);
+  final int index;
+  final String name;
+  final String chunk;
 }
 
 enum StreamPhase { idle, connecting, waiting, streaming, reconnecting, done, stopped, failed }

@@ -86,6 +86,8 @@ class _ProjectBarState extends State<ProjectBar> {
   Widget build(BuildContext context) {
     final p = projects.byId(widget.projectId);
     if (p == null) return const SizedBox.shrink();
+    // While the keyboard is open the strip steps out of the way (it comes back when the keyboard closes).
+    if (MediaQuery.of(context).viewInsets.bottom > 0) return const SizedBox.shrink();
     final pal = paletteOf(context);
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),

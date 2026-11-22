@@ -35,6 +35,28 @@ class WebNative {
     return _downloads.stream;
   }
 
+  /// Hands a download to the same place the web view's own downloads go (used when the app itself spots a file link).
+  static void emit(WebDownloadRequest r) {
+    _wire();
+    _downloads.add(r);
+  }
+
+  static const Set<String> _fileTypes = <String>{
+    'apk', 'apks', 'xapk', 'aab', 'zip', 'rar', '7z', 'tar', 'gz', 'tgz', 'bz2', 'xz', 'exe', 'msi', 'dmg', 'iso', 'img', 'pkg', 'deb', 'rpm',
+    'jar', 'bin', 'pdf', 'mp3', 'm4a', 'flac', 'wav', 'ogg', 'mp4', 'mkv', 'avi', 'mov', 'webm', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+    'epub', 'torrent',
+  };
+
+  /// True for an address that points at a file the browser cannot show, judged by the end of its path.
+  static bool looksLikeDownload(String url) {
+    final u = Uri.tryParse(url);
+    if (u == null || (u.scheme != 'http' && u.scheme != 'https') || u.pathSegments.isEmpty) return false;
+    final last = u.pathSegments.last.toLowerCase();
+    final dot = last.lastIndexOf('.');
+    if (dot < 0 || dot == last.length - 1) return false;
+    return _fileTypes.contains(last.substring(dot + 1));
+  }
+
   static void _wire() {
     if (_wired) return;
     _wired = true;

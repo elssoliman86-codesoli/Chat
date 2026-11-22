@@ -54,9 +54,16 @@ Future<void> _start() async {
   runApp(const OmniChatApp());
   unawaited(DownloadManager.instance.load());
   // A file link tapped in the built-in browser: ask where to save it, then fetch it in parallel.
+  String lastLink = '';
+  var lastLinkAt = DateTime.fromMillisecondsSinceEpoch(0);
   WebNative.downloads.listen((r) {
     final ctx = navigatorKey.currentContext;
     if (ctx == null || r.url.startsWith('blob:') || r.url.startsWith('data:')) return;
+    // The same link can be reported twice (by the page and by the web view): ask only once.
+    final now = DateTime.now();
+    if (r.url == lastLink && now.difference(lastLinkAt).inSeconds < 4) return;
+    lastLink = r.url;
+    lastLinkAt = now;
     unawaited(showDownloadPrompt(
       ctx,
       url: r.url,

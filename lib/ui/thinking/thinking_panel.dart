@@ -30,6 +30,7 @@ class _ThinkingPanelState extends State<ThinkingPanel> {
   Stage? _stage;
   TraceEvent? _event;
   ExecutionTrace? _seen;
+  ExecutionTrace? _autoOpened;
 
   @override
   Widget build(BuildContext context) {
@@ -46,8 +47,27 @@ class _ThinkingPanelState extends State<ThinkingPanel> {
           _event = null;
         }
         final p = paletteOf(context);
-        final screen = MediaQuery.of(context).size;
-        final panelHeight = (screen.height * _height).clamp(200.0, screen.height * 0.78);
+        final media = MediaQuery.of(context);
+        // With the keyboard up there is little room: the panel shrinks to what is left instead of covering the chat.
+        final screen = Size(media.size.width, (media.size.height - media.viewInsets.bottom).clamp(240.0, media.size.height));
+        final panelHeight = (screen.height * _height).clamp(160.0, screen.height * 0.78);
+        return ListenableBuilder(
+          listenable: trace,
+          builder: (context, _) {
+            // The first time something is being written or reasoned live, open the panel so it can be watched.
+            if (trace.running && !identical(_autoOpened, trace) && trace.events.any((e) => e.preview || e.reasoningLength > 0)) {
+              _autoOpened = trace;
+              _open = true;
+              _split = 0.3;
+            }
+            return _shell(context, trace, p, screen, panelHeight);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _shell(BuildContext context, ExecutionTrace trace, Palette p, Size screen, double panelHeight) {
         return Padding(
           padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
           child: Container(
@@ -126,8 +146,6 @@ class _ThinkingPanelState extends State<ThinkingPanel> {
             ]),
           ),
         );
-      },
-    );
   }
 }
 

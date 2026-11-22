@@ -32,9 +32,57 @@ class StepInspector extends StatelessWidget {
         final commands = trace.commands.where((e) => sel == null || identical(e, sel) || st == null || e.stage == st).toList();
         final files = trace.modifiedFiles;
         final problems = trace.problems;
+        final writing = trace.events.where((e) => e.preview).toList();
+        TraceEvent? thought;
+        if (sel != null && sel.reasoningLength > 0) {
+          thought = sel;
+        } else {
+          for (final e in trace.events.reversed) {
+            if (e.reasoningLength > 0) {
+              thought = e;
+              break;
+            }
+          }
+        }
         return ListView(
           padding: const EdgeInsets.fromLTRB(10, 4, 10, 14),
           children: [
+            for (final w in writing)
+              _Card(
+                title: w.title,
+                icon: CupertinoIcons.pencil,
+                children: [
+                  if (w.output.isEmpty) Text('Starting…', style: TextStyle(fontSize: 12.5, color: p.secondary)) else _Terminal(text: w.output, tail: true, limit: 3500),
+                  const SizedBox(height: 4),
+                  Text(w.detail, style: TextStyle(fontSize: 11, color: p.secondary)),
+                ],
+              ),
+            if (thought != null)
+              _Card(
+                title: thought.running ? 'Reasoning (live)' : 'Reasoning',
+                icon: CupertinoIcons.lightbulb,
+                children: [
+                  _Terminal(text: thought.reasoning, tail: thought.running, limit: 6000),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Sent by the model itself as it worked'
+                    '${thought.reasoningCut ? ' (shortened: only the first ${TraceEvent.reasoningLimit ~/ 1000}k characters are kept)' : ''}.',
+                    style: TextStyle(fontSize: 11, color: p.secondary),
+                  ),
+                ],
+              )
+            else if (trace.hiddenReasoning > 0)
+              _Card(
+                title: 'Reasoning',
+                icon: CupertinoIcons.lightbulb,
+                children: [
+                  Text(
+                    'This model reasoned (about ${trace.hiddenReasoning} characters) but its provider does not send the text, so there is nothing to show. '
+                    'Models that do send it (DeepSeek, Claude with thinking on, Gemini with thinking on, some OpenRouter models) appear here live.',
+                    style: TextStyle(fontSize: 12.5, height: 1.3, color: p.secondary),
+                  ),
+                ],
+              ),
             _Card(
               title: 'Task',
               icon: CupertinoIcons.doc_plaintext,
@@ -235,14 +283,18 @@ class _EventLine extends StatelessWidget {
 
 /// Monospace output on a dark glass box: commands and what they printed.
 class _Terminal extends StatelessWidget {
-  const _Terminal({required this.text, this.failed = false});
+  const _Terminal({required this.text, this.failed = false, this.tail = false, this.limit = 2400});
 
   final String text;
   final bool failed;
 
+  /// Show the end of the text (what is being written right now) rather than the beginning.
+  final bool tail;
+  final int limit;
+
   @override
   Widget build(BuildContext context) {
-    final short = text.length > 2400 ? '${text.substring(0, 2400)}\n…' : text;
+    final short = text.length <= limit ? text : (tail ? '…${text.substring(text.length - limit)}' : '${text.substring(0, limit)}\n…');
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(maxHeight: 220),
@@ -253,6 +305,7 @@ class _Terminal extends StatelessWidget {
         border: Border.all(color: (failed ? kFailed : const Color(0xFF22D3EE)).withValues(alpha: 0.3), width: GlassTokens.stroke),
       ),
       child: SingleChildScrollView(
+        reverse: tail,
         child: SelectableText(short, style: kMono.copyWith(color: failed ? const Color(0xFFFF8A80) : const Color(0xFFB8F5FF))),
       ),
     );

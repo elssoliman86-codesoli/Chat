@@ -173,7 +173,77 @@ class TraceEvent {
   /// What the tool returned (shortened).
   String output = '';
 
+  /// The reasoning text the provider streamed during this model pass (only providers that send it have any).
+  final StringBuffer _reasoning = StringBuffer();
+  bool reasoningCut = false;
+
+  /// True while this is a live preview of a tool call still being written (not a finished call).
+  bool preview = false;
+
+  String get reasoning => _reasoning.toString();
+  int get reasoningLength => _reasoning.length;
+
+  static const int reasoningLimit = 80000;
+
+  void addReasoning(String text) {
+    if (reasoningCut) return;
+    if (_reasoning.length + text.length > reasoningLimit) {
+      _reasoning.write(text.substring(0, reasoningLimit - _reasoning.length));
+      reasoningCut = true;
+      return;
+    }
+    _reasoning.write(text);
+  }
+
   Duration? get took => endedAt?.difference(at);
+}
+
+/// What a tool call that is still being written says so far: a title (for a file, its name) and the text being
+/// written, decoded from the half-finished JSON the model has sent until now.
+({String title, String body, int files}) describeToolArgs(String tool, String partialJson) {
+  String unescape(String s) {
+    final b = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      final ch = s[i];
+      if (ch != '\\' || i + 1 >= s.length) {
+        if (ch != '\\') b.write(ch);
+        continue;
+      }
+      final n = s[++i];
+      switch (n) {
+        case 'n':
+          b.write('\n');
+        case 't':
+          b.write('\t');
+        case 'r':
+          break;
+        case 'u':
+          if (i + 4 < s.length) {
+            final code = int.tryParse(s.substring(i + 1, i + 5), radix: 16);
+            if (code != null) {
+              b.writeCharCode(code);
+              i += 4;
+            }
+          }
+        default:
+          b.write(n);
+      }
+    }
+    return b.toString();
+  }
+
+  final pathRe = RegExp(r'"(?:path|file|filename)"\s*:\s*"((?:[^"\\]|\\.)*)"');
+  final paths = pathRe.allMatches(partialJson).toList();
+  final bodyRe = RegExp(r'"(?:content|command|code|text|new_str|prompt|script)"\s*:\s*"((?:[^"\\]|\\.)*)');
+  final from = paths.isEmpty ? 0 : paths.last.end;
+  final bodies = bodyRe.allMatches(partialJson.substring(from)).toList();
+  final body = bodies.isEmpty ? '' : unescape(bodies.last.group(1) ?? '');
+  final path = paths.isEmpty ? '' : unescape(paths.last.group(1) ?? '');
+  final isFile = tool.startsWith('project_') || tool == 'write_file';
+  final title = path.isNotEmpty
+      ? (isFile ? 'Writing $path' : '$tool — $path')
+      : 'Writing the $tool call';
+  return (title: title, body: body, files: paths.length);
 }
 
 /// The record of one turn: every model pass, tool call, command, file change and worker, in order, as they
@@ -256,6 +326,66 @@ class ExecutionTrace extends ChangeNotifier {
     notifyListeners();
   }
 
+  DateTime _lastPing = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _ping({bool force = false}) {
+    final now = DateTime.now();
+    if (!force && now.difference(_lastPing).inMilliseconds < 120) return;
+    _lastPing = now;
+    notifyListeners();
+  }
+
+  /// Characters of reasoning the providers reported without sending the text.
+  int hiddenReasoning = 0;
+
+  /// Reasoning text from the provider during the current model pass. [chars] is how much the provider says it
+  /// produced; [text] is empty when the provider does not send it.
+  void addReasoning(String text, {int chars = 0}) {
+    final p = _pass;
+    if (p == null) return;
+    if (text.isEmpty) {
+      hiddenReasoning += chars;
+      _ping();
+      return;
+    }
+    p.addReasoning(text);
+    _ping();
+  }
+
+  final Map<int, TraceEvent> _previews = <int, TraceEvent>{};
+  final Map<int, StringBuffer> _previewArgs = <int, StringBuffer>{};
+
+  /// A tool call is being written: show what it says so far (a file's name and the text so far).
+  void previewTool(int index, String tool, String chunk) {
+    final buf = _previewArgs.putIfAbsent(index, StringBuffer.new)..write(chunk);
+    final d = describeToolArgs(tool, buf.toString());
+    var e = _previews[index];
+    if (e == null) {
+      e = log(
+        stageForTool(tool, const <String, dynamic>{}),
+        TraceKind.file,
+        d.title,
+        tool: tool,
+        running: true,
+      )..preview = true;
+      _previews[index] = e;
+    }
+    e.title = d.files > 1 ? '${d.title} (file ${d.files})' : d.title;
+    final body = d.body;
+    e.output = body.length > 6000 ? '…${body.substring(body.length - 6000)}' : body;
+    e.detail = '${buf.length} characters so far';
+    _ping();
+  }
+
+  /// The model finished writing its calls: the live previews give way to the real tool events that follow.
+  void clearPreviews() {
+    if (_previews.isEmpty) return;
+    events.removeWhere((e) => e.preview);
+    _previews.clear();
+    _previewArgs.clear();
+    notifyListeners();
+  }
+
   void setWaiting(bool v) {
     if (waiting == v) return;
     waiting = v;
@@ -276,6 +406,7 @@ class ExecutionTrace extends ChangeNotifier {
   /// A request goes to the model. The first one is the model working out the task; later ones are the model
   /// reading tool results.
   TraceEvent passStart(String model) {
+    clearPreviews();
     this.model = model;
     final first = passes == 0;
     passes++;
@@ -352,6 +483,9 @@ class ExecutionTrace extends ChangeNotifier {
     waiting = false;
     activeAgents = 0;
     activeWorkers = 0;
+    _previews.clear();
+    _previewArgs.clear();
+    events.removeWhere((e) => e.preview);
     final p = _pass;
     if (p != null) finishEvent(p, failed: o == TraceOutcome.failed);
     _pass = null;
@@ -492,6 +626,11 @@ class ExecutionTrace extends ChangeNotifier {
         return 'Stopped';
       case TraceOutcome.running:
         if (waiting) return 'Waiting for you';
+        for (final e in events.reversed) {
+          if (e.preview) return e.title;
+        }
+        final pass = _pass;
+        if (pass != null && pass.reasoningLength > 0 && pass.running) return 'Reasoning…';
         final c = current;
         return c == null ? 'Starting' : c.title;
     }
