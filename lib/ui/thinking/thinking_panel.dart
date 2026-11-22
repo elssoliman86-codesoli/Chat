@@ -8,7 +8,6 @@ import '../theme.dart';
 import 'overview_bar.dart';
 import 'stage_timeline.dart';
 import 'step_inspector.dart';
-import 'thinking_style.dart';
 
 /// The Thinking panel under the chat: an execution overview, the stage timeline, and the step inspector.
 /// It is drawn from the real trace of the conversation's latest task. Collapsed it is one line; opened it
