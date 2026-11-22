@@ -5,6 +5,7 @@ import '../../agents/trace.dart';
 import '../../data/services.dart';
 import '../glass/tokens.dart';
 import '../theme.dart';
+import 'agent_monitor.dart';
 import 'overview_bar.dart';
 import 'stage_timeline.dart';
 import 'step_inspector.dart';
@@ -79,6 +80,7 @@ class _ThinkingPanelState extends State<ThinkingPanel> {
               ),
               if (_open) ...[
                 Padding(padding: const EdgeInsets.fromLTRB(12, 2, 12, 10), child: ExecutionOverview(trace: trace)),
+                AgentMonitor(trace: trace),
                 SizedBox(
                   height: panelHeight,
                   child: LayoutBuilder(builder: (context, box) {

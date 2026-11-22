@@ -5,6 +5,7 @@ import '../data/services.dart';
 import 'kit.dart';
 import 'browser_choice_screen.dart';
 import 'downloads_screen.dart';
+import 'workers_screen.dart';
 import 'plugins_screen.dart';
 import 'proxy_screen.dart';
 import 'theme.dart';
@@ -107,6 +108,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               await Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => const BrowserChoiceScreen()));
               if (mounted) setState(() {});
             },
+          ),
+          Cell(
+            title: 'Agents & Workers',
+            subtitle: 'Parallel workers, limits, scheduling',
+            icon: CupertinoIcons.person_2,
+            color: iosPurple,
+            chevron: true,
+            onTap: () => Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => const WorkersScreen())),
           ),
           Cell(
             title: 'Downloads',

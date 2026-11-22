@@ -367,3 +367,29 @@ plain stream. Open **Settings → Downloads** (or the ⋯ menu of the browser) t
 a link by hand. Browser fixes: desktop mode is scaled to the screen width, and the web view stops sending the
 `X-Requested-With` header and accepts third-party cookies, which helps with sites that refuse embedded browsers.
 Google may still refuse sign-in in any embedded browser; that is Google's policy and cannot be guaranteed.
+
+## AI execution experience: streaming, Thinking panel, workers
+
+**Real-time streaming.** Every provider streams (SSE for OpenAI-compatible APIs including NVIDIA, Anthropic and Gemini).
+Text is shown as it arrives and in order, Markdown and code blocks included; redraws are batched (less often as a reply
+grows) so long replies never freeze the UI. **Stop** ends the stream at once. If the connection drops or goes silent the
+app reconnects (up to 3 times), asks the model to continue from the text received and removes any repeated text, so there
+is one unbroken reply. A server that refuses `stream=true` is asked for the whole reply instead. Live numbers — time to
+first token, tokens/second, total tokens (provider-reported when available, otherwise estimated), connection state — show
+under the reply and in the Thinking panel; a finished reply keeps a one-line summary.
+
+**Thinking panel** (chat menu → *Thinking panel*, or Settings → Plugins). Built from the real events of the task, not a
+script: an *Execution Overview* bar (elapsed time, steps done/running, agents, workers, tokens, tokens/s, status), a
+vertical *Thinking Timeline* of stages (Analyzing Request, Understanding Requirements, Planning, Researching, Analyzing
+Files, Delegating Tasks, Executing Commands, Reviewing Results, Testing, Finalizing — each with time, status and its
+events), and a *Step Inspector* (task, events, tools used, terminal commands and output, results, modified files, errors
+and warnings, stage summary). It shows what the app recorded; it does not claim to reveal the model's hidden reasoning.
+Drag the handles to resize, hide it entirely with ✕, and switch auto-scroll on or off.
+
+**Agents & Workers** (Settings → Agents & Workers). For jobs with independent parts the assistant can call
+`run_parallel`: the orchestrator splits the job into tasks, runs independent ones on worker agents side by side (default
+2 at a time; up to your limits for workers and active agents), waits for dependencies, never runs two tasks that change the
+same file together, queues file writes per file and reports files two workers both wrote, retries failures, times out
+stuck workers, and returns every result in one report for the assistant to check and combine. Workers can search the web,
+read pages and read/write project files; the browser, terminal and Python stay with the main assistant. Stop cancels all
+workers. The Multi-Agent Monitor in the Thinking panel shows one card per worker.
