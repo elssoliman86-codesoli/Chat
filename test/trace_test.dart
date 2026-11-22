@@ -116,7 +116,7 @@ void main() {
       final live = t.toolStart(_call('project_check'), title: 'checking');
       t.end(TraceOutcome.cancelled);
       expect(live.running, isFalse);
-      expect(live.detail, contains('stopped'));
+      expect(live.detail, contains('Stopped'));
       expect(t.statusOf(Stage.testing), StageStatus.cancelled);
       expect(t.statusOf(Stage.researching), StageStatus.completed);
       expect(t.statusText, 'Stopped');

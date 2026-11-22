@@ -156,6 +156,22 @@ class _PluginsScreenState extends State<PluginsScreen> {
             onChanged: (v) => set(() => s.browserCursor = v),
           ),
           SwitchCell(
+            title: 'Thinking panel',
+            subtitle: 'A live overview, stage timeline and step inspector of what the assistant is doing, drawn from the real events of the task',
+            icon: CupertinoIcons.waveform_path_ecg,
+            color: iosPurple,
+            value: s.thinkingPanel,
+            onChanged: (v) => set(() => s.thinkingPanel = v),
+          ),
+          SwitchCell(
+            title: 'Follow the running stage',
+            subtitle: 'The timeline scrolls to the stage that is working',
+            icon: CupertinoIcons.arrow_down_to_line,
+            color: iosBlue,
+            value: s.thinkingAutoScroll,
+            onChanged: (v) => set(() => s.thinkingAutoScroll = v),
+          ),
+          SwitchCell(
             title: 'Keep working in the background',
             subtitle: 'Long tasks continue when you leave the app (shows a notification)',
             icon: CupertinoIcons.bolt_horizontal,

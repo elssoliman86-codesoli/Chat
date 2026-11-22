@@ -15,6 +15,7 @@ import 'plan_banner.dart';
 import 'plugins_screen.dart';
 import 'project_screens.dart';
 import 'steps_card.dart';
+import 'thinking/thinking_panel.dart';
 import 'providers_screen.dart';
 import 'skill_picker.dart';
 import 'glass/glass.dart';
@@ -156,6 +157,11 @@ class _ChatScreenState extends State<ChatScreen> {
                             : 'Long tasks off'),
                       ));
                   }
+                  if (v == 'thinking') {
+                    store.settings.thinkingPanel = !store.settings.thinkingPanel;
+                    store.saveSettings();
+                    store.changed();
+                  }
                   if (v == 'browser') _composer.currentState?.openBrowser();
                   if (v == 'copy') {
                     await Clipboard.setData(ClipboardData(text: _markdown(c)));
@@ -170,6 +176,13 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: Row(children: [
                       const Expanded(child: Text('Long tasks')),
                       if (c.longTask) const Icon(CupertinoIcons.checkmark_alt, size: 18),
+                    ]),
+                  ),
+                  PopupMenuItem(
+                    value: 'thinking',
+                    child: Row(children: [
+                      const Expanded(child: Text('Thinking panel')),
+                      if (store.settings.thinkingPanel) const Icon(CupertinoIcons.checkmark_alt, size: 18),
                     ]),
                   ),
                   const PopupMenuItem(value: 'browser', child: Text('Open browser')),
@@ -228,6 +241,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       },
                     ),
             ),
+            ThinkingPanel(conversationId: c.id),
             if (c.projectId.isNotEmpty) ProjectBar(projectId: c.projectId),
             Composer(
               key: _composer,

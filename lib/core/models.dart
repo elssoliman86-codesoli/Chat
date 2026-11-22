@@ -696,6 +696,14 @@ class AppSettings {
     this.browserVisible = false,
     this.browserCursor = true,
     this.downloadConnections = 8,
+    this.thinkingPanel = true,
+    this.thinkingAutoScroll = true,
+    this.workersMax = 2,
+    this.agentsMax = 4,
+    this.workersMode = 'auto',
+    this.workersPriority = 'normal',
+    this.workerTimeoutSec = 180,
+    this.workerRetries = 1,
     this.keepAlive = true,
     this.autoSwitchModel = true,
     this.proxyMode = 'off',
@@ -766,6 +774,20 @@ class AppSettings {
 
   /// How many parts of a file the download manager fetches at the same time (1–32).
   int downloadConnections;
+
+  /// The Thinking panel (overview, timeline, inspector) under the chat, and whether it follows the running stage.
+  bool thinkingPanel;
+  bool thinkingAutoScroll;
+
+  /// Multi-agent work: how many workers run at once (default 2), how many agents may be active, how the
+  /// orchestrator schedules ('parallel', 'sequential' or 'auto'), the default task priority
+  /// ('low', 'normal', 'high'), how long one worker may run, and how often a failed task is retried.
+  int workersMax;
+  int agentsMax;
+  String workersMode;
+  String workersPriority;
+  int workerTimeoutSec;
+  int workerRetries;
 
   /// Keep long tasks running when the app is in the background.
   bool keepAlive;
@@ -844,6 +866,14 @@ class AppSettings {
         'browserVisible': browserVisible,
         'browserCursor': browserCursor,
         'downloadConnections': downloadConnections,
+        'thinkingPanel': thinkingPanel,
+        'thinkingAutoScroll': thinkingAutoScroll,
+        'workersMax': workersMax,
+        'agentsMax': agentsMax,
+        'workersMode': workersMode,
+        'workersPriority': workersPriority,
+        'workerTimeoutSec': workerTimeoutSec,
+        'workerRetries': workerRetries,
         'keepAlive': keepAlive,
         'autoSwitchModel': autoSwitchModel,
         'proxyMode': proxyMode,
@@ -895,6 +925,14 @@ class AppSettings {
         browserVisible: j['browserVisible'] as bool? ?? false,
         browserCursor: j['browserCursor'] as bool? ?? true,
         downloadConnections: ((j['downloadConnections'] as num?)?.toInt() ?? 8).clamp(1, 32),
+        thinkingPanel: j['thinkingPanel'] as bool? ?? true,
+        thinkingAutoScroll: j['thinkingAutoScroll'] as bool? ?? true,
+        workersMax: ((j['workersMax'] as num?)?.toInt() ?? 2).clamp(1, 8),
+        agentsMax: ((j['agentsMax'] as num?)?.toInt() ?? 4).clamp(1, 16),
+        workersMode: const {'parallel', 'sequential', 'auto'}.contains(j['workersMode']) ? j['workersMode'] as String : 'auto',
+        workersPriority: const {'low', 'normal', 'high'}.contains(j['workersPriority']) ? j['workersPriority'] as String : 'normal',
+        workerTimeoutSec: ((j['workerTimeoutSec'] as num?)?.toInt() ?? 180).clamp(10, 1800),
+        workerRetries: ((j['workerRetries'] as num?)?.toInt() ?? 1).clamp(0, 5),
         keepAlive: j['keepAlive'] as bool? ?? true,
         autoSwitchModel: j['autoSwitchModel'] as bool? ?? true,
         proxyMode: j['proxyMode'] as String? ?? 'off',
