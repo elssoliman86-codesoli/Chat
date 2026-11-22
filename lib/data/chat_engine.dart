@@ -2,8 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 
 import '../agents/orchestrator.dart';
+import '../agents/windows_scan.dart';
+import '../agents/windows_scan_runner.dart';
 import '../agents/trace.dart';
 import '../agents/worker_agent.dart';
 import '../core/models.dart';
@@ -14,6 +17,7 @@ import '../plugins/plugin.dart';
 import '../tools/advisor_service.dart';
 import '../tools/browser_service.dart';
 import '../tools/image_reader.dart';
+import '../tools/termux_service.dart';
 import '../tools/tools.dart';
 import '../tools/registry.dart';
 import '../tools/web_tools.dart';
@@ -727,6 +731,166 @@ class ChatEngine implements ToolHost {
     return removed;
   }
 
+  /// Why Termux cannot be used right now, or null when it can.
+  Future<String?> _termuxProblem() async {
+    final t = TermuxService.instance;
+    try {
+      if (!await t.isInstalled()) return 'Termux is not installed (or the Termux bridge is unavailable). The scan reaches your PC through an ssh session in Termux.';
+      if (!await t.hasPermission() && !await t.requestPermission()) {
+        return 'Termux permission was not granted. Enable "Run commands in Termux environment" for this app and set allow-external-apps = true in ~/.termux/termux.properties.';
+      }
+    } catch (e) {
+      return 'Could not reach Termux: $e';
+    }
+    return null;
+  }
+
+  Future<ShellOutput> _scanShell(String command, int timeoutSec) async {
+    try {
+      final r = await TermuxService.instance.run(command, timeout: Duration(seconds: timeoutSec.clamp(1, 300)));
+      final exit = r['exitCode'] is int ? r['exitCode'] as int : int.tryParse('${r['exitCode']}') ?? -1;
+      final err = r['err'] is int ? r['err'] as int : int.tryParse('${r['err']}') ?? 0;
+      final msg = (r['errmsg'] ?? '').toString();
+      return ShellOutput(
+        stdout: (r['stdout'] ?? '').toString(),
+        stderr: (r['stderr'] ?? '').toString(),
+        exitCode: exit,
+        error: err != 0 && exit == -1 ? (msg.isEmpty ? 'Termux could not run the command' : msg) : '',
+      );
+    } on PlatformException catch (e) {
+      return ShellOutput(exitCode: -1, error: e.code == 'timeout' ? 'timed out after ${timeoutSec}s' : (e.message ?? e.code));
+    } catch (e) {
+      return ShellOutput(exitCode: -1, error: e.toString());
+    }
+  }
+
+  /// The "Full Windows scan" of the chat menu. One tap: finds the SSH connection in Termux, checks it reaches a
+  /// Windows PC, runs the read-only checks with 5 or 10 workers at once, then has the assistant write the report
+  /// and wait for the person's approval before any cleanup. Nothing is changed on the PC.
+  Future<void> startWindowsScan(Conversation c) async {
+    if (busy) return;
+    final st = store.settings;
+    final workers = st.winScanWorkers <= 5 ? 5 : 10;
+    c.messages.add(ChatMessage(role: 'user', text: 'Full Windows scan ($workers parallel workers)'));
+    if (c.title == 'New chat') c.title = 'Windows scan';
+    final note = ChatMessage(role: 'assistant', text: 'Starting the scan: finding your SSH connection…');
+    c.messages.add(note);
+    _running = c;
+    _seenCalls.clear();
+    c.turnInProgress = true;
+    store.scheduleSave(c);
+    store.changed();
+    if (st.keepAlive) await BackgroundWork.start();
+    final trace = ExecutionTrace(conversationId: c.id, request: 'Full Windows scan', attachments: 0, model: c.model);
+    _trace = trace;
+    traces.put(trace);
+    final abort = AbortHandle();
+    _abort = abort;
+    trace.log(Stage.analyzing, TraceKind.status, 'Full Windows scan',
+        detail: '$workers parallel workers · read-only · waits for your approval before any cleanup');
+    WindowsScanRunner? runner;
+    Orchestrator? orch;
+    void sync() {
+      final o = orch;
+      if (o != null) trace.setWorkers(agents: o.running ? 1 + o.activeWorkers : 0, workers: o.activeWorkers);
+    }
+
+    unawaited(abort.whenAborted.then((_) => runner?.stop()));
+    var continued = false;
+    try {
+      final problem = await _termuxProblem();
+      if (problem != null) throw ScanFailure(problem);
+      final r = WindowsScanRunner(
+        shell: _scanShell,
+        workers: workers,
+        remembered: SshTarget.fromSetting(st.winScanTarget),
+        saved: <SshTarget>[
+          for (final h in store.sshHosts)
+            SshTarget(
+              destination: '${h.username}@${h.host}',
+              port: h.port,
+              identity: h.authMethod == 'password' || !h.hasKey ? '' : '~/.ssh/${h.alias}',
+              password: h.authMethod == 'password' ? h.password : '',
+              source: 'saved host "${h.alias}"',
+            ),
+        ],
+        askTarget: (why) async {
+          trace.setWaiting(true);
+          final a = await askUser(why);
+          trace.setWaiting(false);
+          return a == 'Done.' || a.startsWith('The person cancelled') ? null : a;
+        },
+        onStatus: (text, {bool failed = false}) {
+          trace.log(Stage.delegating, failed ? TraceKind.warning : TraceKind.status, text, tool: 'windows_scan', failed: failed);
+          if (!failed && !text.contains(': ')) {
+            note.text = text;
+            _notifySoon(note);
+          }
+        },
+        onOrchestrator: (o) {
+          orch = o;
+          o.addListener(sync);
+          trace.orchestrator = o;
+          trace.log(Stage.delegating, TraceKind.plan, 'Scan plan: ${kScanChecks.length} checks, $workers at a time',
+              detail: kScanChecks.map((k) => k.title).join(' · '));
+        },
+      );
+      runner = r;
+      final out = await r.run();
+      orch?.removeListener(sync);
+      trace.setWorkers(agents: 0, workers: 0);
+      if (out.stopped || abort.aborted) {
+        note.text = 'Scan stopped.';
+        throw const ScanStopped();
+      }
+      st.winScanTarget = out.target.toSetting();
+      unawaited(store.saveSettings());
+      final triageText = triage(out.results);
+      trace.log(Stage.reviewing, TraceKind.status, 'Scan finished in ${clockLabel(out.seconds)}',
+          detail: '${out.ok} of ${out.results.length} checks ok${out.failed > 0 ? ', ${out.failed} failed' : ''}');
+      note.text = 'Scan finished on ${out.machine} in ${clockLabel(out.seconds)} (${out.ok}/${out.results.length} checks). Writing the report…';
+      c.messages.add(ChatMessage(
+        role: 'user',
+        auto: true,
+        text: buildReportRequest(
+          evidence: buildEvidence(out.results, budget: 60000),
+          triageText: triageText,
+          target: out.target,
+          machine: out.machine,
+          workers: out.workers,
+          seconds: out.seconds,
+          failed: out.failed,
+        ),
+      ));
+      store.scheduleSave(c);
+      store.changed();
+      continued = true;
+      await _run(c, continueTrace: trace);
+    } on ScanStopped {
+      trace.end(TraceOutcome.cancelled);
+    } on ScanFailure catch (e) {
+      note.text = 'The scan could not run.';
+      c.messages.add(ChatMessage(role: 'assistant', error: true, text: e.message));
+      trace.log(Stage.delegating, TraceKind.error, e.message, failed: true);
+      trace.end(TraceOutcome.failed, error: e.message);
+    } catch (e) {
+      note.text = 'The scan stopped with an error.';
+      c.messages.add(ChatMessage(role: 'assistant', error: true, text: e.toString()));
+      trace.end(TraceOutcome.failed, error: e.toString());
+    } finally {
+      if (!continued) {
+        orch?.removeListener(sync);
+        c.turnInProgress = false;
+        await BackgroundWork.stop();
+        _running = null;
+        _abort = null;
+        store.scheduleSave(c);
+        await store.flush();
+        store.changed();
+      }
+    }
+  }
+
   void stop() {
     _abort?.abort();
     _trace?.orchestrator?.cancel();
@@ -948,7 +1112,7 @@ class ChatEngine implements ToolHost {
     return out;
   }
 
-  Future<void> _run(Conversation c) async {
+  Future<void> _run(Conversation c, {ExecutionTrace? continueTrace}) async {
     final initialProvider = store.providerById(c.providerId) ?? store.defaultProvider;
     _running = c;
     _seenCalls.clear();
@@ -972,22 +1136,25 @@ class ChatEngine implements ToolHost {
     });
     store.changed();
     final lastUser = c.messages.lastWhere((m) => m.role == 'user' && !m.auto, orElse: () => ChatMessage(role: 'user'));
-    final trace = ExecutionTrace(
-      conversationId: c.id,
-      request: lastUser.text,
-      attachments: lastUser.attachments.length,
-      model: c.model,
-    );
+    final trace = continueTrace ??
+        ExecutionTrace(
+          conversationId: c.id,
+          request: lastUser.text,
+          attachments: lastUser.attachments.length,
+          model: c.model,
+        );
     _trace = trace;
-    traces.put(trace);
-    trace.log(
-      Stage.analyzing,
-      TraceKind.status,
-      'Read your message',
-      detail: '${lastUser.text.length} characters'
-          '${lastUser.attachments.isEmpty ? '' : ', ${lastUser.attachments.length} attachment${lastUser.attachments.length == 1 ? '' : 's'}'}'
-          ', ${c.messages.length} message${c.messages.length == 1 ? '' : 's'} of context',
-    );
+    if (continueTrace == null) {
+      traces.put(trace);
+      trace.log(
+        Stage.analyzing,
+        TraceKind.status,
+        'Read your message',
+        detail: '${lastUser.text.length} characters'
+            '${lastUser.attachments.isEmpty ? '' : ', ${lastUser.attachments.length} attachment${lastUser.attachments.length == 1 ? '' : 's'}'}'
+            ', ${c.messages.length} message${c.messages.length == 1 ? '' : 's'} of context',
+      );
+    }
     var stopped = false;
     var failedTurn = false;
     var failureText = '';

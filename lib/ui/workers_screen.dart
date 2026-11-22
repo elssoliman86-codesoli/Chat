@@ -72,6 +72,18 @@ class _WorkersScreenState extends State<WorkersScreen> {
           ],
         ),
         Group(
+          header: 'Full Windows scan',
+          footer: 'How many checks run on your PC at the same time during the Full Windows scan (chat menu). 10 is faster; 5 is gentler on a slow PC or connection.',
+          children: [
+            _Choice(
+              title: 'Parallel workers',
+              value: s.winScanWorkers <= 5 ? '5' : '10',
+              options: const {'5': '5 workers', '10': '10 workers'},
+              onChanged: (v) => _set(() => s.winScanWorkers = v == '5' ? 5 : 10),
+            ),
+          ],
+        ),
+        Group(
           header: 'Reliability',
           footer: 'A worker that takes longer than the timeout is stopped; a failed task is retried this many times before it is reported as failed.',
           children: [

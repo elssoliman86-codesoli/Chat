@@ -393,3 +393,14 @@ same file together, queues file writes per file and reports files two workers bo
 stuck workers, and returns every result in one report for the assistant to check and combine. Workers can search the web,
 read pages and read/write project files; the browser, terminal and Python stay with the main assistant. Stop cancels all
 workers. The Multi-Agent Monitor in the Thinking panel shows one card per worker.
+
+## Full Windows scan
+
+Chat menu (⋮) → **Full Windows scan**. One tap, no setup questions:
+
+1. **Finds your connection.** It looks in Termux for the SSH session you already opened (running `ssh` processes, `~/.ssh/config`, shell history, `known_hosts`, and the hosts saved under Plugins → Shell → SSH hosts), checks that one answers as a Windows PC, and remembers it for next time. Only if nothing works does it ask you for `user@host`.
+2. **Runs about 30 read-only PowerShell checks in parallel** (5 or 10 workers, set in Settings → Agents & Workers → Full Windows scan) through one shared ssh connection: processes and their signatures, fake system processes, suspicious command lines, known miner/RAT names, start-up keys, scheduled tasks, services, WMI persistence, drivers, listening ports and outgoing connections with the program behind each, hosts file/DNS/proxy/shares/RDP/firewall, recent programs in Temp/AppData, hidden files and alternate data streams, accounts, event logs, installed software, browser extensions, antivirus status and exclusions.
+3. **RAM health and leaks.** Totals, commit, pagefile, kernel pools, RAM modules and hardware-error events; the biggest programs and every program's total; which program is *growing* right now (24 s window) and over 3 minutes, handle growth, memory no program owns (drivers, VMs), and what Windows itself recorded about earlier low-memory moments.
+4. **A report, then you decide.** The assistant reads all the evidence and writes a risk-ranked report (what is normal, what is suspicious, the likely RAM culprit with numbers) and ends with a numbered **Proposed cleanup**. It changes nothing until you approve specific numbers, and the app asks you to confirm every change that goes over ssh to a PC (delete, stop, disable, registry edit, move…), even when the script is sent encoded.
+
+Honest limits: it only reads, so it cannot *prove* a PC is clean (a rootkit may hide from remote checks), some logs need an administrator account on the PC, and ssh must log in without typing a password (a key, or a host saved in the app). Verified here only by unit tests with a simulated Termux; it has not been run against a real Windows PC.

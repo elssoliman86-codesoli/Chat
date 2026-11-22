@@ -163,6 +163,20 @@ class _ChatScreenState extends State<ChatScreen> {
                     store.changed();
                   }
                   if (v == 'browser') _composer.currentState?.openBrowser();
+                  if (v == 'winscan') {
+                    if (engine.busy) {
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(const SnackBar(content: Text('Wait for the current task to finish (or stop it), then start the scan')));
+                    } else {
+                      // Make sure the live view is on so the scan can be watched.
+                      if (!store.settings.thinkingPanel) {
+                        store.settings.thinkingPanel = true;
+                        store.saveSettings();
+                      }
+                      engine.startWindowsScan(c);
+                    }
+                  }
                   if (v == 'copy') {
                     await Clipboard.setData(ClipboardData(text: _markdown(c)));
                     if (!context.mounted) return;
@@ -186,6 +200,14 @@ class _ChatScreenState extends State<ChatScreen> {
                     ]),
                   ),
                   const PopupMenuItem(value: 'browser', child: Text('Open browser')),
+                  PopupMenuItem(
+                    value: 'winscan',
+                    child: Row(children: [
+                      const Icon(CupertinoIcons.shield_lefthalf_fill, size: 18),
+                      const SizedBox(width: 10),
+                      const Expanded(child: Text('Full Windows scan')),
+                    ]),
+                  ),
                   const PopupMenuItem(value: 'copy', child: Text('Copy chat as Markdown')),
                 ],
               ),

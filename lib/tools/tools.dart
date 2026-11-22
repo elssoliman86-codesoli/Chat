@@ -5,6 +5,7 @@ import '../downloads/download_manager.dart';
 import '../downloads/download_task.dart' show fileNameFrom;
 import '../llm/llm.dart';
 import '../plugins/installer.dart';
+import '../agents/windows_scan.dart' show isRemoteChange, describeRemoteChange;
 import '../plugins/plugin.dart';
 import '../projects/project_tools.dart';
 import 'browser_service.dart';
@@ -801,11 +802,20 @@ final List<ToolDef> builtinTools = <ToolDef>[
         'required': <String>['command'],
       },
     ),
-    run: (a, host) => _runTermuxCommand(
-      _s(a, 'command'),
-      workdir: a['workdir']?.toString(),
-      timeoutSeconds: _i(a, 'timeout_seconds') <= 0 ? 60 : _i(a, 'timeout_seconds'),
-    ),
+    run: (a, host) async {
+      final command = _s(a, 'command');
+      // Anything that would change a PC over ssh (delete, stop, disable, edit the registry…) waits for the person,
+      // however it is phrased and even when the script is sent encoded. Reading is never held back.
+      if (isRemoteChange(command)) {
+        final ok = await host.confirm('The assistant wants to CHANGE your other computer over ssh.\n\n${describeRemoteChange(command)}\n\nAllow this one change?');
+        if (!ok) return 'The person did not approve this change. Nothing was changed on the computer. Ask them what they want instead.';
+      }
+      return _runTermuxCommand(
+        command,
+        workdir: a['workdir']?.toString(),
+        timeoutSeconds: _i(a, 'timeout_seconds') <= 0 ? 60 : _i(a, 'timeout_seconds'),
+      );
+    },
   ),
   ToolDef(
     id: 'python_run',

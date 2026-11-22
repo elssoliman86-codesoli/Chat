@@ -704,6 +704,8 @@ class AppSettings {
     this.workersPriority = 'normal',
     this.workerTimeoutSec = 180,
     this.workerRetries = 1,
+    this.winScanWorkers = 10,
+    this.winScanTarget = '',
     this.keepAlive = true,
     this.autoSwitchModel = true,
     this.proxyMode = 'off',
@@ -788,6 +790,12 @@ class AppSettings {
   String workersPriority;
   int workerTimeoutSec;
   int workerRetries;
+
+  /// Parallel workers for the Full Windows scan: 5 or 10.
+  int winScanWorkers;
+
+  /// The SSH target that worked last time (destination|port|key), so the next scan starts there.
+  String winScanTarget;
 
   /// Keep long tasks running when the app is in the background.
   bool keepAlive;
@@ -874,6 +882,8 @@ class AppSettings {
         'workersPriority': workersPriority,
         'workerTimeoutSec': workerTimeoutSec,
         'workerRetries': workerRetries,
+        'winScanWorkers': winScanWorkers,
+        'winScanTarget': winScanTarget,
         'keepAlive': keepAlive,
         'autoSwitchModel': autoSwitchModel,
         'proxyMode': proxyMode,
@@ -933,6 +943,8 @@ class AppSettings {
         workersPriority: const {'low', 'normal', 'high'}.contains(j['workersPriority']) ? j['workersPriority'] as String : 'normal',
         workerTimeoutSec: ((j['workerTimeoutSec'] as num?)?.toInt() ?? 180).clamp(10, 1800),
         workerRetries: ((j['workerRetries'] as num?)?.toInt() ?? 1).clamp(0, 5),
+        winScanWorkers: ((j['winScanWorkers'] as num?)?.toInt() ?? 10) <= 5 ? 5 : 10,
+        winScanTarget: j['winScanTarget'] as String? ?? '',
         keepAlive: j['keepAlive'] as bool? ?? true,
         autoSwitchModel: j['autoSwitchModel'] as bool? ?? true,
         proxyMode: j['proxyMode'] as String? ?? 'off',
