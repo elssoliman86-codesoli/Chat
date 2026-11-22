@@ -505,8 +505,8 @@ List<SshTarget> parseDiscovery(String output) {
   var user = '';
   var port = 22;
   void flush() {
-    if (alias == null || alias!.contains('*') || alias!.contains('?')) return;
-    final dest = alias!;
+    final dest = alias;
+    if (dest == null || dest.contains('*') || dest.contains('?')) return;
     add(SshTarget(destination: dest, port: 22, identity: '', source: 'ssh config (Host $alias${host.isEmpty ? '' : ' → $host'}${user.isEmpty ? '' : ', user $user'}${port == 22 ? '' : ', port $port'})'));
   }
 
