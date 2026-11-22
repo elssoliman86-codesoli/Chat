@@ -5,14 +5,10 @@ import 'package:flutter/material.dart';
 
 import 'data/auto_health.dart';
 import 'data/services.dart';
-import 'downloads/download_manager.dart';
-import 'downloads/download_task.dart' show fileNameFrom;
 import 'net/proxy_service.dart';
 import 'tools/browser_service.dart';
 import 'tools/ftp_service.dart';
-import 'tools/web_native.dart';
 import 'ui/chat_screen.dart';
-import 'ui/downloads_screen.dart';
 import 'ui/startup_error.dart';
 import 'ui/theme.dart';
 
@@ -53,25 +49,6 @@ Future<void> _start() async {
   }
   unawaited(FtpService.instance.ensureStartedIfEnabled(store.settings).catchError((Object _) {}));
   runApp(const OmniChatApp());
-  unawaited(DownloadManager.instance.load());
-  // A file link tapped in the built-in browser: ask where to save it, then fetch it in parallel.
-  String lastLink = '';
-  var lastLinkAt = DateTime.fromMillisecondsSinceEpoch(0);
-  WebNative.downloads.listen((r) {
-    final ctx = navigatorKey.currentContext;
-    if (ctx == null || r.url.startsWith('blob:') || r.url.startsWith('data:')) return;
-    // The same link can be reported twice (by the page and by the web view): ask only once.
-    final now = DateTime.now();
-    if (r.url == lastLink && now.difference(lastLinkAt).inSeconds < 4) return;
-    lastLink = r.url;
-    lastLinkAt = now;
-    unawaited(showDownloadPrompt(
-      ctx,
-      url: r.url,
-      nameHint: fileNameFrom(disposition: r.disposition, url: r.url, mime: r.mime),
-      headers: DownloadManager.headersFor(cookie: r.cookie, userAgent: r.userAgent, referer: r.referer),
-    ));
-  });
   // Re-test the known models in the background each time the app opens — only after the first screen is
   // up, so a slow network can never delay or break the start.
   WidgetsBinding.instance.addPostFrameCallback((_) {

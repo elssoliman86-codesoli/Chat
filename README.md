@@ -357,16 +357,12 @@ are committed. Original recon notes and feature list: `replica/`.
 
 </div>
 
-## Downloads (parallel, resumable)
+## Browser sign-in
 
-Tapping a file link in the built-in browser opens a prompt (name, size, number of connections) and then Android's save
-picker, so you choose the folder and file name. The file is cut into many 1–16 MB parts that are fetched over up to 32
-connections at once, then joined in order into the file you chose. Pause and resume at any time: every part keeps its
-own file, so nothing starts over, even after the app is closed. Servers without byte-range support are downloaded as one
-plain stream. Open **Settings → Downloads** (or the ⋯ menu of the browser) to see speed, per-part progress and to paste
-a link by hand. Browser fixes: desktop mode is scaled to the screen width, and the web view stops sending the
-`X-Requested-With` header and accepts third-party cookies, which helps with sites that refuse embedded browsers.
-The browser also sends matching Chrome client hints (Sec-CH-UA) to look like a desktop browser. Google may still refuse sign-in in any embedded browser; that is Google's policy and cannot be guaranteed.
+The built-in browser starts in computer mode; the ⋯ menu switches to phone mode, which is the one that signs in to
+Google. The web view stops sending the `X-Requested-With` header, accepts third-party cookies and sends Chrome client
+hints that match its user agent. Google may still refuse sign-in in any embedded browser; that is Google's policy and
+cannot be guaranteed. The app has no download manager of its own.
 
 ## AI execution experience: streaming, Thinking panel, workers
 

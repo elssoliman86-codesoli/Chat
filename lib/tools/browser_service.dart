@@ -146,21 +146,6 @@ class BrowserService {
     }
   }
 
-  Future<void> _handOverDownload(String link) async {
-    var cookie = '';
-    try {
-      final r = (await controller.runJavaScriptReturningResult('document.cookie')).toString();
-      try {
-        // Android hands the string back JSON-encoded.
-        final d = jsonDecode(r);
-        cookie = d is String ? d : r;
-      } catch (_) {
-        cookie = r.replaceAll(RegExp(r'^"|"$'), '');
-      }
-    } catch (_) {}
-    WebNative.emit(WebDownloadRequest(url: link, userAgent: _desktop ? _desktopUa : phoneUserAgent, cookie: cookie, referer: url.value));
-  }
-
   Future<void> _injectScripts() async {
     try {
       await controller.runJavaScript(devToolsScript);
@@ -196,15 +181,6 @@ class BrowserService {
       ..setUserAgent(_desktop ? _desktopUa : phoneUserAgent)
       ..addJavaScriptChannel('OmniDev', onMessageReceived: (m) => dev.handle(m.message))
       ..setNavigationDelegate(NavigationDelegate(
-        onNavigationRequest: (req) {
-          // A link to a file (zip, apk, pdf…) is a download, not a page: hand it to the download manager instead
-          // of loading it, so it works even when the web view does not report it as a download itself.
-          if (req.isMainFrame && WebNative.looksLikeDownload(req.url)) {
-            unawaited(_handOverDownload(req.url));
-            return NavigationDecision.prevent;
-          }
-          return NavigationDecision.navigate;
-        },
         onProgress: (p) => progress.value = p,
         onPageStarted: (u) {
           url.value = u;

@@ -695,7 +695,6 @@ class AppSettings {
     this.helperModel = '',
     this.browserVisible = false,
     this.browserCursor = true,
-    this.downloadConnections = 8,
     this.thinkingPanel = true,
     this.thinkingAutoScroll = true,
     this.workersMax = 2,
@@ -774,9 +773,6 @@ class AppSettings {
 
   /// Show an animated mouse cursor in the built-in browser while the assistant works.
   bool browserCursor;
-
-  /// How many parts of a file the download manager fetches at the same time (1–32).
-  int downloadConnections;
 
   /// The Thinking panel (overview, timeline, inspector) under the chat, and whether it follows the running stage.
   bool thinkingPanel;
@@ -877,7 +873,6 @@ class AppSettings {
         'helperModel': helperModel,
         'browserVisible': browserVisible,
         'browserCursor': browserCursor,
-        'downloadConnections': downloadConnections,
         'thinkingPanel': thinkingPanel,
         'thinkingAutoScroll': thinkingAutoScroll,
         'workersMax': workersMax,
@@ -939,7 +934,6 @@ class AppSettings {
         helperModel: j['helperModel'] as String? ?? '',
         browserVisible: j['browserVisible'] as bool? ?? false,
         browserCursor: j['browserCursor'] as bool? ?? true,
-        downloadConnections: ((j['downloadConnections'] as num?)?.toInt() ?? 8).clamp(1, 32),
         thinkingPanel: j['thinkingPanel'] as bool? ?? true,
         thinkingAutoScroll: j['thinkingAutoScroll'] as bool? ?? true,
         workersMax: ((j['workersMax'] as num?)?.toInt() ?? 2).clamp(1, 8),

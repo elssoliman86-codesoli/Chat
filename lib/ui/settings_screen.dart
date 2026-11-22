@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import '../data/services.dart';
 import 'kit.dart';
 import 'browser_choice_screen.dart';
-import 'downloads_screen.dart';
 import 'workers_screen.dart';
 import 'plugins_screen.dart';
 import 'proxy_screen.dart';
@@ -116,14 +115,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             color: iosPurple,
             chevron: true,
             onTap: () => Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => const WorkersScreen())),
-          ),
-          Cell(
-            title: 'Downloads',
-            subtitle: 'Fast parallel downloads, pause and resume',
-            icon: CupertinoIcons.arrow_down_circle,
-            color: iosGreen,
-            chevron: true,
-            onTap: () => Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => const DownloadsScreen())),
           ),
           Cell(
             title: 'Proxy & Tor',
