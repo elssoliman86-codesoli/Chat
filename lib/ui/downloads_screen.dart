@@ -421,7 +421,7 @@ class _PromptDialogState extends State<_PromptDialog> {
         Text(Uri.tryParse(widget.url)?.host ?? widget.url, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: p.secondary)),
         const SizedBox(height: 8),
         if (_error.isNotEmpty)
-          Text(_error, style: const TextStyle(color: Color(0xFFFF453A), fontSize: 13))
+          Text(_error, style: const TextStyle(color: Color(0xFFFF453A), fontSize: 13)),
         if (pr == null)
           Row(children: [
             const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
