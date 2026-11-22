@@ -76,8 +76,32 @@ class BrowserService {
   /// Name of the browser the built-in one is presenting as (empty = the default). Shown in the toolbar.
   final ValueNotifier<String> identityName = ValueNotifier<String>('');
 
-  /// Desktop mode is always on; it is switched off only while project_check looks at a page like a phone.
+  /// Desktop mode by default; the person can switch to phone mode from the menu (Google signs in there),
+  /// and project_check looks at a page like a phone for one look.
   bool _desktop = true;
+
+  /// Whether the person chose phone mode.
+  final ValueNotifier<bool> phoneMode = ValueNotifier<bool>(false);
+
+  /// Sets the mode before the web view exists (from the saved setting).
+  void restoreMode({required bool phone}) {
+    phoneMode.value = phone;
+    _desktop = !phone;
+  }
+
+  /// Switches between phone and computer mode and reloads the page so the site sends the right layout.
+  Future<void> setPhoneMode(bool phone) async {
+    phoneMode.value = phone;
+    if (!_created) {
+      _desktop = !phone;
+      return;
+    }
+    await _setDesktop(!phone);
+    unawaited(_prepareNative());
+    try {
+      await controller.reload();
+    } catch (_) {}
+  }
 
   /// The desktop identity the browser presents: the default, or the browser chosen in Settings.
   String _desktopUa = desktopUserAgent;
@@ -169,7 +193,7 @@ class BrowserService {
     _created = true;
     final c = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setUserAgent(_desktopUa)
+      ..setUserAgent(_desktop ? _desktopUa : phoneUserAgent)
       ..addJavaScriptChannel('OmniDev', onMessageReceived: (m) => dev.handle(m.message))
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: (req) {
@@ -461,7 +485,7 @@ class BrowserService {
           await Future<void>.delayed(Duration(milliseconds: waitMs));
           raw = (await _eval(_checkJs)).toString();
         } finally {
-          await _setDesktop(true);
+          await _setDesktop(!phoneMode.value);
         }
         final b = StringBuffer();
         try {

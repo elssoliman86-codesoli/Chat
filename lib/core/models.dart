@@ -706,6 +706,7 @@ class AppSettings {
     this.workerRetries = 1,
     this.winScanWorkers = 10,
     this.winScanTarget = '',
+    this.browserPhoneMode = false,
     this.keepAlive = true,
     this.autoSwitchModel = true,
     this.proxyMode = 'off',
@@ -790,6 +791,9 @@ class AppSettings {
   String workersPriority;
   int workerTimeoutSec;
   int workerRetries;
+
+  /// The built-in browser shows sites as on a phone instead of as on a computer (phone mode signs in to Google).
+  bool browserPhoneMode;
 
   /// Parallel workers for the Full Windows scan: 5 or 10.
   int winScanWorkers;
@@ -884,6 +888,7 @@ class AppSettings {
         'workerRetries': workerRetries,
         'winScanWorkers': winScanWorkers,
         'winScanTarget': winScanTarget,
+        'browserPhoneMode': browserPhoneMode,
         'keepAlive': keepAlive,
         'autoSwitchModel': autoSwitchModel,
         'proxyMode': proxyMode,
@@ -945,6 +950,7 @@ class AppSettings {
         workerRetries: ((j['workerRetries'] as num?)?.toInt() ?? 1).clamp(0, 5),
         winScanWorkers: ((j['winScanWorkers'] as num?)?.toInt() ?? 10) <= 5 ? 5 : 10,
         winScanTarget: j['winScanTarget'] as String? ?? '',
+        browserPhoneMode: j['browserPhoneMode'] as bool? ?? false,
         keepAlive: j['keepAlive'] as bool? ?? true,
         autoSwitchModel: j['autoSwitchModel'] as bool? ?? true,
         proxyMode: j['proxyMode'] as String? ?? 'off',

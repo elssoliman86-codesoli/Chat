@@ -257,6 +257,33 @@ void main() {
       expect(await File(t.target).readAsBytes(), data);
     });
 
+    test('a server that refuses the ranged check is still downloaded, via a plain request', () async {
+      final data = _bytes(4 << 20);
+      final s = _Server(data, rejectRangeAfter: 0);
+      await s.start();
+      addTearDown(s.stop);
+      final p = await manager.probe(s.url);
+      expect(p.total, data.length);
+      final t = await manager.add(p, target: '${tmp.path}/o.bin', connections: 4);
+      await manager.settle(t);
+      expect(t.state, DownloadState.completed, reason: t.error);
+      expect(await File(t.target).readAsBytes(), data);
+    });
+
+    test('when every answer is an error the message says what the server said', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      server.listen((req) async {
+        req.response.statusCode = 403;
+        req.response.write('<html><body><b>Your request could not be completed</b></body></html>');
+        await req.response.close();
+      });
+      await expectLater(
+        manager.probe('http://127.0.0.1:${server.port}/f.zip'),
+        throwsA(predicate((e) => e.toString().contains('403') && e.toString().contains('Your request could not be completed'))),
+      );
+    });
+
     test('a connection cut half-way is retried and the file is still exact', () async {
       final data = _bytes(10 << 20);
       final s = _Server(data, dropFirst: 3);

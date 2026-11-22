@@ -43,6 +43,7 @@ Future<void> _start() async {
   try {
     await ProxyService.instance.apply(store.settings).timeout(const Duration(seconds: 5));
   } catch (_) {}
+  BrowserService.instance.restoreMode(phone: store.settings.browserPhoneMode);
   if (store.settings.localBrowser.isNotEmpty) {
     unawaited(BrowserService.instance.useIdentity(
       package: store.settings.localBrowser,

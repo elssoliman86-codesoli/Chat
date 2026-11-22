@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../core/models.dart';
+import '../data/services.dart';
 import '../downloads/download_manager.dart';
 import '../tools/browser_service.dart';
 import 'devtools_pane.dart';
@@ -260,11 +261,20 @@ class _Card extends StatelessWidget {
                         Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => const DownloadsScreen()));
                       } else if (v == 'devtools') {
                         b.devToolsOpen.value = !b.devToolsOpen.value;
+                      } else if (v == 'mode') {
+                        final phone = !b.phoneMode.value;
+                        store.settings.browserPhoneMode = phone;
+                        store.saveSettings();
+                        b.setPhoneMode(phone);
                       }
                     },
                     itemBuilder: (_) => <PopupMenuEntry<String>>[
                       PopupMenuItem<String>(value: 'downloads', child: Text(n > 0 ? 'Downloads ($n active)' : 'Downloads')),
                       const PopupMenuItem<String>(value: 'devtools', child: Text('DevTools (network and console)')),
+                      PopupMenuItem<String>(
+                        value: 'mode',
+                        child: Text(b.phoneMode.value ? 'Phone mode  ✓ — switch to computer mode' : 'Computer mode  ✓ — switch to phone mode'),
+                      ),
                     ],
                   );
                 },

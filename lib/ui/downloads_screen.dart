@@ -353,7 +353,14 @@ class _PromptDialogState extends State<_PromptDialog> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Could not reach this link: $e');
+      // The check failed, but the download itself may still work (some servers only refuse the test request),
+      // so it can still be started: one connection, size unknown, and Android's downloader as the fallback.
+      final name = widget.nameHint.isNotEmpty ? widget.nameHint : fileNameFrom(disposition: '', url: widget.url, mime: '');
+      setState(() {
+        _error = 'The link check failed ($e). You can still try the download.';
+        _probe = DownloadProbe(url: widget.url, fileName: name, total: -1, resumable: false);
+        if (_name.text.trim().isEmpty) _name.text = name;
+      });
     }
   }
 
@@ -415,7 +422,7 @@ class _PromptDialogState extends State<_PromptDialog> {
         const SizedBox(height: 8),
         if (_error.isNotEmpty)
           Text(_error, style: const TextStyle(color: Color(0xFFFF453A), fontSize: 13))
-        else if (pr == null)
+        if (pr == null)
           Row(children: [
             const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
             const SizedBox(width: 10),
@@ -424,7 +431,7 @@ class _PromptDialogState extends State<_PromptDialog> {
         else ...[
           Text(
             '${pr.total > 0 ? formatBytes(pr.total) : 'Unknown size'}'
-            '${pr.resumable ? '  ·  can be split and resumed' : '  ·  one connection only (the server does not allow parts)'}',
+            '${pr.resumable ? '  ·  can be split and resumed' : '  ·  one connection only'}',
             style: const TextStyle(fontSize: 13.5),
           ),
           if (pr.resumable) ...[

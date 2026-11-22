@@ -126,9 +126,27 @@ class DownloadEngine {
     req.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
   }
 
-  /// Asks the server about the link with a one-byte ranged request: name, size, and whether the file can be
-  /// fetched in parts.
+  /// Asks the server about the link: name, size, and whether the file can be fetched in parts. A one-byte
+  /// ranged request first; if the server refuses that, a plain request; then once more without the cookie and
+  /// referer (some servers reject those). Only when all fail does it give up, with what the server said.
   Future<DownloadProbe> probe(String url, {Map<String, String> headers = const <String, String>{}, String nameHint = ''}) async {
+    final bare = <String, String>{
+      for (final e in headers.entries)
+        if (!const {'cookie', 'referer', 'origin'}.contains(e.key.toLowerCase())) e.key: e.value,
+    };
+    final attempts = <(Map<String, String>, bool)>[(headers, true), (headers, false), if (bare.length != headers.length) (bare, false)];
+    Object? last;
+    for (final (h, ranged) in attempts) {
+      try {
+        return await _probeOnce(url, h, ranged, nameHint);
+      } catch (e) {
+        last = e;
+      }
+    }
+    throw last ?? const HttpException('No answer');
+  }
+
+  Future<DownloadProbe> _probeOnce(String url, Map<String, String> headers, bool ranged, String nameHint) async {
     final c = _newClient();
     try {
       final req = await c.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 30));
@@ -137,7 +155,7 @@ class DownloadEngine {
         if (value.isNotEmpty) req.headers.set(k, value);
       });
       req.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
-      req.headers.set(HttpHeaders.rangeHeader, 'bytes=0-0');
+      if (ranged) req.headers.set(HttpHeaders.rangeHeader, 'bytes=0-0');
       final res = await req.close().timeout(const Duration(seconds: 30));
       var total = -1;
       var resumable = false;
@@ -150,8 +168,22 @@ class DownloadEngine {
         }
       } else if (res.statusCode == 200) {
         total = res.contentLength;
+        // Says it takes ranges but answered the whole file to this probe: parts are worth trying, and the
+        // download falls back to one stream by itself if the server does not really honour them.
+        final accept = (res.headers.value(HttpHeaders.acceptRangesHeader) ?? '').toLowerCase();
+        if (accept.contains('bytes') && total > 0) resumable = true;
       } else {
-        throw HttpException('HTTP ${res.statusCode}');
+        var body = '';
+        try {
+          final bytes = <int>[];
+          await for (final chunk in res.timeout(const Duration(seconds: 8))) {
+            bytes.addAll(chunk);
+            if (bytes.length > 600) break;
+          }
+          body = utf8.decode(bytes, allowMalformed: true).replaceAll(RegExp(r'<[^>]*>'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+          if (body.length > 160) body = body.substring(0, 160);
+        } catch (_) {}
+        throw HttpException('HTTP ${res.statusCode}${body.isEmpty ? '' : ' — $body'}');
       }
       final mime = res.headers.contentType?.mimeType ?? '';
       final name = nameHint.isNotEmpty
