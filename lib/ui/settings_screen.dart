@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../data/services.dart';
 import 'kit.dart';
+import 'logins_screen.dart';
 import 'browser_choice_screen.dart';
 import 'workers_screen.dart';
 import 'plugins_screen.dart';
@@ -115,6 +116,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             color: iosPurple,
             chevron: true,
             onTap: () => Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => const WorkersScreen())),
+          ),
+          Cell(
+            title: 'Saved logins',
+            subtitle: 'Browser sign-ins, passwords and cookies',
+            icon: CupertinoIcons.person_crop_circle_badge_checkmark,
+            color: iosGreen,
+            chevron: true,
+            onTap: () => Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => const LoginsScreen())),
           ),
           Cell(
             title: 'Proxy & Tor',

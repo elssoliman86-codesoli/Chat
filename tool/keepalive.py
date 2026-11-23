@@ -52,6 +52,15 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        // Cookies are written to disk lazily; do it now so a closed or killed app keeps the sign-ins.
+        try {
+            CookieManager.getInstance().flush()
+        } catch (e: Exception) {
+        }
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 4711) {
@@ -241,7 +250,53 @@ class MainActivity : FlutterActivity() {
                             }
                         }
                     }
+                    try {
+                        CookieManager.getInstance().setAcceptCookie(true)
+                        CookieManager.getInstance().flush()
+                    } catch (e: Exception) {
+                    }
                     result.success(mapOf("webViews" to list.size, "headerRemoved" to header, "hints" to hints))
+                } else if (call.method == "cookies") {
+                    val target = call.argument<String>("url") ?: ""
+                    result.success(CookieManager.getInstance().getCookie(target) ?: "")
+                } else if (call.method == "flush") {
+                    CookieManager.getInstance().flush()
+                    result.success(true)
+                } else if (call.method == "restore") {
+                    // The web view forgets cookies without an expiry date when the app is closed. Put the saved ones
+                    // back (only those it does not have now) with a 30 day life so a sign-in lasts.
+                    val items = call.argument<List<Map<String, String>>>("items") ?: ArrayList<Map<String, String>>()
+                    val cm = CookieManager.getInstance()
+                    cm.setAcceptCookie(true)
+                    var restored = 0
+                    for (item in items) {
+                        val target = item["url"] ?: ""
+                        if (target.isEmpty()) {
+                            continue
+                        }
+                        val have = HashSet<String>()
+                        for (pair in (cm.getCookie(target) ?: "").split(";")) {
+                            val name = pair.substringBefore("=").trim()
+                            if (name.isNotEmpty()) {
+                                have.add(name)
+                            }
+                        }
+                        for (pair in (item["cookie"] ?: "").split(";")) {
+                            if (!pair.contains("=")) {
+                                continue
+                            }
+                            val name = pair.substringBefore("=").trim()
+                            val value = pair.substringAfter("=").trim()
+                            if (name.isEmpty() || have.contains(name)) {
+                                continue
+                            }
+                            val secure = if (target.startsWith("https")) "; Secure" else ""
+                            cm.setCookie(target, name + "=" + value + "; Max-Age=2592000; Path=/" + secure)
+                            restored++
+                        }
+                    }
+                    cm.flush()
+                    result.success(restored)
                 } else {
                     result.notImplemented()
                 }

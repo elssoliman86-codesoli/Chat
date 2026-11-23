@@ -8,6 +8,7 @@ import 'data/services.dart';
 import 'net/proxy_service.dart';
 import 'tools/browser_service.dart';
 import 'tools/ftp_service.dart';
+import 'tools/saved_logins.dart';
 import 'ui/chat_screen.dart';
 import 'ui/startup_error.dart';
 import 'ui/theme.dart';
@@ -40,6 +41,15 @@ Future<void> _start() async {
     await ProxyService.instance.apply(store.settings).timeout(const Duration(seconds: 5));
   } catch (_) {}
   BrowserService.instance.restoreMode(phone: store.settings.browserPhoneMode);
+  // Saved sign-ins: put the cookies the web view dropped back before any page loads.
+  try {
+    await SavedLogins.instance.load();
+    await SavedLogins.instance.restoreCookies().timeout(const Duration(seconds: 3));
+  } catch (_) {}
+  BrowserService.instance.onNotice = (text) {
+    final ctx = navigatorKey.currentContext;
+    if (ctx != null) ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(SnackBar(content: Text(text)));
+  };
   if (store.settings.localBrowser.isNotEmpty) {
     unawaited(BrowserService.instance.useIdentity(
       package: store.settings.localBrowser,

@@ -8,6 +8,8 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'browser_cursor.dart';
 import 'browser_identity.dart';
 import 'devtools_log.dart';
+import 'password_script.dart';
+import 'saved_logins.dart';
 import 'web_native.dart';
 
 /// The browser always presents itself as desktop Chrome on Windows, so Facebook, WhatsApp Web and other sites
@@ -146,8 +148,74 @@ class BrowserService {
     }
   }
 
+  /// Shows a short message to the person (set by the app: a snackbar).
+  void Function(String text)? onNotice;
+
+  ({String host, String user, String pass})? _pending;
+  int _pendingGen = 0;
+  Timer? _sessionTimer;
+
+  /// The page reported a submitted sign-in form. It is saved only once the password box is gone (the sign-in went
+  /// through), so a wrong password is never kept.
+  void _onPassword(String raw) {
+    if (!SavedLogins.instance.enabled) return;
+    try {
+      final j = jsonDecode(raw) as Map<String, dynamic>;
+      final pass = (j['pass'] ?? '').toString();
+      final host = Uri.tryParse(url.value)?.host ?? '';
+      if (pass.isEmpty || host.isEmpty) return;
+      _pending = (host: host, user: (j['user'] ?? '').toString(), pass: pass);
+      unawaited(_confirmLogin(++_pendingGen));
+    } catch (_) {}
+  }
+
+  Future<void> _confirmLogin(int gen) async {
+    for (final wait in const <int>[3, 4, 5]) {
+      await Future<void>.delayed(Duration(seconds: wait));
+      final p = _pending;
+      if (gen != _pendingGen || p == null) return;
+      bool boxStillThere;
+      try {
+        boxStillThere = (await controller.runJavaScriptReturningResult(passwordVisibleScript)).toString() == 'true';
+      } catch (_) {
+        continue;
+      }
+      if (boxStillThere) continue;
+      _pending = null;
+      if (SavedLogins.instance.remember(p.host, p.user, p.pass)) {
+        onNotice?.call('Saved the login for ${SavedLogins.normalizeHost(p.host)}${p.user.isEmpty ? '' : ' (${p.user})'}');
+      }
+      unawaited(_keepSession(url.value));
+      return;
+    }
+    if (gen == _pendingGen) _pending = null;
+  }
+
+  /// Keeps this site's cookies in the app (and on disk) so the sign-in survives closing the app.
+  Future<void> _keepSession(String u) async {
+    final origin = SavedLogins.originOf(u);
+    if (origin.isEmpty) return;
+    try {
+      SavedLogins.instance.rememberCookies(origin, await WebNative.cookies(origin));
+      unawaited(WebNative.flushCookies());
+    } catch (_) {}
+  }
+
+  /// Fills the sign-in form with the login saved for this site.
+  Future<void> _autofill(String u) async {
+    if (!SavedLogins.instance.enabled) return;
+    final host = Uri.tryParse(u)?.host ?? '';
+    if (host.isEmpty) return;
+    final found = SavedLogins.instance.forHost(host);
+    if (found.isEmpty) return;
+    try {
+      await controller.runJavaScript(passwordFillScript(jsonEncode(<String, String>{'u': found.first.user, 'p': found.first.pass})));
+    } catch (_) {}
+  }
+
   Future<void> _injectScripts() async {
     try {
+      if (SavedLogins.instance.enabled) await controller.runJavaScript(passwordWatchScript);
       await controller.runJavaScript(devToolsScript);
       await controller.runJavaScript(omniCursorScript);
       if (_desktop) await controller.runJavaScript(desktopViewportScript);
@@ -176,10 +244,15 @@ class BrowserService {
 
   WebViewController _create() {
     _created = true;
+    // Sign-ins done without loading a new page (an app-style site) set their cookies later; keep them too.
+    _sessionTimer ??= Timer.periodic(const Duration(seconds: 30), (_) {
+      if (url.value.isNotEmpty) unawaited(_keepSession(url.value));
+    });
     final c = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setUserAgent(_desktop ? _desktopUa : phoneUserAgent)
       ..addJavaScriptChannel('OmniDev', onMessageReceived: (m) => dev.handle(m.message))
+      ..addJavaScriptChannel('OmniPass', onMessageReceived: (m) => _onPassword(m.message))
       ..setNavigationDelegate(NavigationDelegate(
         onProgress: (p) => progress.value = p,
         onPageStarted: (u) {
@@ -192,6 +265,8 @@ class BrowserService {
           url.value = u;
           _injectScripts();
           _prepareNative();
+          unawaited(_keepSession(u));
+          unawaited(_autofill(u));
           final l = _loaded;
           if (l != null && !l.isCompleted) l.complete();
           try {

@@ -18,4 +18,30 @@ class WebNative {
       return null;
     }
   }
+
+  /// The cookies the web view would send to [url] (every one it holds for that site, name=value; …).
+  static Future<String> cookies(String url) async {
+    try {
+      return (await _channel.invokeMethod<String>('cookies', <String, dynamic>{'url': url})) ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /// Puts back saved cookies the web view no longer has (it drops those without an expiry date when the app closes).
+  /// Each item is {url, cookie}. Returns how many were set.
+  static Future<int> restoreCookies(List<Map<String, String>> items) async {
+    try {
+      return (await _channel.invokeMethod<int>('restore', <String, dynamic>{'items': items})) ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Writes the web view's cookies to disk now, so a closed or killed app does not lose them.
+  static Future<void> flushCookies() async {
+    try {
+      await _channel.invokeMethod<void>('flush');
+    } catch (_) {}
+  }
 }

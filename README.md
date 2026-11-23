@@ -364,6 +364,12 @@ Google. The web view stops sending the `X-Requested-With` header, accepts third-
 hints that match its user agent. Google may still refuse sign-in in any embedded browser; that is Google's policy and
 cannot be guaranteed. The app has no download manager of its own.
 
+**Saved logins.** After you sign in to a site in the built-in browser, the app keeps the user name and password
+(only once the password box has gone, so a wrong password is never kept) and fills them in the next time the sign-in
+page opens; two-step sign-ins (user name, then password) are handled. Cookies of the sites you visit are also kept and
+put back after the app is closed, because the web view forgets cookies without an expiry date. Manage or switch it off
+in **Settings → Saved logins** or the browser's ⋯ menu. Everything stays in the app's private storage on the phone.
+
 ## AI execution experience: streaming, Thinking panel, workers
 
 **Real-time streaming.** Every provider streams (SSE for OpenAI-compatible APIs including NVIDIA, Anthropic and Gemini).

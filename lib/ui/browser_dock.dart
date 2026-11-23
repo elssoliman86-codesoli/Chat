@@ -6,6 +6,7 @@ import '../core/models.dart';
 import '../data/services.dart';
 import '../tools/browser_service.dart';
 import 'devtools_pane.dart';
+import 'logins_screen.dart';
 import 'theme.dart';
 import 'glass/glass.dart';
 
@@ -249,6 +250,8 @@ class _Card extends StatelessWidget {
                 onSelected: (v) {
                   if (v == 'devtools') {
                     b.devToolsOpen.value = !b.devToolsOpen.value;
+                  } else if (v == 'logins') {
+                    Navigator.push(context, CupertinoPageRoute<void>(builder: (_) => const LoginsScreen()));
                   } else if (v == 'mode') {
                     final phone = !b.phoneMode.value;
                     store.settings.browserPhoneMode = phone;
@@ -258,6 +261,7 @@ class _Card extends StatelessWidget {
                 },
                 itemBuilder: (_) => <PopupMenuEntry<String>>[
                   const PopupMenuItem<String>(value: 'devtools', child: Text('DevTools (network and console)')),
+                  const PopupMenuItem<String>(value: 'logins', child: Text('Saved logins')),
                   PopupMenuItem<String>(
                     value: 'mode',
                     child: Text(b.phoneMode.value ? 'Phone mode  ✓ — switch to computer mode' : 'Computer mode  ✓ — switch to phone mode'),
