@@ -432,14 +432,25 @@ class ChatEngine implements ToolHost {
           'commit or PR link. Ask first only when the request is ambiguous or destructive.');
     }
     if (st.pluginBrowser) {
-      b.writeln('\nBrowser: for tasks on websites use browser_open, then browser_read, browser_click and browser_type, and keep '
-          'going until the whole task is done without asking the person to do steps you can do. The browser works in the background and '
-          'does not cover the chat. When you need a login, a captcha, a payment, a permission or a decision, call ask_user: the browser '
-          'comes up so they can act, then continue. Never type passwords or card numbers yourself. '
-          'Ask for confirmation before irreversible actions (sending, buying, deleting, publishing). '
-          'The browser always shows the desktop version of sites (like a computer), so use the desktop layout of Facebook, WhatsApp Web and similar. '
-          'When something fails or does nothing, call browser_devtools to see the network requests (status codes, responses) and console errors '
-          'of the page — the person can see the same panel.');
+      b.writeln('\nBrowser: for tasks on websites use browser_open, then work the page the way a person holding the phone would: '
+          'look at the screen, act, look again, and keep going until the whole task is done without asking the person to do steps you can do. '
+          'The browser works in the background and does not cover the chat. '
+          'How to work: (1) Every browser action already returns the new screen (position on the page, a dialog on top if any, text and numbered '
+          'elements with their state), so do not call browser_read in between; read the result, pick the next element, act. '
+          '(2) Move fast: when a page is clear, do the next step straight away; fill several fields one after another without commentary. '
+          '(3) Elements marked {below} are off screen: use browser_scroll to reach them; when a dialog is open only its elements work. '
+          '(4) Typing never sends anything. After typing a message, comment, post or form you MUST send it: click the element marked [send/submit] '
+          'or type with submit=true, and then check the next screen shows it was sent (the box is empty, the message or confirmation appears). '
+          'Never end your turn or say it is done while text you typed is still unsent. '
+          '(5) After every click read the "Result:" line: if nothing changed, the click missed or needs another step: try another element or scroll, '
+          'do not repeat the same click. '
+          '(6) Do NOT use browser_devtools for normal work or to check that something worked; look at the screen instead. It is only for a failure with no '
+          'visible reason, or when the person asks. '
+          'When you need a login, a captcha, a payment, a permission or a decision, call ask_user: the browser '
+          'comes up so they can act, then continue (saved logins are filled in by the app on sign-in pages). Never type passwords or card numbers yourself. '
+          'Ask for confirmation before irreversible actions (sending money, buying, deleting, publishing publicly); sending a message the person asked '
+          'you to send is the task itself, so do it once they have given the text. '
+          'The browser shows the desktop version of sites unless the person switched to phone mode, so use the layout you see.');
     }
     if (st.pluginGmail && st.pluginBrowser) {
       b.writeln('\nGmail: work in https://mail.google.com with the browser tools. Search with the search box, open threads to '
@@ -1083,6 +1094,8 @@ class ChatEngine implements ToolHost {
 
   final Map<String, int> _seenCalls = <String, int>{};
   int _browserEpoch = 0;
+  int _devtoolsCalls = 0;
+  bool _unsentNudged = false;
 
   /// Runs a tool call, but stops the model from repeating the same call when nothing changed.
   Future<String> _runOnce(ToolCall call) async {
@@ -1102,6 +1115,13 @@ class ChatEngine implements ToolHost {
             'try a different approach, or finish and answer the person.';
       }
     }
+    if (name == 'browser_devtools') {
+      _devtoolsCalls++;
+      if (_devtoolsCalls > 2 && call.args['id'] == null) {
+        return 'DevTools were already read twice in this task. Do not open them again for ordinary steps: look at the screen the last browser '
+            'action returned, try a different element, or tell the person what failed.';
+      }
+    }
     if (name == 'browser_back') {
       final backs = (_seenCalls['#back'] ?? 0) + 1;
       _seenCalls['#back'] = backs;
@@ -1117,6 +1137,8 @@ class ChatEngine implements ToolHost {
     _running = c;
     _seenCalls.clear();
     _browserEpoch = 0;
+    _devtoolsCalls = 0;
+    _unsentNudged = false;
     BrowserService.instance.showWhileWorking = store.settings.browserVisible;
     BrowserService.instance.showCursor = store.settings.browserCursor;
     if (store.settings.keepAlive) await BackgroundWork.start();
@@ -1317,6 +1339,22 @@ class ChatEngine implements ToolHost {
         }
         if (abort.aborted || reply.error) break;
         if (reply.toolCalls.isEmpty) {
+          // The model typed into a page and is about to stop without sending it: tell it once, like a person would notice.
+          if (!_unsentNudged && BrowserService.instance.hasUnsentText) {
+            _unsentNudged = true;
+            final pending = BrowserService.instance.unsentText;
+            BrowserService.instance.unsentText = '';
+            c.messages.add(ChatMessage(
+                role: 'user',
+                auto: true,
+                text: 'System note: you typed "${pending.length > 80 ? '${pending.substring(0, 80)}…' : pending}" into the page but never sent it. '
+                    'If the task needs it sent or saved, click the send/submit button (or type with submit=true) now and confirm on the next screen '
+                    'that it went through. If sending was not wanted, just finish.'));
+            store.scheduleSave(c);
+            store.changed();
+            step++;
+            continue;
+          }
           // Long-task mode: a reply that stops short of done (an unfinished plan, or "want me to
           // continue?") is nudged on automatically instead of waiting for the person to type continue.
           // Only once in a row — if it still answers with no tool use after the nudge, it is really done.

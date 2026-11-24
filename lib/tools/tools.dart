@@ -628,7 +628,9 @@ final List<ToolDef> builtinTools = <ToolDef>[
     group: 'browser',
     spec: ToolSpec(
       name: 'browser_read',
-      description: 'Describe the page the browser shows now: text and numbered clickable elements.',
+      description: 'Look at the browser screen now, as a person would: where you are on the page, any dialog on top, the text, and the '
+          'numbered clickable elements with their state (value, checked, disabled, below the screen). Every browser action already returns this, '
+          'so call browser_read only to look again without acting (for example after waiting for something to load).',
       parameters: _obj(<String, dynamic>{}),
     ),
     run: (a, host) => BrowserService.instance.read(),
@@ -640,7 +642,9 @@ final List<ToolDef> builtinTools = <ToolDef>[
     spec: ToolSpec(
       name: 'browser_devtools',
       description: 'Read the browser\'s DevTools for the current page: every network request (method, status, time, address) and the console '
-          '(logs, warnings, errors). Use it to find why a page or an action failed, or to see which API a site calls. '
+          '(logs, warnings, errors). RARELY NEEDED: use it only when an action failed or did nothing AND the page itself shows no reason '
+          '(no error text, no dialog), or when the person asks about network or console. Never use it to read a page, to check that '
+          'something worked (read the page instead), or between normal steps. '
           'kind is network, console or all (default). filter keeps only requests whose address contains the text. '
           'id=N returns the full headers and response body of request #N.',
       parameters: _obj(<String, dynamic>{
@@ -672,7 +676,9 @@ final List<ToolDef> builtinTools = <ToolDef>[
     group: 'browser',
     spec: ToolSpec(
       name: 'browser_type',
-      description: 'Type text into the input element with this number. submit=true presses Enter afterwards. '
+      description: 'Type text into the input element with this number (it replaces what is there). submit=true presses Enter afterwards, which '
+          'sends a search or a simple form. A chat, comment or message box usually needs its Send button clicked instead: the result lists '
+          'the send button when there is one. Typing alone never sends anything. '
           'Never type passwords or payment details: use ask_user so the person does it.',
       parameters: _obj(<String, dynamic>{
         'id': <String, dynamic>{'type': 'integer', 'description': 'Element number'},
