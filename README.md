@@ -404,3 +404,20 @@ Chat menu (⋮) → **Full Windows scan**. One tap, no setup questions:
 4. **A report, then you decide.** The assistant reads all the evidence and writes a risk-ranked report (what is normal, what is suspicious, the likely RAM culprit with numbers) and ends with a numbered **Proposed cleanup**. It changes nothing until you approve specific numbers, and the app asks you to confirm every change that goes over ssh to a PC (delete, stop, disable, registry edit, move…), even when the script is sent encoded.
 
 Honest limits: it only reads, so it cannot *prove* a PC is clean (a rootkit may hide from remote checks), some logs need an administrator account on the PC, and ssh must log in without typing a password (a key, or a host saved in the app). Verified here only by unit tests with a simulated Termux; it has not been run against a real Windows PC.
+
+
+## Web chat team
+
+Settings → Plugins → **Web chat team** takes the links of up to two chat websites (for example ChatGPT and Claude) and,
+under *Images for text-only models*, a third link for reading images. Sign in to each once in the built-in browser; the
+app then uses them in the background through hidden web views, typing, pressing send, waiting for the answer to finish and
+reading it back, so a cheap or weak model can lean on stronger ones.
+
+Turn it on per chat from the ⋯ menu → **Assistant chats**. For design and build tasks the assistant asks the primary chat
+to analyse the request and write a detailed plan, hands the work to the secondary chat to build or review, then carries
+the result out itself (files, Termux commands) and goes back to the primary chat with the command output when something
+fails. Plain questions are answered directly.
+
+When a chat's thread gets long (or the site says it is full) the app asks it for a hand-over summary, opens a new thread
+and continues there with that summary, so the work does not start from zero. With *Web chat* chosen as the image reader,
+every image sent in a chat is uploaded to the image chat and its text is used as if the model had read it.

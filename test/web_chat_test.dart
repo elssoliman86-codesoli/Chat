@@ -54,9 +54,34 @@ void main() {
   test('the driver script is balanced and defines every call the bridge makes', () {
     expect('{'.allMatches(webChatDriverJs).length, '}'.allMatches(webChatDriverJs).length);
     expect('('.allMatches(webChatDriverJs).length, ')'.allMatches(webChatDriverJs).length);
-    for (final fn in ['hasInput', 'wall', 'put', 'inputLen', 'send', 'state', 'last', 'bodyLen', 'bodyTail', 'upStart', 'upPart', 'upFinish', 'previews']) {
+    for (final fn in ['hasInput', 'wall', 'put', 'inputLen', 'send', 'state', 'last', 'full', 'bodyLen', 'bodyTail', 'upStart', 'upPart', 'upFinish', 'previews']) {
       expect(webChatDriverJs, contains('$fn:'), reason: fn);
     }
+  });
+
+  group('hand-over to a new thread', () {
+    test('the new thread starts with the summary and then the real message', () {
+      final m = WebChatBridge.handoffMessage('  Goal: build X. Done: files a, b.  ', 'Now add login');
+      expect(m, contains('continuation of an earlier chat'));
+      expect(m, contains('Goal: build X. Done: files a, b.'));
+      expect(m.indexOf('Goal: build X'), lessThan(m.indexOf('Now add login')));
+    });
+
+    test('when the chat cannot summarise itself a digest of the last exchanges is used', () {
+      final ex = <(String, String)>[for (var i = 1; i <= 12; i++) ('question $i ${'x' * 2000}', 'answer $i')];
+      final d = WebChatBridge.digest(ex);
+      expect(d, contains('question 12'));
+      expect(d, contains('answer 12'));
+      expect(d, isNot(contains('question 1 ')));
+      expect(d.length, lessThan(8 * 2200));
+    });
+
+    test('the summary request asks for the details a new chat needs', () {
+      for (final w in ['decision', 'commands', 'next steps', 'summary only']) {
+        expect(WebChatBridge.summaryRequest.toLowerCase(), contains(w));
+      }
+      expect(WebChatBridge.threadLimitChars, greaterThan(20000));
+    });
   });
 
   group('turning it on', () {

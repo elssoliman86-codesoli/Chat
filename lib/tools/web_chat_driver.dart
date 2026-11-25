@@ -134,6 +134,26 @@ const String webChatDriverJs = r'''
  window.__oc = {
   v: 1,
   hasInput: function(){ return !!input(); },
+  // The site says the conversation is full (context limit, too long, start a new chat). Looks only at notices and the
+  // message box, never at the answers themselves, which may talk about such things.
+  full: function(){
+   var re = /(conversation|chat|thread)[^.]{0,40}(too long|is full|has reached|reached (the|its) (maximum|max|length|limit))|maximum (conversation )?length|context (window|length|limit)[^.]{0,30}(reached|exceeded|full)|(start|begin|open) a new (chat|conversation)|message (is )?too long|exceeds? the (maximum|max|limit)|المحادثة[^.]{0,30}(طويلة|وصلت|ممتلئة)|ابدأ محادثة جديدة|ابدء محادثة جديدة|حد المحادثة/i;
+   var notes = [].slice.call(document.querySelectorAll('[role=alert],[role=status],[aria-live],[class*="banner"],[class*="toast"],[class*="notice"],[class*="warning"],[class*="error"]')).filter(vis);
+   for (var i = 0; i < notes.length; i++) {
+    if (notes[i].closest('[data-message-author-role],.markdown,.prose,[data-is-streaming]')) continue;
+    if (re.test((notes[i].innerText || '').slice(0, 400))) return true;
+   }
+   var el = input();
+   if (!el) {
+    var dis = [].slice.call(document.querySelectorAll('textarea,[role=textbox]')).filter(function(e){
+     return vis(e) && (e.disabled || e.readOnly || e.getAttribute('aria-disabled') === 'true');
+    });
+    if (dis.length && !generating()) return true;
+   }
+   if (el && (el.disabled || el.getAttribute('aria-disabled') === 'true' || el.readOnly)) return true;
+   if (el && re.test(((el.getAttribute('placeholder') || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('data-placeholder') || '')).slice(0, 300))) return true;
+   return false;
+  },
   wall: loginWall,
   put: function(text){
    var el = input();

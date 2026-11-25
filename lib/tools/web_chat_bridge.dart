@@ -100,6 +100,10 @@ class _Slot {
   Future<void> queue = Future<void>.value();
   String sessionKey = '';
   String openUrl = '';
+
+  /// Characters sent and received in the current thread, and the last exchanges (for a hand-over if the chat cannot summarise).
+  int chars = 0;
+  final List<(String, String)> exchanges = <(String, String)>[];
 }
 
 /// Uses chat websites in the background, like a person would: a hidden web view per link, one message at a time.
@@ -215,6 +219,38 @@ class WebChatBridge {
     throw const ChatBridgeError('Could not find the message box on the chat page. Open the link in the built-in browser to check what it shows.');
   }
 
+  /// A thread this long (characters sent and received) is handed over to a new one before it can run out of space.
+  static const int threadLimitChars = 90000;
+
+  static const String summaryRequest = 'This conversation is getting too long for this chat. Write a complete hand-over summary that a fresh chat can use to '
+      'continue exactly where we are, with no loss: the goal, every decision made and why, the current state (files written or changed, commands run and '
+      'their results, versions), what failed and what fixed it, what is still open, and the exact next steps. Keep the concrete details (names, paths, '
+      'commands, error messages, code that matters). Reply with the summary only.';
+
+  static String _clip(String t, int n) => t.length <= n ? t : '${t.substring(0, n)}…';
+
+  /// A hand-over built from the last exchanges, for when the chat is too full to summarise itself.
+  static String digest(List<(String, String)> exchanges) {
+    final b = StringBuffer('Digest of the earlier exchanges (the chat was too full to write its own summary):\n');
+    for (final (q, a) in exchanges.length > 8 ? exchanges.sublist(exchanges.length - 8) : exchanges) {
+      b.writeln('\n- Asked: ${_clip(q.replaceAll(RegExp(r'\s+'), ' '), 700)}\n  Answered: ${_clip(a.replaceAll(RegExp(r'\s+'), ' '), 1200)}');
+    }
+    return b.toString().trim();
+  }
+
+  /// The first message of a new thread: the summary of the old one, then the real message.
+  static String handoffMessage(String summary, String message) =>
+      'This is a continuation of an earlier chat that ran out of space. Everything you need from it is in this summary:\n\n'
+      '${summary.trim()}\n\n---\nContinue from there. The new message:\n\n$message';
+
+  Future<bool> _full(WebViewController c) async {
+    try {
+      return (await _js(c, 'window.__oc.full()')) == 'true';
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<String> _askNow(_Slot s, String url, String message, String sessionKey, bool newThread, Attachment? image, Duration timeout,
       bool Function() cancelled) async {
     if (url.trim().isEmpty) throw const ChatBridgeError('No link is set for this chat.');
@@ -224,14 +260,54 @@ class WebChatBridge {
     if (fresh) {
       await _open(s, target);
       s.sessionKey = sessionKey;
+      s.chars = 0;
+      s.exchanges.clear();
     }
     final c = s.controller!;
     await _waitForInput(s, cancelled);
 
+    var text = message;
+    var rolled = false;
+    // A long thread, or a site that says it is full: continue in a new thread with a summary instead of starting from nothing.
+    if (image == null && !fresh && (s.chars + message.length > threadLimitChars || await _full(c))) {
+      text = await _rollover(s, target, message, cancelled);
+      rolled = true;
+    }
     if (image != null) await _attach(c, image, cancelled);
 
-    final baseRaw = await _js(c, 'window.__oc.state()');
-    final base = ChatState.parse(baseRaw);
+    String answer;
+    try {
+      answer = await _exchange(c, text, cancelled, timeout);
+    } on ChatBridgeError catch (e) {
+      if (image != null || rolled || e.needsPerson || !await _full(c)) rethrow;
+      text = await _rollover(s, target, message, cancelled);
+      rolled = true;
+      answer = await _exchange(c, text, cancelled, timeout);
+    }
+    s.chars += text.length + answer.length;
+    s.exchanges.add((message, answer));
+    if (s.exchanges.length > 12) s.exchanges.removeAt(0);
+    return rolled ? '[The chat\'s thread was full, so a new thread was started with a summary of the earlier one.]\n\n$answer' : answer;
+  }
+
+  /// Asks the full thread for a hand-over summary (or builds one from the last exchanges), opens a fresh thread and
+  /// returns the first message for it.
+  Future<String> _rollover(_Slot s, String target, String message, bool Function() cancelled) async {
+    var summary = '';
+    try {
+      summary = await _exchange(s.controller!, summaryRequest, cancelled, const Duration(minutes: 4));
+    } catch (_) {}
+    if (summary.trim().length < 80) summary = digest(s.exchanges);
+    await _open(s, target);
+    await _waitForInput(s, cancelled);
+    s.chars = 0;
+    s.exchanges.clear();
+    return handoffMessage(summary, message);
+  }
+
+  /// One message in, one finished answer out, in the thread that is open.
+  Future<String> _exchange(WebViewController c, String message, bool Function() cancelled, Duration timeout) async {
+    final base = ChatState.parse(await _js(c, 'window.__oc.state()'));
     final baseLen = int.tryParse(await _js(c, 'window.__oc.bodyLen()')) ?? 0;
 
     // Type it (checking it really landed in the box), then press send.
