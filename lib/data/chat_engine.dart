@@ -1110,15 +1110,13 @@ class ChatEngine implements ToolHost {
     for (final a in todo.take(12)) {
       String text = '';
       try {
-        if (mode == 'web') {
-          final link = store.settings.webChatImage.trim();
-          if (link.isNotEmpty && !_imageReadFailed.contains(a.id)) {
-            try {
-              text = await ImageReader.viaWebChat(a, link, cancelled: () => _abort?.aborted ?? false);
-            } on ChatBridgeError catch (e) {
-              _imageReadFailed.add(a.id);
-              note.writeln('${a.name}: the image chat could not read it (${e.message})\n');
-            }
+        final link = store.settings.webChatImage.trim();
+        if (link.isNotEmpty && !_imageReadFailed.contains(a.id)) {
+          try {
+            text = await ImageReader.viaWebChat(a, link, cancelled: () => _abort?.aborted ?? false);
+          } catch (e) {
+            _imageReadFailed.add(a.id);
+            note.writeln('${a.name}: the image chat could not read it (${e is ChatBridgeError ? e.message : e})\n');
           }
         }
         if (mode == 'lens') {
@@ -1301,7 +1299,7 @@ class ChatEngine implements ToolHost {
           }
           store.changed();
         }
-        final viaWeb = store.settings.imageReader == 'web' && store.settings.webChatImage.trim().isNotEmpty;
+        final viaWeb = store.settings.imageReader != 'off' && store.settings.webChatImage.trim().isNotEmpty;
         var imagesAsText = false;
         if (provider.noVision.contains(c.model) || viaWeb) {
           final imgEvent = trace.log(Stage.files, TraceKind.file, 'Read the attached images',

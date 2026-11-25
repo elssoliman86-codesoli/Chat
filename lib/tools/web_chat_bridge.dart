@@ -112,6 +112,30 @@ class WebChatBridge {
   WebChatBridge._();
   static final WebChatBridge instance = WebChatBridge._();
 
+  /// What the bridge did, newest last: shown by the test screen so a failure can be understood and copied.
+  final List<String> log = <String>[];
+  final ValueNotifier<int> logTick = ValueNotifier<int>(0);
+
+  void _note(ChatSlot slot, String text) {
+    log.add('${DateTime.now().toIso8601String().substring(11, 19)} ${slot.name}: $text');
+    if (log.length > 300) log.removeAt(0);
+    logTick.value++;
+  }
+
+  /// What the chat page of [slot] shows right now (address, title, message box, sign-in wall, first text).
+  Future<String> pageInfo(ChatSlot slot) async {
+    final c = _slots[slot]!.controller;
+    if (c == null) return 'The chat page has not been opened yet.';
+    try {
+      await _install(c);
+      final j = jsonDecode(await _js(c, 'window.__oc.info()')) as Map<String, dynamic>;
+      return 'Address: ${j['url']}\nTitle: ${j['title']}\nMessage box found: ${j['input']}\nSign-in or human check: ${(j['wall'] ?? '').toString().isEmpty ? 'no' : j['wall']}\n'
+          'Thread full notice: ${j['full']}\nFile inputs: ${j['files']}\nPage text: ${j['text']}';
+    } catch (e) {
+      return 'Could not read the page: $e';
+    }
+  }
+
   final Map<ChatSlot, _Slot> _slots = <ChatSlot, _Slot>{for (final s in ChatSlot.values) s: _Slot(s)};
 
   /// Rebuilds the hidden views when a slot starts being used.
@@ -172,7 +196,17 @@ class WebChatBridge {
     bool Function()? cancelled,
   }) {
     final s = _slots[slot]!;
-    final run = s.queue.then((_) => _askNow(s, url, message, sessionKey, newThread, image, timeout, cancelled ?? () => false));
+    final run = s.queue.then((_) async {
+      _note(slot, image != null ? 'Reading image ${image.name}' : 'Sending ${message.length} characters');
+      try {
+        final r = await _askNow(s, url, message, sessionKey, newThread, image, timeout, cancelled ?? () => false);
+        _note(slot, 'Got an answer of ${r.length} characters');
+        return r;
+      } catch (e) {
+        _note(slot, 'Failed: $e');
+        rethrow;
+      }
+    });
     s.queue = run.then((_) {}, onError: (_) {});
     return run;
   }
@@ -182,6 +216,7 @@ class WebChatBridge {
     // A frame for the hidden view to be attached before the page starts.
     await Future<void>.delayed(const Duration(milliseconds: 350));
     s.loaded = Completer<void>();
+    _note(s.slot, 'Opening $url');
     await c.loadRequest(Uri.parse(url));
     try {
       await s.loaded!.future.timeout(const Duration(seconds: 45));
@@ -189,6 +224,7 @@ class WebChatBridge {
       throw const ChatBridgeError('The chat page took too long to load.');
     }
     s.openUrl = url;
+    _note(s.slot, 'Page loaded');
   }
 
   Future<void> _waitForInput(_Slot s, bool Function() cancelled) async {
@@ -199,7 +235,10 @@ class WebChatBridge {
       String wall = '';
       try {
         await _install(c);
-        if ((await _js(c, 'window.__oc.hasInput()')) == 'true') return;
+        if ((await _js(c, 'window.__oc.hasInput()')) == 'true') {
+          _note(s.slot, 'Message box found');
+          return;
+        }
         wall = await _js(c, 'window.__oc.wall()');
       } catch (_) {
         // The page is still navigating; look again.
@@ -273,16 +312,16 @@ class WebChatBridge {
       text = await _rollover(s, target, message, cancelled);
       rolled = true;
     }
-    if (image != null) await _attach(c, image, cancelled);
+    if (image != null) await _attach(s, image, cancelled);
 
     String answer;
     try {
-      answer = await _exchange(c, text, cancelled, timeout);
+      answer = await _exchange(s, text, cancelled, timeout);
     } on ChatBridgeError catch (e) {
       if (image != null || rolled || e.needsPerson || !await _full(c)) rethrow;
       text = await _rollover(s, target, message, cancelled);
       rolled = true;
-      answer = await _exchange(c, text, cancelled, timeout);
+      answer = await _exchange(s, text, cancelled, timeout);
     }
     s.chars += text.length + answer.length;
     s.exchanges.add((message, answer));
@@ -295,7 +334,7 @@ class WebChatBridge {
   Future<String> _rollover(_Slot s, String target, String message, bool Function() cancelled) async {
     var summary = '';
     try {
-      summary = await _exchange(s.controller!, summaryRequest, cancelled, const Duration(minutes: 4));
+      summary = await _exchange(s, summaryRequest, cancelled, const Duration(minutes: 4));
     } catch (_) {}
     if (summary.trim().length < 80) summary = digest(s.exchanges);
     await _open(s, target);
@@ -306,7 +345,8 @@ class WebChatBridge {
   }
 
   /// One message in, one finished answer out, in the thread that is open.
-  Future<String> _exchange(WebViewController c, String message, bool Function() cancelled, Duration timeout) async {
+  Future<String> _exchange(_Slot s, String message, bool Function() cancelled, Duration timeout) async {
+    final c = s.controller!;
     final base = ChatState.parse(await _js(c, 'window.__oc.state()'));
     final baseLen = int.tryParse(await _js(c, 'window.__oc.bodyLen()')) ?? 0;
 
@@ -343,6 +383,7 @@ class WebChatBridge {
       if (sent) break;
     }
     if (!sent) throw const ChatBridgeError('Could not press send on the chat page.');
+    _note(s.slot, 'Sent; waiting for the answer');
 
     final watch = AnswerWatch(base: base);
     final sentAt = Stopwatch()..start();
@@ -386,8 +427,10 @@ class WebChatBridge {
     return (bytes, mime, name);
   }
 
-  Future<void> _attach(WebViewController c, Attachment image, bool Function() cancelled) async {
+  Future<void> _attach(_Slot s, Attachment image, bool Function() cancelled) async {
+    final c = s.controller!;
     final (bytes, mime, name) = await imageBytes(image);
+    _note(s.slot, 'Uploading $name (${bytes.length} bytes)');
     final b64 = base64Encode(bytes);
     await _js(c, 'window.__oc.upStart(${jsonEncode(name)}, ${jsonEncode(mime)})');
     const chunk = 180000;
@@ -396,6 +439,7 @@ class WebChatBridge {
       await _js(c, 'window.__oc.upPart("${b64.substring(i, end)}")');
     }
     final how = await _js(c, 'window.__oc.upFinish()');
+    _note(s.slot, 'Attach method: $how');
     if (how == 'none' || how == 'no-upload') {
       throw const ChatBridgeError('This chat page has no place to attach an image.');
     }
@@ -405,7 +449,10 @@ class WebChatBridge {
       if (cancelled()) throw const ChatBridgeError('Stopped.');
       await Future<void>.delayed(const Duration(milliseconds: 600));
       final n = int.tryParse(await _js(c, 'window.__oc.previews(${jsonEncode(name)})')) ?? 0;
-      if (n > 0 && clock.elapsed > const Duration(seconds: 1)) break;
+      if (n > 0 && clock.elapsed > const Duration(seconds: 1)) {
+        _note(s.slot, 'The picture shows in the chat box');
+        break;
+      }
     }
     await Future<void>.delayed(const Duration(milliseconds: 600));
   }
@@ -420,8 +467,8 @@ class WebChatBridge {
       ask(ChatSlot.image, url, imagePrompt, image: image, cancelled: cancelled, timeout: const Duration(minutes: 3));
 }
 
-/// Mounts the hidden web views of the chat links. They are phone-sized and nearly transparent (like the browser's
-/// hidden mode) so the sites lay out normally and keep running, without covering the chat or taking touches.
+/// Mounts the hidden web views of the chat links. They are phone-sized so the sites lay out normally and keep running,
+/// but clipped to one pixel and nearly transparent, so they never show over the chat or take touches.
 /// Put this inside the same Stack as the chat, alongside DockLayer.
 class WebChatMount extends StatelessWidget {
   const WebChatMount({super.key});
@@ -436,13 +483,24 @@ class WebChatMount extends StatelessWidget {
         for (final slot in ChatSlot.values) {
           final c = b.controllerOf(slot);
           if (c == null) continue;
+          // The page is laid out phone-sized (390x780) but only one pixel of it is ever visible: near-zero opacity alone
+          // still let a faint ghost of the chat page show through the app.
           children.add(Positioned(
             left: 0,
             top: 0,
-            width: 390,
-            height: 780,
-            child: ExcludeSemantics(
-              child: IgnorePointer(child: Opacity(opacity: 0.01, child: WebViewWidget(key: b.keyOf(slot), controller: c))),
+            width: 1,
+            height: 1,
+            child: ClipRect(
+              child: OverflowBox(
+                alignment: Alignment.topLeft,
+                minWidth: 390,
+                maxWidth: 390,
+                minHeight: 780,
+                maxHeight: 780,
+                child: ExcludeSemantics(
+                  child: IgnorePointer(child: Opacity(opacity: 0.01, child: WebViewWidget(key: b.keyOf(slot), controller: c))),
+                ),
+              ),
             ),
           ));
         }

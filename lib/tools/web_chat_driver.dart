@@ -134,6 +134,12 @@ const String webChatDriverJs = r'''
  window.__oc = {
   v: 1,
   hasInput: function(){ return !!input(); },
+  // What the page shows, for the test screen: address, title, whether a message box / sign-in wall is there.
+  info: function(){
+   var t = (document.body ? document.body.innerText : '').replace(/\s+/g, ' ').slice(0, 300);
+   return JSON.stringify({ url: location.href, title: document.title, input: !!input(), wall: loginWall(), full: this.full(),
+    gen: generating(), files: document.querySelectorAll('input[type=file]').length, text: t });
+  },
   // The site says the conversation is full (context limit, too long, start a new chat). Looks only at notices and the
   // message box, never at the answers themselves, which may talk about such things.
   full: function(){

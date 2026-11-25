@@ -10,12 +10,14 @@ import '../core/models.dart';
 import '../data/services.dart';
 import '../tools/ftp_service.dart';
 import '../tools/termux_service.dart';
+import '../tools/web_chat_bridge.dart';
 import 'model_list.dart';
 import '../plugins/installer.dart';
 import 'browser_dock.dart';
 import 'guides_screen.dart';
 import 'kit.dart';
 import 'theme.dart';
+import 'web_chat_test.dart';
 import 'glass/glass.dart';
 
 class PluginsScreen extends StatefulWidget {
@@ -499,6 +501,14 @@ class _PluginsScreenState extends State<PluginsScreen> {
               color: iosBlue,
               onTap: () => showBrowser(context, address: _chatLink(s.webChatImage)),
             ),
+          if (s.webChatImage.trim().isNotEmpty)
+            Cell(
+              title: 'Test the image chat',
+              subtitle: 'Sends it a picture with a number on it and checks that it reads it',
+              icon: CupertinoIcons.checkmark_seal,
+              color: iosGreen,
+              onTap: () => showWebChatTest(context, ChatSlot.image, _chatLink(s.webChatImage)),
+            ),
           Cell(
             title: 'Helper provider',
             subtitle: store.providerById(s.helperProviderId)?.name ?? 'Choose',
@@ -535,6 +545,14 @@ class _PluginsScreenState extends State<PluginsScreen> {
               color: iosBlue,
               onTap: () => showBrowser(context, address: _chatLink(s.webChatPrimary)),
             ),
+          if (s.webChatPrimary.trim().isNotEmpty)
+            Cell(
+              title: 'Test the primary chat',
+              subtitle: 'Sends it a message and checks that the answer comes back',
+              icon: CupertinoIcons.checkmark_seal,
+              color: iosGreen,
+              onTap: () => showWebChatTest(context, ChatSlot.primary, _chatLink(s.webChatPrimary)),
+            ),
           Cell(
             title: 'Secondary chat link',
             subtitle: s.webChatSecondary.trim().isEmpty ? 'Optional, for example https://claude.ai/new' : s.webChatSecondary,
@@ -547,6 +565,14 @@ class _PluginsScreenState extends State<PluginsScreen> {
               icon: CupertinoIcons.arrow_up_right_square,
               color: iosBlue,
               onTap: () => showBrowser(context, address: _chatLink(s.webChatSecondary)),
+            ),
+          if (s.webChatSecondary.trim().isNotEmpty)
+            Cell(
+              title: 'Test the secondary chat',
+              subtitle: 'Sends it a message and checks that the answer comes back',
+              icon: CupertinoIcons.checkmark_seal,
+              color: iosGreen,
+              onTap: () => showWebChatTest(context, ChatSlot.secondary, _chatLink(s.webChatSecondary)),
             ),
         ],
       ),

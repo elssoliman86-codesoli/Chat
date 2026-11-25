@@ -54,7 +54,7 @@ void main() {
   test('the driver script is balanced and defines every call the bridge makes', () {
     expect('{'.allMatches(webChatDriverJs).length, '}'.allMatches(webChatDriverJs).length);
     expect('('.allMatches(webChatDriverJs).length, ')'.allMatches(webChatDriverJs).length);
-    for (final fn in ['hasInput', 'wall', 'put', 'inputLen', 'send', 'state', 'last', 'full', 'bodyLen', 'bodyTail', 'upStart', 'upPart', 'upFinish', 'previews']) {
+    for (final fn in ['hasInput', 'info', 'wall', 'put', 'inputLen', 'send', 'state', 'last', 'full', 'bodyLen', 'bodyTail', 'upStart', 'upPart', 'upFinish', 'previews']) {
       expect(webChatDriverJs, contains('$fn:'), reason: fn);
     }
   });
