@@ -4,6 +4,7 @@ import '../core/models.dart';
 import '../llm/llm.dart';
 import 'browser_service.dart';
 import 'tools.dart';
+import 'web_chat_bridge.dart';
 
 /// Turns an image into text for models that cannot see images.
 class ImageReader {
@@ -34,6 +35,10 @@ class ImageReader {
     }
     return out.toString().trim();
   }
+
+  /// A chat website that can see images (ChatGPT, Gemini, Claude…), used in the background through the built-in browser.
+  static Future<String> viaWebChat(Attachment image, String url, {bool Function()? cancelled}) =>
+      WebChatBridge.instance.readImage(url, image, cancelled: cancelled);
 
   /// Google Lens in the built-in browser. Experimental: it works only while Google's page looks as expected.
   static Future<String> viaLens(Attachment image, ToolHost host) async {

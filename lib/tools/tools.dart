@@ -44,6 +44,10 @@ abstract class ToolHost {
   /// Sends [question] to the configured second-opinion model and returns its full plain-text answer.
   Future<String> askAdvisor(String question);
 
+  /// Sends [message] to one of the chat websites set in Settings > Plugins > Web chat team ('primary' or 'secondary'),
+  /// through the built-in browser in the background, and returns the answer once the site has finished writing it.
+  Future<String> askWebChat(String chat, String message, {bool newThread = false});
+
   /// Applies a set_plan call to the active conversation and returns a message describing what
   /// actually happened (a new plan recorded, or an existing unfinished one kept with just its
   /// progress moved forward) — see ChatEngine.setPlan for the enforced continuity rule.
@@ -573,6 +577,31 @@ final List<ToolDef> builtinTools = <ToolDef>[
     run: (a, host) async {
       if (!host.advisorConfigured) return 'No assistant model is configured. Tell the person to set one in Settings > Plugins > Assistant model.';
       return host.askAdvisor(_s(a, 'question'));
+    },
+  ),
+  ToolDef(
+    id: 'ask_web_chat',
+    title: 'Ask a helper chat',
+    group: 'webchat',
+    spec: ToolSpec(
+      name: 'ask_web_chat',
+      description: 'Send a message to one of the person\'s helper chat websites (they set the links up and signed in) and get its answer. '
+          'It runs in the background like a person typing into the site, so it takes from several seconds to a few minutes: send '
+          'complete, self-contained messages (the chat cannot see your files, tools or this conversation, so include what it needs: '
+          'the request, the environment, the relevant file contents, the exact command and its full output). '
+          'chat="primary" is the analyst and planner; chat="secondary" is the builder and reviewer. Messages to the same chat '
+          'continue in the same thread, so it remembers what you already told it; set new_thread=true only to start a fresh topic.',
+      parameters: _obj(<String, dynamic>{
+        'chat': <String, dynamic>{'type': 'string', 'enum': <String>['primary', 'secondary'], 'description': 'Which helper chat'},
+        'message': _str('The full message to send'),
+        'new_thread': <String, dynamic>{'type': 'boolean', 'description': 'Start a fresh chat thread first'},
+      }, <String>['chat', 'message']),
+    ),
+    run: (a, host) async {
+      final chat = _s(a, 'chat') == 'secondary' ? 'secondary' : 'primary';
+      final message = _s(a, 'message');
+      if (message.trim().isEmpty) return 'The message is empty.';
+      return host.askWebChat(chat, message, newThread: a['new_thread'] == true);
     },
   ),
   ToolDef(

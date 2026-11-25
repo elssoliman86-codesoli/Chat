@@ -134,6 +134,12 @@ class BrowserService {
   /// first page start, so it is tried a few times).
   bool _nativeBusy = false;
 
+  /// The user agent the browser uses now (computer or phone mode); background chat views use the same one.
+  String get modeUserAgent => _desktop ? _desktopUa : phoneUserAgent;
+
+  /// Applies the web view settings (no X-Requested-With, client hints, cookies) to every web view of the app.
+  Future<void> prepareNative() => _prepareNative();
+
   Future<void> _prepareNative() async {
     if (_nativeBusy) return;
     _nativeBusy = true;

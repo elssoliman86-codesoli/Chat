@@ -15,6 +15,7 @@ import '../llm/resilient.dart';
 import '../llm/stream_metrics.dart';
 import '../plugins/plugin.dart';
 import '../tools/advisor_service.dart';
+import '../tools/web_chat_bridge.dart';
 import '../tools/browser_service.dart';
 import '../tools/image_reader.dart';
 import '../tools/termux_service.dart';
@@ -230,6 +231,33 @@ class ChatEngine implements ToolHost {
   }
 
   @override
+  Future<String> askWebChat(String chat, String message, {bool newThread = false}) async {
+    final c = _running;
+    final second = chat == 'secondary';
+    final url = second ? store.settings.webChatSecondary : store.settings.webChatPrimary;
+    if (url.trim().isEmpty) {
+      return second
+          ? 'No link is set for the secondary chat. Use the primary chat, or tell the person to set the link in Settings > Plugins > Web chat team.'
+          : 'No link is set for the primary chat. Tell the person to set it in Settings > Plugins > Web chat team.';
+    }
+    try {
+      return await WebChatBridge.instance.ask(
+        second ? ChatSlot.secondary : ChatSlot.primary,
+        url,
+        message,
+        sessionKey: c?.id ?? '',
+        newThread: newThread,
+        cancelled: () => _abort?.aborted ?? false,
+      );
+    } on ChatBridgeError catch (e) {
+      return 'The ${second ? 'secondary' : 'primary'} chat could not be used: ${e.message}'
+          '${e.needsPerson ? '\nCall ask_user so the person can fix it in the browser, then try again.' : ''}';
+    } catch (e) {
+      return 'The ${second ? 'secondary' : 'primary'} chat could not be used: $e';
+    }
+  }
+
+  @override
   String setPlan(List<String> steps, int current) {
     final c = _running;
     if (c == null) return 'No active conversation.';
@@ -410,6 +438,30 @@ class ChatEngine implements ToolHost {
           'the real specific context (the exact command, its full real output, the actual error) so it can actually help. Read what it says '
           'back and act on it the same way you would act on your own plan: if it lays out steps, carry them out for real, one at a time, '
           'instead of just repeating its words to the person as if that were the work done.');
+    }
+    if (ToolRegistry.webChatOn(c, store.settings)) {
+      final second = store.settings.webChatSecondary.trim().isNotEmpty;
+      b.writeln('\nHelper chats (ON for this conversation): the person connected chat websites that work as your team, through ask_web_chat '
+          '(chat="primary"${second ? ' or "secondary"' : ''}). They run in the background and answer like a person typing; each call takes from '
+          'several seconds to a few minutes, and the chat sees only what you write in the message, so make every message complete. '
+          'First decide what kind of request this is. A question, an explanation, an opinion, a small change or small talk: answer it yourself '
+          'and do not consult anyone. Designing, building, fixing or changing something real (a project, an app, a script, a system or server '
+          'change, a hard bug): work as a team, like this. '
+          '(1) Send the primary chat the person\'s request with every fact it needs (the environment such as Termux or a Windows PC over SSH, the '
+          'files you read, what already exists) and ask it to analyse the request and write a detailed implementation prompt: which files to create or '
+          'change, the exact commands, the order, the risks, and how to check it worked. '
+          '(2) Read its answer and keep only the part that matters for the request. '
+          '${second ? 'If the plan means producing real content (code, a design, a document), send the relevant part to the secondary chat and ask it to '
+              'build it, or to review what already exists; for a big piece send the result back to the primary chat to review, and repeat until they agree (three rounds at most). ' : ''}'
+          '(3) You do the work yourself: write the files with the project or Termux tools, or run the commands directly; never tell the person to run '
+          'them. After every command read its stdout and stderr. If it failed or surprised you, send the primary chat the command with its full output and '
+          'ask what exactly is wrong and which file or command has to be written how; apply that and run again, and keep going until it works (six rounds '
+          'at most, then tell the person what is blocking). '
+          '(4) Before anything runs on Termux, over SSH or over FTP, check it yourself: the right machine, the right path, no side effect nobody asked for; '
+          'for a risky command ask the primary chat to review it first. The usual confirmations for changes on a PC stay. '
+          '(5) If a chat answer is cut off, asks you a question or refuses, rephrase, split the work or continue in the same thread. If a call says a sign-in '
+          'or human check is needed, use ask_user so the person can do it once in the browser, then retry. '
+          'Never paste the chats\' answers at the person: say in your own words what was decided, what you did and what the result is, in their language.');
     }
     final active = _activeSkills(c);
     for (final sk in active) {
@@ -1058,6 +1110,17 @@ class ChatEngine implements ToolHost {
     for (final a in todo.take(12)) {
       String text = '';
       try {
+        if (mode == 'web') {
+          final link = store.settings.webChatImage.trim();
+          if (link.isNotEmpty && !_imageReadFailed.contains(a.id)) {
+            try {
+              text = await ImageReader.viaWebChat(a, link, cancelled: () => _abort?.aborted ?? false);
+            } on ChatBridgeError catch (e) {
+              _imageReadFailed.add(a.id);
+              note.writeln('${a.name}: the image chat could not read it (${e.message})\n');
+            }
+          }
+        }
         if (mode == 'lens') {
           text = await ImageReader.viaLens(a, this);
         }
@@ -1092,6 +1155,8 @@ class ChatEngine implements ToolHost {
         t.contains('modalit');
   }
 
+  /// Images the image chat already failed on in this run, so a failing site is not retried on every message.
+  final Set<String> _imageReadFailed = <String>{};
   final Map<String, int> _seenCalls = <String, int>{};
   int _browserEpoch = 0;
   int _devtoolsCalls = 0;
@@ -1236,13 +1301,21 @@ class ChatEngine implements ToolHost {
           }
           store.changed();
         }
-        if (provider.noVision.contains(c.model)) {
-          final imgEvent = trace.log(Stage.files, TraceKind.file, 'Read the attached images', detail: 'This model cannot see images, so they are read by another tool', running: true);
+        final viaWeb = store.settings.imageReader == 'web' && store.settings.webChatImage.trim().isNotEmpty;
+        var imagesAsText = false;
+        if (provider.noVision.contains(c.model) || viaWeb) {
+          final imgEvent = trace.log(Stage.files, TraceKind.file, 'Read the attached images',
+              detail: viaWeb ? 'Reading them with your image chat in the background' : 'This model cannot see images, so they are read by another tool',
+              running: true);
           try {
             await _readImages(c, reply, provider);
             trace.finishEvent(imgEvent);
           } catch (e) {
             trace.finishEvent(imgEvent, failed: true, detail: e.toString());
+          }
+          if (viaWeb) {
+            final all = c.messages.where((m) => m.role == 'user').expand((m) => m.attachments).where((a) => a.kind == AttachmentKind.image).toList();
+            imagesAsText = all.isNotEmpty && all.every((a) => a.text.trim().isNotEmpty);
           }
         }
         final request = LlmRequest(
@@ -1254,7 +1327,7 @@ class ChatEngine implements ToolHost {
           tools: buildTools(c, provider),
           temperature: store.settings.temperature,
           pdfNative: provider.pdfNative,
-          vision: !provider.noVision.contains(c.model),
+          vision: !provider.noVision.contains(c.model) && !imagesAsText,
           reasoningEffort: provider.reasoningEffort[c.model] ?? '',
         );
         final abort = AbortHandle();

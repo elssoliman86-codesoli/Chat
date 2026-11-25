@@ -76,6 +76,7 @@ Stage stageForTool(String name, Map<String, dynamic> args) {
     case 'termux_list_files':
       return Stage.files;
     case 'ask_advisor':
+    case 'ask_web_chat':
     case 'run_parallel':
     case 'spawn_agent':
       return Stage.delegating;
@@ -455,7 +456,7 @@ class ExecutionTrace extends ChangeNotifier {
     final files = filesOf(call.name, call.args);
     final kind = call.name == 'set_plan'
         ? TraceKind.plan
-        : (command.isNotEmpty ? TraceKind.command : (files.isNotEmpty ? TraceKind.file : (call.name == 'ask_advisor' || call.name == 'run_parallel' ? TraceKind.delegate : TraceKind.tool)));
+        : (command.isNotEmpty ? TraceKind.command : (files.isNotEmpty ? TraceKind.file : (call.name == 'ask_advisor' || call.name == 'ask_web_chat' || call.name == 'run_parallel' ? TraceKind.delegate : TraceKind.tool)));
     if (call.name == 'ask_user') waiting = true;
     return log(
       stageForTool(call.name, call.args),

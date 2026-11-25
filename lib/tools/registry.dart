@@ -8,6 +8,9 @@ import '../llm/llm.dart';
 class ToolRegistry {
   ToolRegistry._();
 
+  /// True when this chat has the helper chat websites turned on and at least the first link is set.
+  static bool webChatOn(Conversation c, AppSettings st) => c.assistChats && st.webChatPrimary.trim().isNotEmpty;
+
   /// Builds the list of [ToolSpec] to send to the LLM for [c].
   static List<ToolSpec> specsFor(Conversation c, AppStore store, ProviderConfig provider) {
     if (!provider.supportsTools) return const <ToolSpec>[];
@@ -25,6 +28,7 @@ class ToolRegistry {
         'project_push' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
         'termux' => st.termuxTools,
         'advisor' => st.assistantProviderId.isNotEmpty && st.assistantModel.isNotEmpty,
+        'webchat' => false, // decided per conversation below
         'python' => true, // Python is always available (sandboxed)
         _ => true, // core tools always available
       };
@@ -43,6 +47,9 @@ class ToolRegistry {
       availableIds.remove('forget_lesson');
     }
 
+    // 2c. Helper chat websites - only in a chat where the person turned them on, and with a link set
+    if (webChatOn(c, st)) availableIds.add('ask_web_chat');
+
     // 3. Skill tools - add tools required by active skills (but only if their group is enabled)
     final activeSkills = store.skills.where((k) => k.enabled && (k.alwaysOn || c.activeSkillIds.contains(k.id)));
     for (final k in activeSkills) {
@@ -57,6 +64,7 @@ class ToolRegistry {
             'project_push' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
             'termux' => st.termuxTools,
             'advisor' => st.assistantProviderId.isNotEmpty && st.assistantModel.isNotEmpty,
+            'webchat' => false,
             'python' => true,
             _ => true,
           };
@@ -120,9 +128,11 @@ class ToolRegistry {
         'project_push' => st.pluginGithub && st.githubWrite && st.githubToken.isNotEmpty,
         'termux' => st.termuxTools,
         'advisor' => st.assistantProviderId.isNotEmpty && st.assistantModel.isNotEmpty,
+        'webchat' => false, // decided per conversation below
         'python' => true,
         _ => true,
       };
+      if (toolId == 'ask_web_chat') return webChatOn(c, st);
       if (!on) return false;
       if ((toolId == 'remember' || toolId == 'forget') && !(st.memoryEnabled && !c.temporary)) return false;
       if ((toolId == 'learn' || toolId == 'forget_lesson') && !(st.selfImprove && !c.temporary)) return false;

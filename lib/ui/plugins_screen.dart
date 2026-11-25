@@ -466,6 +466,8 @@ class _PluginsScreenState extends State<PluginsScreen> {
         header: 'Images for text-only models',
         footer: 'Most models cannot see photos. With this on, the text and a description are read from the image first and '
             'shown in the chat, then sent to the model as text. "Helper model" uses a model that can see, such as Gemini. '
+            '"Web chat" sends each image, in the background, to a chat website that can see images (ChatGPT, Gemini, Claude…) using the '
+            'link below, and uses the text it returns; sign in to that site once in the built-in browser. '
             '"Google Lens" opens Lens in the browser panel and reads its text (experimental, it falls back to the helper).',
         children: [
           Padding(
@@ -476,13 +478,27 @@ class _PluginsScreenState extends State<PluginsScreen> {
                 groupValue: s.imageReader,
                 children: const {
                   'off': Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('Off')),
-                  'helper': Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('Helper model')),
-                  'lens': Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('Google Lens')),
+                  'helper': Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('Helper')),
+                  'web': Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('Web chat')),
+                  'lens': Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('Lens')),
                 },
                 onValueChanged: (v) => set(() => s.imageReader = v ?? 'helper'),
               ),
             ),
           ),
+          Cell(
+            title: 'Image chat link',
+            subtitle: s.webChatImage.trim().isEmpty ? 'Link of a chat that can read images, for example https://gemini.google.com/app' : s.webChatImage,
+            chevron: true,
+            onTap: () => _editFtpField(context, 'Image chat link', s.webChatImage, (v) => s.webChatImage = v.trim()),
+          ),
+          if (s.webChatImage.trim().isNotEmpty)
+            Cell(
+              title: 'Open it to sign in',
+              icon: CupertinoIcons.arrow_up_right_square,
+              color: iosBlue,
+              onTap: () => showBrowser(context, address: _chatLink(s.webChatImage)),
+            ),
           Cell(
             title: 'Helper provider',
             subtitle: store.providerById(s.helperProviderId)?.name ?? 'Choose',
@@ -495,6 +511,43 @@ class _PluginsScreenState extends State<PluginsScreen> {
             chevron: true,
             onTap: _chooseHelperModel,
           ),
+        ],
+      ),
+      Group(
+        header: 'Web chat team',
+        footer: 'Two chat websites the assistant works with in the background, through the built-in browser, so a weak or cheap model can '
+            'use stronger ones: the primary chat analyses the request and writes a detailed plan, the secondary chat builds or reviews, '
+            'and the assistant carries the result out itself (writing files, running commands in Termux, reading the output and going '
+            'back to the primary chat when something fails). Paste the link of each chat, tap "Open" and sign in once in the browser '
+            '(the sign-in is kept). Then turn it on in a chat from the ⋯ menu → Assistant chats. Plain questions are still answered '
+            'directly, without the chats.',
+        children: [
+          Cell(
+            title: 'Primary chat link',
+            subtitle: s.webChatPrimary.trim().isEmpty ? 'For example https://chatgpt.com' : s.webChatPrimary,
+            chevron: true,
+            onTap: () => _editFtpField(context, 'Primary chat link', s.webChatPrimary, (v) => s.webChatPrimary = v.trim()),
+          ),
+          if (s.webChatPrimary.trim().isNotEmpty)
+            Cell(
+              title: 'Open the primary chat to sign in',
+              icon: CupertinoIcons.arrow_up_right_square,
+              color: iosBlue,
+              onTap: () => showBrowser(context, address: _chatLink(s.webChatPrimary)),
+            ),
+          Cell(
+            title: 'Secondary chat link',
+            subtitle: s.webChatSecondary.trim().isEmpty ? 'Optional, for example https://claude.ai/new' : s.webChatSecondary,
+            chevron: true,
+            onTap: () => _editFtpField(context, 'Secondary chat link', s.webChatSecondary, (v) => s.webChatSecondary = v.trim()),
+          ),
+          if (s.webChatSecondary.trim().isNotEmpty)
+            Cell(
+              title: 'Open the secondary chat to sign in',
+              icon: CupertinoIcons.arrow_up_right_square,
+              color: iosBlue,
+              onTap: () => showBrowser(context, address: _chatLink(s.webChatSecondary)),
+            ),
         ],
       ),
       Group(
@@ -897,6 +950,11 @@ class _PluginsScreenState extends State<PluginsScreen> {
       setState(() => store.customSites.remove(site));
       await store.saveCustomSites();
     }
+  }
+
+  static String _chatLink(String v) {
+    final t = v.trim();
+    return t.startsWith('http') ? t : 'https://$t';
   }
 
   static final RegExp _sshAliasPattern = RegExp(r'^[a-zA-Z0-9_-]+$');

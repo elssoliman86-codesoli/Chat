@@ -405,6 +405,7 @@ class Conversation {
     this.temporary = false,
     this.web = true,
     this.longTask = false,
+    this.assistChats = false,
     this.projectId = '',
     this.turnInProgress = false,
     List<String>? planSteps,
@@ -434,6 +435,10 @@ class Conversation {
   /// comment replied to, not two), the step cap is raised, and a reply that stops short of done is
   /// nudged to carry on automatically instead of waiting for the person to type continue.
   bool longTask;
+
+  /// The assistant works with the chat websites set in Settings > Plugins > Web chat team: it asks the first one to
+  /// analyse and plan, hands work to the second one, and carries out the result itself.
+  bool assistChats;
 
   /// The project (folder of files) this chat works on, or empty.
   String projectId;
@@ -465,6 +470,7 @@ class Conversation {
         'temporary': temporary,
         'web': web,
         'longTask': longTask,
+        'assistChats': assistChats,
         'projectId': projectId,
         'turnInProgress': turnInProgress,
         'planSteps': planSteps,
@@ -486,6 +492,7 @@ class Conversation {
         temporary: j['temporary'] as bool? ?? false,
         web: j['web'] as bool? ?? true,
         longTask: j['longTask'] as bool? ?? false,
+        assistChats: j['assistChats'] as bool? ?? false,
         projectId: j['projectId'] as String? ?? '',
         turnInProgress: j['turnInProgress'] as bool? ?? false,
         planSteps: (j['planSteps'] as List?)?.whereType<String>().toList(),
@@ -706,6 +713,9 @@ class AppSettings {
     this.winScanWorkers = 10,
     this.winScanTarget = '',
     this.browserPhoneMode = false,
+    this.webChatPrimary = '',
+    this.webChatSecondary = '',
+    this.webChatImage = '',
     this.keepAlive = true,
     this.autoSwitchModel = true,
     this.proxyMode = 'off',
@@ -787,6 +797,12 @@ class AppSettings {
   String workersPriority;
   int workerTimeoutSec;
   int workerRetries;
+
+  /// Chat websites used as helpers, driven in the background through the built-in browser:
+  /// the first one analyses and plans, the second one builds or reviews, the third one reads images.
+  String webChatPrimary;
+  String webChatSecondary;
+  String webChatImage;
 
   /// The built-in browser shows sites as on a phone instead of as on a computer (phone mode signs in to Google).
   bool browserPhoneMode;
@@ -884,6 +900,9 @@ class AppSettings {
         'winScanWorkers': winScanWorkers,
         'winScanTarget': winScanTarget,
         'browserPhoneMode': browserPhoneMode,
+        'webChatPrimary': webChatPrimary,
+        'webChatSecondary': webChatSecondary,
+        'webChatImage': webChatImage,
         'keepAlive': keepAlive,
         'autoSwitchModel': autoSwitchModel,
         'proxyMode': proxyMode,
@@ -945,6 +964,9 @@ class AppSettings {
         winScanWorkers: ((j['winScanWorkers'] as num?)?.toInt() ?? 10) <= 5 ? 5 : 10,
         winScanTarget: j['winScanTarget'] as String? ?? '',
         browserPhoneMode: j['browserPhoneMode'] as bool? ?? false,
+        webChatPrimary: j['webChatPrimary'] as String? ?? '',
+        webChatSecondary: j['webChatSecondary'] as String? ?? '',
+        webChatImage: j['webChatImage'] as String? ?? '',
         keepAlive: j['keepAlive'] as bool? ?? true,
         autoSwitchModel: j['autoSwitchModel'] as bool? ?? true,
         proxyMode: j['proxyMode'] as String? ?? 'off',
