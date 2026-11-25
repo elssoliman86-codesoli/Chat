@@ -243,7 +243,6 @@ class WebChatBridge {
       if (have >= want * 0.8) break;
       if (attempt == 2) throw const ChatBridgeError('The message did not get typed into the chat box.');
     }
-    final clock = Stopwatch()..start();
     var sent = false;
     for (final mode in const <String>['button', 'enter', 'guess']) {
       // A send button is often disabled for a moment after typing: try the named button a few times first.
