@@ -276,7 +276,7 @@ class WebChatBridge {
     final slip = RegExp(r'^(https?)(:/{0,2}|/{1,2})(?=[^/])', caseSensitive: false).firstMatch(t);
     if (slip != null) {
       t = '${slip.group(1)!.toLowerCase()}://${t.substring(slip.end)}';
-    } else if (!t.toLowerCase().startsWith('http')) {
+    } else if (!RegExp(r'^[a-z][a-z0-9+.-]*://', caseSensitive: false).hasMatch(t)) {
       t = 'https://$t';
     }
     final u = Uri.tryParse(t);
