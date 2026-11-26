@@ -444,9 +444,11 @@ class ChatEngine implements ToolHost {
       b.writeln('\nHelper chats (ON for this conversation): the person connected chat websites that work as your team, through ask_web_chat '
           '(chat="primary"${second ? ' or "secondary"' : ''}). They run in the background and answer like a person typing; each call takes from '
           'several seconds to a few minutes, and the chat sees only what you write in the message, so make every message complete. '
-          'First decide what kind of request this is. A question, an explanation, an opinion, a small change or small talk: answer it yourself '
-          'and do not consult anyone. Designing, building, fixing or changing something real (a project, an app, a script, a system or server '
-          'change, a hard bug): work as a team, like this. '
+          'The primary chat is your bridge to the other chats: the person wants requests to go through it, not be answered by you alone. '
+          'Only a pure question, an explanation, an opinion or small talk is answered by you directly. Everything else is a job and goes through the '
+          'team, even a small one: writing a script or any code, building or changing a project, a file, a command to run, a fix, a design, a server or '
+          'Termux task. For a job your FIRST action is ask_web_chat to the primary chat; never write the code or plan it from your own head first. '
+          'Work like this. '
           '(1) Send the primary chat the person\'s request with every fact it needs (the environment such as Termux or a Windows PC over SSH, the '
           'files you read, what already exists) and ask it to analyse the request and write a detailed implementation prompt: which files to create or '
           'change, the exact commands, the order, the risks, and how to check it worked. '
@@ -1159,10 +1161,18 @@ class ChatEngine implements ToolHost {
   int _browserEpoch = 0;
   int _devtoolsCalls = 0;
   bool _unsentNudged = false;
+  bool _teamAsked = false;
+  bool _teamNudged = false;
+  int _toolRuns = 0;
 
   /// Runs a tool call, but stops the model from repeating the same call when nothing changed.
   Future<String> _runOnce(ToolCall call) async {
     final name = call.name;
+    if (name == 'ask_web_chat') {
+      _teamAsked = true;
+    } else {
+      _toolRuns++;
+    }
     final changesPage = name == 'browser_open' ||
         name == 'browser_click' ||
         name == 'browser_type' ||
@@ -1202,6 +1212,9 @@ class ChatEngine implements ToolHost {
     _browserEpoch = 0;
     _devtoolsCalls = 0;
     _unsentNudged = false;
+    _teamAsked = false;
+    _teamNudged = false;
+    _toolRuns = 0;
     BrowserService.instance.showWhileWorking = store.settings.browserVisible;
     BrowserService.instance.showCursor = store.settings.browserCursor;
     if (store.settings.keepAlive) await BackgroundWork.start();
@@ -1421,6 +1434,24 @@ class ChatEngine implements ToolHost {
                 text: 'System note: you typed "${pending.length > 80 ? '${pending.substring(0, 80)}…' : pending}" into the page but never sent it. '
                     'If the task needs it sent or saved, click the send/submit button (or type with submit=true) now and confirm on the next screen '
                     'that it went through. If sending was not wanted, just finish.'));
+            store.scheduleSave(c);
+            store.changed();
+            step++;
+            continue;
+          }
+          // Team mode is on but the model answered (code, or work done with tools) without ever asking the chats: the person
+          // wants the primary chat to be the bridge to the other chats, so send it back to do it properly, once.
+          if (!_teamNudged && !_teamAsked && ToolRegistry.webChatOn(c, store.settings) && (reply.text.contains('```') || _toolRuns > 0)) {
+            _teamNudged = true;
+            if (_toolRuns == 0) c.messages.remove(reply);
+            c.messages.add(ChatMessage(
+                role: 'user',
+                auto: true,
+                text: 'System note: Helper chats are ON for this conversation and you did this without them. Do it the team way now: first call '
+                    'ask_web_chat with chat="primary", giving it the person\'s request with every fact it needs, and ask for the analysis and a detailed '
+                    'implementation prompt. Then, if a secondary chat is set, send it the part that has to be built (code, a design) and have it write it; '
+                    'review it with the primary chat if it is big. Then write the files or run the commands yourself, loop the outputs back to the '
+                    'primary chat on any failure, and only then answer the person. Do not give them the code before this.'));
             store.scheduleSave(c);
             store.changed();
             step++;
