@@ -492,7 +492,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
             title: 'Image chat link',
             subtitle: s.webChatImage.trim().isEmpty ? 'Link of a chat that can read images, for example https://gemini.google.com/app' : s.webChatImage,
             chevron: true,
-            onTap: () => _editFtpField(context, 'Image chat link', s.webChatImage, (v) => s.webChatImage = v.trim()),
+            onTap: () => _editFtpField(context, 'Image chat link', s.webChatImage, (v) => s.webChatImage = v.trim().isEmpty ? '' : WebChatBridge.chatHome(v)),
           ),
           if (s.webChatImage.trim().isNotEmpty)
             Cell(
@@ -536,7 +536,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
             title: 'Primary chat link',
             subtitle: s.webChatPrimary.trim().isEmpty ? 'For example https://chatgpt.com' : s.webChatPrimary,
             chevron: true,
-            onTap: () => _editFtpField(context, 'Primary chat link', s.webChatPrimary, (v) => s.webChatPrimary = v.trim()),
+            onTap: () => _editFtpField(context, 'Primary chat link', s.webChatPrimary, (v) => s.webChatPrimary = v.trim().isEmpty ? '' : WebChatBridge.chatHome(v)),
           ),
           if (s.webChatPrimary.trim().isNotEmpty)
             Cell(
@@ -557,7 +557,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
             title: 'Secondary chat link',
             subtitle: s.webChatSecondary.trim().isEmpty ? 'Optional, for example https://claude.ai/new' : s.webChatSecondary,
             chevron: true,
-            onTap: () => _editFtpField(context, 'Secondary chat link', s.webChatSecondary, (v) => s.webChatSecondary = v.trim()),
+            onTap: () => _editFtpField(context, 'Secondary chat link', s.webChatSecondary, (v) => s.webChatSecondary = v.trim().isEmpty ? '' : WebChatBridge.chatHome(v)),
           ),
           if (s.webChatSecondary.trim().isNotEmpty)
             Cell(

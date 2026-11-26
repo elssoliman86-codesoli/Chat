@@ -65,6 +65,12 @@ void main() {
     expect(WebChatBridge.chatHome('https://claude.ai/login?next=/new'), 'https://claude.ai/');
     expect(WebChatBridge.chatHome('https://claude.ai/new'), 'https://claude.ai/new');
     expect(WebChatBridge.chatHome(' https://gemini.google.com/app '), 'https://gemini.google.com/app');
+    // typing slips
+    expect(WebChatBridge.chatHome('https//chatgpt.com'), 'https://chatgpt.com');
+    expect(WebChatBridge.chatHome('https:/chatgpt.com'), 'https://chatgpt.com');
+    expect(WebChatBridge.chatHome('HTTP://Claude.ai/new'), 'http://Claude.ai/new');
+    expect(WebChatBridge.chatHome('httpbin.org'), 'https://httpbin.org');
+    expect(WebChatBridge.chatHome('chatgpt.com'), 'https://chatgpt.com');
   });
 
   group('hand-over to a new thread', () {

@@ -223,7 +223,11 @@ class WebChatBridge {
     await Future<void>.delayed(const Duration(milliseconds: 350));
     s.loaded = Completer<void>();
     _note(s.slot, 'Opening $url');
-    await c.loadRequest(Uri.parse(url));
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      throw ChatBridgeError('"$url" is not a valid link. Write it like https://chatgpt.com');
+    }
+    await c.loadRequest(uri);
     try {
       await s.loaded!.future.timeout(const Duration(seconds: 45));
     } on TimeoutException {
@@ -267,8 +271,14 @@ class WebChatBridge {
   /// The chat site's own address: a link pasted from a sign-in page (https://chat.deepseek.com/sign_in) becomes the site's
   /// start page, which shows the chat once you are signed in.
   static String chatHome(String link) {
-    var t = link.trim();
-    if (!t.startsWith('http')) t = 'https://$t';
+    var t = link.replaceAll(RegExp(r'\s+'), '');
+    // Typing slips: "https//site.com", "https:/site.com", "https:site.com" all mean "https://site.com".
+    final slip = RegExp(r'^(https?)(:/{0,2}|/{1,2})(?=[^/])', caseSensitive: false).firstMatch(t);
+    if (slip != null) {
+      t = '${slip.group(1)!.toLowerCase()}://${t.substring(slip.end)}';
+    } else if (!t.toLowerCase().startsWith('http')) {
+      t = 'https://$t';
+    }
     final u = Uri.tryParse(t);
     if (u == null || u.host.isEmpty) return t;
     if (u.pathSegments.isNotEmpty && RegExp(r'^(log[_-]?in|sign[_-]?in|sign[_-]?up|register|auth)$', caseSensitive: false).hasMatch(u.pathSegments.first)) {
