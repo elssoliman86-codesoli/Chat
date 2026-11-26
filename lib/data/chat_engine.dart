@@ -14,6 +14,7 @@ import '../llm/llm.dart';
 import '../llm/resilient.dart';
 import '../llm/stream_metrics.dart';
 import '../plugins/plugin.dart';
+import '../projects/projects.dart' show projects;
 import '../tools/advisor_service.dart';
 import '../tools/web_chat_bridge.dart';
 import '../tools/browser_service.dart';
@@ -452,10 +453,11 @@ class ChatEngine implements ToolHost {
           'team, even a small one: writing a script or any code, building or changing a project, a file, a command to run, a fix, a design, a server or '
           'Termux task. For a job your FIRST action is ask_web_chat to the primary chat; never write the code or plan it from your own head first. '
           'Work like this. '
-          '(1) Send the primary chat the person\'s request with every fact it needs (the environment such as Termux or a Windows PC over SSH, the '
-          'files you read, what already exists) and ask it to analyse the request and write a detailed implementation prompt: which files to create or '
-          'change, the exact commands, the order, the risks, and how to check it worked. '
-          '(2) Read its answer and keep only the part that matters for the request. '
+          '(1) The app has ALREADY sent the person\'s message to the primary chat for you, before you started: its analysis or answer is the ask_web_chat '
+          'result at the top of this turn. Do not send the same request again and do not ignore it: that answer is your starting point. Use ask_web_chat '
+          'to the primary chat again only for new questions (a failure, a file you read, something unclear). If the person only asked a question or '
+          'chatted, tell them the primary chat\'s answer in your own words; do not start building. '
+          '(2) For a job, keep from its answer the part that matters and follow its plan. '
           '(3) Producing code: the chats are websites, they CANNOT create or change files, they only write text, and the person must never be asked to copy '
           'and paste anything. So you carry the files in and out. Always say what you want back with the output parameter of ask_web_chat: '
           'output="files" returns complete files (name + full code) and output="edits" returns search/replace changes to existing files; then call '
@@ -1224,6 +1226,55 @@ class ChatEngine implements ToolHost {
     return out;
   }
 
+  /// The first message of a turn in team mode: the person's request with what the planner chat needs to know, since it
+  /// sees nothing of the app. Always sent, before the model does anything else.
+  Future<String> _teamBrief(Conversation c, ChatMessage lastUser) async {
+    final st = store.settings;
+    final b = StringBuffer()
+      ..writeln('A person sent the request below to their AI assistant app. You are the planner of the assistant\'s team. Read the request and answer it:')
+      ..writeln('- If it is a question, an explanation or small talk: answer it fully and directly, in the language of the request.')
+      ..writeln('- If it is a job (a script, a project, a page, a fix, a command, a change): analyse it and write a detailed implementation prompt: the exact files to '
+          'create or change and what each must contain, the exact commands, the order, the risks, and how to check that it worked. Do not write the full code '
+          'yourself unless it is short; a builder will write it from your prompt.')
+      ..writeln('The assistant carries the work out itself with tools: it creates and edits project files in the app'
+          '${st.termuxTools ? ', runs commands in Termux on the phone' : ''}'
+          '${st.pluginGithub ? ', reads GitHub repositories' : ''}'
+          '${st.pluginBrowser ? ' and uses a built-in web browser' : ''}.')
+      ..writeln();
+    final earlier = <String>[];
+    for (final m in c.messages) {
+      if (identical(m, lastUser)) break;
+      if ((m.role == 'user' || m.role == 'assistant') && m.text.trim().isNotEmpty && !m.error) {
+        final t = m.text.trim();
+        earlier.add('${m.role == 'user' ? 'Person' : 'Assistant'}: ${t.length > 500 ? '${t.substring(0, 500)}…' : t}');
+      }
+    }
+    if (earlier.isNotEmpty) {
+      b.writeln('Earlier in this conversation:');
+      for (final e in earlier.skip(earlier.length > 6 ? earlier.length - 6 : 0)) {
+        b.writeln(e);
+      }
+      b.writeln();
+    }
+    if (c.projectId.isNotEmpty) {
+      try {
+        await projects.load();
+        final files = await projects.list(c.projectId);
+        if (files.isNotEmpty) {
+          b.writeln('The project of this chat already has ${files.length} files: ${files.take(60).map((f) => f.path).join(', ')}${files.length > 60 ? ', …' : ''}');
+          b.writeln();
+        }
+      } catch (_) {}
+    }
+    if (lastUser.attachments.isNotEmpty) {
+      b.writeln('Attached by the person (you cannot see them): ${lastUser.attachments.map((a) => a.name).join(', ')}');
+      b.writeln();
+    }
+    b.writeln('THE PERSON\'S REQUEST:');
+    b.write(lastUser.text.trim());
+    return b.toString();
+  }
+
   Future<void> _run(Conversation c, {ExecutionTrace? continueTrace}) async {
     final initialProvider = store.providerById(c.providerId) ?? store.defaultProvider;
     _running = c;
@@ -1311,7 +1362,34 @@ class ChatEngine implements ToolHost {
       String? context;
       var contextDone = false;
       var step = 0;
-      while (step < maxSteps) {
+      // Team mode: every message goes to the primary chat first, before the model does anything. Not a choice the model makes.
+      if (continueTrace == null && lastUser.text.trim().isNotEmpty && ToolRegistry.webChatOn(c, store.settings)) {
+        final call = ToolCall(
+          id: 'team_${DateTime.now().microsecondsSinceEpoch}',
+          name: 'ask_web_chat',
+          args: <String, dynamic>{'chat': 'primary', 'message': await _teamBrief(c, lastUser)},
+        );
+        c.messages.add(ChatMessage(role: 'assistant', model: c.model, toolCalls: <ToolCall>[call]));
+        store.scheduleSave(c);
+        store.changed();
+        runningCallId = call.id;
+        final info = describeCall(call, null);
+        final toolEvent = trace.toolStart(call, title: info.title, detail: info.detail);
+        final String result;
+        try {
+          result = await _runOnce(call);
+        } finally {
+          runningCallId = null;
+        }
+        trace.toolEnd(toolEvent, result: result, failed: toolResultFailed(result));
+        c.messages.add(ChatMessage(role: 'tool', text: result, toolCallId: call.id, toolName: call.name, failed: toolResultFailed(result)));
+        store.scheduleSave(c);
+        store.changed();
+        if (_abort?.aborted ?? false) {
+          stopped = true;
+        }
+      }
+      while (!stopped && step < maxSteps) {
         final reply = ChatMessage(role: 'assistant', model: c.model, switched: switchNote);
         switchNote = '';
         _currentReply = reply;
