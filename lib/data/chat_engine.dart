@@ -258,6 +258,9 @@ class ChatEngine implements ToolHost {
   }
 
   @override
+  String lastWebChatAnswer(String chat) => WebChatBridge.instance.lastAnswer[chat == 'secondary' ? ChatSlot.secondary : ChatSlot.primary] ?? '';
+
+  @override
   String setPlan(List<String> steps, int current) {
     final c = _running;
     if (c == null) return 'No active conversation.';
@@ -453,15 +456,31 @@ class ChatEngine implements ToolHost {
           'files you read, what already exists) and ask it to analyse the request and write a detailed implementation prompt: which files to create or '
           'change, the exact commands, the order, the risks, and how to check it worked. '
           '(2) Read its answer and keep only the part that matters for the request. '
-          '${second ? 'If the plan means producing real content (code, a design, a document), send the relevant part to the secondary chat and ask it to '
-              'build it, or to review what already exists; for a big piece send the result back to the primary chat to review, and repeat until they agree (three rounds at most). ' : ''}'
-          '(3) You do the work yourself: write the files with the project or Termux tools, or run the commands directly; never tell the person to run '
-          'them. After every command read its stdout and stderr. If it failed or surprised you, send the primary chat the command with its full output and '
-          'ask what exactly is wrong and which file or command has to be written how; apply that and run again, and keep going until it works (six rounds '
-          'at most, then tell the person what is blocking). '
-          '(4) Before anything runs on Termux, over SSH or over FTP, check it yourself: the right machine, the right path, no side effect nobody asked for; '
+          '(3) Producing code: the chats are websites, they CANNOT create or change files, they only write text, and the person must never be asked to copy '
+          'and paste anything. So you carry the files in and out. Always say what you want back with the output parameter of ask_web_chat: '
+          'output="files" returns complete files (name + full code) and output="edits" returns search/replace changes to existing files; then call '
+          'apply_chat_files, which saves/applies them into the project by itself and reports what happened to each file with a before/after. Never retype '
+          'the chat\'s code yourself. '
+          'NEW project or big feature: have the primary chat list the files and what each one must contain; then ask the builder (the secondary chat, or the primary when '
+          'there is none) for the files in groups of a few related files (output="files"), calling apply_chat_files after each group; when an answer says '
+          'files are still to come, ask for them. Tell it which files already exist so the parts fit together (names, imports, function signatures). At the '
+          'end run project_check if it applies and fix what it reports the same way. '
+          'EXISTING project or repository (fix errors, change behaviour): first get the project into the app (project_import_github, or the files already '
+          'there) and list it. Go file by file: read each relevant file with project_read and send its COMPLETE text to the primary chat with the request '
+          '(find the errors / what must change in this file), one file per message, keeping the same thread. Collect which files need changes and what '
+          'exactly. Then send the builder (secondary, or primary when there is none) each file that needs changes: the file\'s complete current text plus '
+          'the exact change wanted, asking for output="edits" when the change is small and for output="files" when most of the file changes. Call '
+          'apply_chat_files and read its before/after; if an edit did not match, send the file again, with the failed lines, and retry. For an important or '
+          'large change send the before/after back to the primary chat to review (up to three rounds). When all files are done, run project_check '
+          'and finish with a clear summary; offer project_push_github or the export if the person works from a repository. '
+          'A single short script is the same, in one round: primary plans, the builder writes it with output="files", apply_chat_files saves it, then you run '
+          'it (Termux, or python_run) to check it. To put project files on Termux, an SSH machine or an FTP server, use the project\'s files after they are saved. '
+          '(4) Run commands yourself, never tell the person to run them. After every command read its stdout and stderr. If it failed or surprised you, send the '
+          'primary chat the command with its full output and ask what exactly is wrong and which file or command has to be written how; apply that and run again, and '
+          'keep going until it works (six rounds at most, then tell the person what is blocking). '
+          '(5) Before anything runs on Termux, over SSH or over FTP, check it yourself: the right machine, the right path, no side effect nobody asked for; '
           'for a risky command ask the primary chat to review it first. The usual confirmations for changes on a PC stay. '
-          '(5) If a chat answer is cut off, asks you a question or refuses, rephrase, split the work or continue in the same thread. If a call says a sign-in '
+          '(6) If a chat answer is cut off, asks you a question or refuses, rephrase, split the work or continue in the same thread. If a call says a sign-in '
           'or human check is needed, use ask_user so the person can do it once in the browser, then retry. '
           'Never paste the chats\' answers at the person: say in your own words what was decided, what you did and what the result is, in their language.');
     }
@@ -1450,8 +1469,9 @@ class ChatEngine implements ToolHost {
                 text: 'System note: Helper chats are ON for this conversation and you did this without them. Do it the team way now: first call '
                     'ask_web_chat with chat="primary", giving it the person\'s request with every fact it needs, and ask for the analysis and a detailed '
                     'implementation prompt. Then, if a secondary chat is set, send it the part that has to be built (code, a design) and have it write it; '
-                    'review it with the primary chat if it is big. Then write the files or run the commands yourself, loop the outputs back to the '
-                    'primary chat on any failure, and only then answer the person. Do not give them the code before this.'));
+                    'review it with the primary chat if it is big. Ask for output="files" or output="edits" and save the result with apply_chat_files '
+                    '(never retype the code), run the commands yourself, loop the outputs back to the primary chat on any failure, and only then answer '
+                    'the person. Do not give them the code before this.'));
             store.scheduleSave(c);
             store.changed();
             step++;

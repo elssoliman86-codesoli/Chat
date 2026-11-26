@@ -48,7 +48,10 @@ class ToolRegistry {
     }
 
     // 2c. Helper chat websites - only in a chat where the person turned them on, and with a link set
-    if (webChatOn(c, st)) availableIds.add('ask_web_chat');
+    if (webChatOn(c, st)) {
+      availableIds.add('ask_web_chat');
+      availableIds.add('apply_chat_files');
+    }
 
     // 3. Skill tools - add tools required by active skills (but only if their group is enabled)
     final activeSkills = store.skills.where((k) => k.enabled && (k.alwaysOn || c.activeSkillIds.contains(k.id)));
@@ -132,7 +135,7 @@ class ToolRegistry {
         'python' => true,
         _ => true,
       };
-      if (toolId == 'ask_web_chat') return webChatOn(c, st);
+      if (toolId == 'ask_web_chat' || toolId == 'apply_chat_files') return webChatOn(c, st);
       if (!on) return false;
       if ((toolId == 'remember' || toolId == 'forget') && !(st.memoryEnabled && !c.temporary)) return false;
       if ((toolId == 'learn' || toolId == 'forget_lesson') && !(st.selfImprove && !c.temporary)) return false;

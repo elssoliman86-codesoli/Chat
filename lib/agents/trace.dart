@@ -80,6 +80,8 @@ Stage stageForTool(String name, Map<String, dynamic> args) {
     case 'run_parallel':
     case 'spawn_agent':
       return Stage.delegating;
+    case 'apply_chat_files':
+      return Stage.files;
     case 'project_check':
       return Stage.testing;
     case 'ask_user':

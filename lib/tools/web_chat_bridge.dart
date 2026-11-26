@@ -114,6 +114,9 @@ class WebChatBridge {
 
   /// What the bridge did, newest last: shown by the test screen so a failure can be understood and copied.
   final List<String> log = <String>[];
+
+  /// The latest full answer of each chat, so files in it can be saved without the model copying them.
+  final Map<ChatSlot, String> lastAnswer = <ChatSlot, String>{};
   final ValueNotifier<int> logTick = ValueNotifier<int>(0);
 
   void _note(ChatSlot slot, String text) {
@@ -207,6 +210,7 @@ class WebChatBridge {
       try {
         final r = await _askNow(s, url, message, sessionKey, newThread, image, timeout, cancelled ?? () => false);
         _note(slot, 'Got an answer of ${r.length} characters');
+        if (image == null) lastAnswer[slot] = r;
         return r;
       } catch (e) {
         _note(slot, 'Failed: $e');

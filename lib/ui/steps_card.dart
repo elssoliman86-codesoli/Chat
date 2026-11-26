@@ -49,6 +49,8 @@ List<ToolCall> stepsOnly(List<ToolCall> calls) => calls.where((c) => !_nonStepTo
       return (title: 'Asked you', detail: arg('question'));
     case 'ask_advisor':
       return (title: 'Asked the assistant model', detail: arg('question'));
+    case 'apply_chat_files':
+      return (title: 'Saved the chat\'s files into the project', detail: arg('chat'));
     case 'ask_web_chat':
       return (title: 'Asked the ${arg('chat') == 'secondary' ? 'secondary' : 'primary'} chat', detail: arg('message'));
     case 'use_skill':

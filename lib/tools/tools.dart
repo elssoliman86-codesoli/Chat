@@ -7,6 +7,7 @@ import '../agents/windows_scan.dart' show isRemoteChange, describeRemoteChange;
 import '../plugins/plugin.dart';
 import '../projects/project_tools.dart';
 import 'browser_service.dart';
+import 'chat_files.dart' show kFilesFormat, kEditsFormat;
 import 'github_tools.dart';
 import 'python_runtime.dart';
 import 'termux_service.dart';
@@ -47,6 +48,9 @@ abstract class ToolHost {
   /// Sends [message] to one of the chat websites set in Settings > Plugins > Web chat team ('primary' or 'secondary'),
   /// through the built-in browser in the background, and returns the answer once the site has finished writing it.
   Future<String> askWebChat(String chat, String message, {bool newThread = false});
+
+  /// The latest full answer of a helper chat ('primary' or 'secondary'), or empty.
+  String lastWebChatAnswer(String chat);
 
   /// Applies a set_plan call to the active conversation and returns a message describing what
   /// actually happened (a new plan recorded, or an existing unfinished one kept with just its
@@ -595,13 +599,22 @@ final List<ToolDef> builtinTools = <ToolDef>[
         'chat': <String, dynamic>{'type': 'string', 'enum': <String>['primary', 'secondary'], 'description': 'Which helper chat'},
         'message': _str('The full message to send'),
         'new_thread': <String, dynamic>{'type': 'boolean', 'description': 'Start a fresh chat thread first'},
+        'output': <String, dynamic>{
+          'type': 'string',
+          'enum': <String>['text', 'files', 'edits'],
+          'description': 'What you want back. "files": complete files in a fixed format that apply_chat_files saves into the project. '
+              '"edits": search/replace changes to existing files in a fixed format that apply_chat_files applies. "text" (default): ordinary prose. '
+              'The format instructions are added to your message for you.',
+        },
       }, <String>['chat', 'message']),
     ),
     run: (a, host) async {
       final chat = _s(a, 'chat') == 'secondary' ? 'secondary' : 'primary';
       final message = _s(a, 'message');
       if (message.trim().isEmpty) return 'The message is empty.';
-      return host.askWebChat(chat, message, newThread: a['new_thread'] == true);
+      final output = _s(a, 'output');
+      final full = output == 'files' ? '$message$kFilesFormat' : (output == 'edits' ? '$message$kEditsFormat' : message);
+      return host.askWebChat(chat, full, newThread: a['new_thread'] == true);
     },
   ),
   ToolDef(

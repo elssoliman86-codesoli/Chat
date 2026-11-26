@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 
 import '../llm/llm.dart';
 import '../tools/browser_service.dart';
+import '../tools/chat_files.dart';
 import '../tools/python_runtime.dart';
 import '../tools/github_tools.dart';
 import '../tools/tools.dart';
@@ -80,6 +81,86 @@ Future<String> _list(Map<String, dynamic> a, ToolHost host) async {
 }
 
 final List<ToolDef> projectToolDefs = <ToolDef>[
+  ToolDef(
+    id: 'apply_chat_files',
+    title: 'Save the chat\'s files into the project',
+    group: 'webchat',
+    spec: ToolSpec(
+      name: 'apply_chat_files',
+      description: 'Reads the LAST answer of a helper chat and saves what it wrote into the project, by itself: complete files '
+          '("=== FILE: path ===" blocks) are written, and search/replace edits ("=== EDIT: path ===" blocks) are applied to the existing '
+          'files. Ask the chat with ask_web_chat output="files" or output="edits" first. You never copy the code yourself. '
+          'It answers with what happened to every file (created, replaced, edited, or why it could not be applied) with a short before/after '
+          'for each change, so you can check it or send it to the other chat for review. Files with an edit that does not match are left untouched.',
+      parameters: _obj(<String, dynamic>{
+        'chat': <String, dynamic>{'type': 'string', 'enum': <String>['primary', 'secondary'], 'description': 'Whose last answer to read (default secondary)'},
+        'dry_run': <String, dynamic>{'type': 'boolean', 'description': 'Only report what would happen, write nothing'},
+      }),
+    ),
+    run: (a, host) async {
+      final chat = _s(a, 'chat') == 'primary' ? 'primary' : 'secondary';
+      final text = host.lastWebChatAnswer(chat);
+      if (text.trim().isEmpty) return 'The $chat chat has no answer yet. Ask it first with ask_web_chat.';
+      final parsed = parseChatFiles(text);
+      if (parsed.items.isEmpty) {
+        return 'No files were found in the $chat chat\'s last answer. It did not follow the format. Ask again with ask_web_chat output="files" '
+            '(whole files) or output="edits" (changes to existing files).';
+      }
+      final dry = a['dry_run'] == true;
+      final id = await _pid(host);
+      final out = StringBuffer();
+      final writes = <(String, String)>[];
+      var failed = 0;
+      for (final item in parsed.items) {
+        final rel = safeRel(item.path);
+        if (rel == null || rel.isEmpty) {
+          failed++;
+          out.writeln('✗ ${item.path}: not a valid project path.');
+          continue;
+        }
+        if (item.truncated) {
+          failed++;
+          out.writeln('✗ $rel: the answer stopped in the middle of this file, nothing was written. Ask the chat for it again (alone).');
+          continue;
+        }
+        final before = await projects.readText(id, rel);
+        if (!item.isEdit) {
+          final after = item.content ?? '';
+          writes.add((rel, after));
+          if (before == null) {
+            out.writeln('✓ $rel: new file, ${after.split('\n').length - 1} lines.');
+          } else {
+            out.writeln('✓ $rel: replaced. ${briefChange(before, after)}');
+          }
+          continue;
+        }
+        if (before == null) {
+          failed++;
+          out.writeln('✗ $rel: it does not exist in the project, so the edits cannot be applied. Read or import it first, or ask for the whole file.');
+          continue;
+        }
+        final r = applyChatEdits(before, item.edits);
+        if (r.applied != r.results.length) {
+          failed++;
+          out.writeln('✗ $rel: ${r.applied} of ${r.results.length} edits fit, so the file was left unchanged:');
+          for (final e in r.results.where((e) => !e.ok)) {
+            out.writeln('    ${e.note}');
+          }
+          continue;
+        }
+        writes.add((rel, r.text));
+        out.writeln('✓ $rel: ${r.applied} edit(s) applied. ${briefChange(before, r.text)}');
+      }
+      if (!dry && writes.isNotEmpty) await projects.write(id, writes);
+      final head = dry
+          ? 'Dry run, nothing written: ${writes.length} file(s) would be saved, $failed problem(s).'
+          : 'Saved ${writes.length} file(s) into the project, $failed problem(s).';
+      final more = parsed.more.isEmpty ? '' : '\nThe chat said these files are still to come: ${parsed.more.join(', ')}. Ask it for them (same format), then call this again.';
+      var body = out.toString();
+      if (body.length > 6000) body = '${body.substring(0, 6000)}\n… (cut)';
+      return '$head\n$body$more';
+    },
+  ),
   ToolDef(
     id: 'project_create',
     title: 'Project: create',

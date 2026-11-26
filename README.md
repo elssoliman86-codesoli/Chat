@@ -418,6 +418,13 @@ to analyse the request and write a detailed plan, hands the work to the secondar
 the result out itself (files, Termux commands) and goes back to the primary chat with the command output when something
 fails. Plain questions are answered directly.
 
+Chat websites cannot create files, so the app does it for them. The assistant asks the chat for a fixed format
+(`=== FILE: path ===` + a code block for whole files, or `=== EDIT: path ===` + SEARCH/REPLACE blocks for changes) and the
+`apply_chat_files` tool reads the chat's last answer and writes the files or applies the edits into the project by itself,
+reporting a before/after for each. For a new project it builds in groups of files; for an existing repository it goes file
+by file: the primary chat finds the errors, the builder gets only the files that must change, and the result is saved back
+automatically. An edit that does not match leaves the file untouched and is sent again.
+
 When a chat's thread gets long (or the site says it is full) the app asks it for a hand-over summary, opens a new thread
 and continues there with that summary, so the work does not start from zero. With *Web chat* chosen as the image reader,
 every image sent in a chat is uploaded to the image chat and its text is used as if the model had read it.
