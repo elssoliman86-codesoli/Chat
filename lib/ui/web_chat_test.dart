@@ -6,6 +6,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:webview_flutter/webview_flutter.dart';
+
 import '../core/models.dart';
 import '../tools/web_chat_bridge.dart';
 import 'glass/glass.dart';
@@ -38,11 +40,15 @@ class _TestDialogState extends State<_TestDialog> {
   bool? _ok;
   String _page = '';
   late final int _from;
+  late final WebViewController _view;
 
   @override
   void initState() {
     super.initState();
     _from = bridge.log.length;
+    // Show the chat page itself in the dialog: you see what it shows (a sign-in form, a human check…) and can use it.
+    _view = bridge.ensure(widget.slot);
+    bridge.preview.value = widget.slot;
     bridge.logTick.addListener(_refresh);
     unawaited(_run());
   }
@@ -50,6 +56,7 @@ class _TestDialogState extends State<_TestDialog> {
   @override
   void dispose() {
     _closed = true;
+    bridge.preview.value = null;
     bridge.logTick.removeListener(_refresh);
     super.dispose();
   }
@@ -132,7 +139,15 @@ class _TestDialogState extends State<_TestDialog> {
             const SizedBox(width: 10),
             Expanded(child: Text(_verdict, style: const TextStyle(fontSize: 14.5))),
           ]),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(width: double.infinity, height: 250, child: WebViewWidget(controller: _view)),
+          ),
+          const SizedBox(height: 4),
+          Text('This is the chat page. If it asks you to sign in or to prove you are human, do it here, then run the test again.',
+              style: TextStyle(fontSize: 12, color: p.secondary)),
+          const SizedBox(height: 10),
           Text('What happened', style: TextStyle(fontSize: 12.5, color: p.secondary)),
           const SizedBox(height: 4),
           ConstrainedBox(

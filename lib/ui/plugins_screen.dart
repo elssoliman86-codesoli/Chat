@@ -978,10 +978,7 @@ class _PluginsScreenState extends State<PluginsScreen> {
     }
   }
 
-  static String _chatLink(String v) {
-    final t = v.trim();
-    return t.startsWith('http') ? t : 'https://$t';
-  }
+  static String _chatLink(String v) => WebChatBridge.chatHome(v);
 
   static final RegExp _sshAliasPattern = RegExp(r'^[a-zA-Z0-9_-]+$');
 

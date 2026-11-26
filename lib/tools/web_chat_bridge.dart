@@ -136,6 +136,12 @@ class WebChatBridge {
     }
   }
 
+  /// The slot whose page is shown in the test screen right now (it is taken out of the hidden layer meanwhile).
+  final ValueNotifier<ChatSlot?> preview = ValueNotifier<ChatSlot?>(null);
+
+  /// Creates the page of [slot] (empty) so it can be shown before the first message.
+  WebViewController ensure(ChatSlot slot) => _controller(_slots[slot]!);
+
   final Map<ChatSlot, _Slot> _slots = <ChatSlot, _Slot>{for (final s in ChatSlot.values) s: _Slot(s)};
 
   /// Rebuilds the hidden views when a slot starts being used.
@@ -258,6 +264,19 @@ class WebChatBridge {
     throw const ChatBridgeError('Could not find the message box on the chat page. Open the link in the built-in browser to check what it shows.');
   }
 
+  /// The chat site's own address: a link pasted from a sign-in page (https://chat.deepseek.com/sign_in) becomes the site's
+  /// start page, which shows the chat once you are signed in.
+  static String chatHome(String link) {
+    var t = link.trim();
+    if (!t.startsWith('http')) t = 'https://$t';
+    final u = Uri.tryParse(t);
+    if (u == null || u.host.isEmpty) return t;
+    if (u.pathSegments.isNotEmpty && RegExp(r'^(log[_-]?in|sign[_-]?in|sign[_-]?up|register|auth)$', caseSensitive: false).hasMatch(u.pathSegments.first)) {
+      return '${u.scheme}://${u.host}/';
+    }
+    return t;
+  }
+
   /// A thread this long (characters sent and received) is handed over to a new one before it can run out of space.
   static const int threadLimitChars = 90000;
 
@@ -293,8 +312,7 @@ class WebChatBridge {
   Future<String> _askNow(_Slot s, String url, String message, String sessionKey, bool newThread, Attachment? image, Duration timeout,
       bool Function() cancelled) async {
     if (url.trim().isEmpty) throw const ChatBridgeError('No link is set for this chat.');
-    var target = url.trim();
-    if (!target.startsWith('http')) target = 'https://$target';
+    final target = chatHome(url);
     final fresh = newThread || image != null || s.controller == null || s.sessionKey != sessionKey || s.openUrl != target;
     if (fresh) {
       await _open(s, target);
@@ -469,20 +487,20 @@ class WebChatBridge {
 
 /// Mounts the hidden web views of the chat links. They are phone-sized so the sites lay out normally and keep running,
 /// but clipped to one pixel and nearly transparent, so they never show over the chat or take touches.
-/// Put this inside the same Stack as the chat, alongside DockLayer.
+/// Mounted once at the root of the app (above every screen), so the pages keep working whichever screen is open.
 class WebChatMount extends StatelessWidget {
   const WebChatMount({super.key});
 
   @override
   Widget build(BuildContext context) {
     final b = WebChatBridge.instance;
-    return ValueListenableBuilder<int>(
-      valueListenable: b.mounts,
-      builder: (context, _, __) {
+    return ListenableBuilder(
+      listenable: Listenable.merge(<Listenable>[b.mounts, b.preview]),
+      builder: (context, _) {
         final children = <Widget>[];
         for (final slot in ChatSlot.values) {
           final c = b.controllerOf(slot);
-          if (c == null) continue;
+          if (c == null || b.preview.value == slot) continue;
           // The page is laid out phone-sized (390x780) but only one pixel of it is ever visible: near-zero opacity alone
           // still let a faint ghost of the chat page show through the app.
           children.add(Positioned(

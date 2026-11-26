@@ -21,7 +21,14 @@ const String webChatDriverJs = r'''
  function input(){
   var all = [].slice.call(document.querySelectorAll('textarea,[contenteditable=""],[contenteditable="true"],[contenteditable="plaintext-only"],[role=textbox]'));
   var c = all.filter(function(e){ return vis(e) && !e.disabled && !e.readOnly && !e.closest('[aria-hidden="true"]'); });
-  if (!c.length) c = [].slice.call(document.querySelectorAll('input[type=text],input[type=search],input:not([type])')).filter(vis);
+  if (!c.length) {
+   // A page with a password box is a sign-in page, not a chat: do not type a message into its user name box.
+   var pw = [].slice.call(document.querySelectorAll('input[type=password]')).filter(vis);
+   if (pw.length) return null;
+   c = [].slice.call(document.querySelectorAll('input[type=text],input[type=search],input:not([type])')).filter(vis).filter(function(e){
+    return !/user|e-?mail|phone|mobile|login|account|password|code|otp/i.test((e.name || '') + ' ' + (e.id || '') + ' ' + (e.autocomplete || '') + ' ' + (e.placeholder || ''));
+   });
+  }
   // the message box sits at the bottom of the screen: take the lowest, then the biggest
   c.sort(function(a, b){
    var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
@@ -122,7 +129,8 @@ const String webChatDriverJs = r'''
   var t = (document.body ? document.body.innerText : '').slice(0, 6000);
   if (input()) return '';
   if (/verify you are human|just a moment|checking your browser|are you a robot|human verification/i.test(t)) return 'human';
-  if (/\/(login|signin|sign-in|auth)(\/|\?|$)|accounts\.google\.com|login\.microsoftonline|appleid\.apple/i.test(location.href)) return 'login';
+  if (/\/(log[_-]?in|sign[_-]?in|sign[_-]?up|register|auth)(\/|\?|$)|accounts\.google\.com|login\.microsoftonline|appleid\.apple/i.test(location.href)) return 'login';
+  if (document.querySelector('input[type=password]')) return 'login';
   var els = [].slice.call(document.querySelectorAll('a,button')).filter(vis);
   for (var i = 0; i < els.length; i++) {
    var x = (els[i].innerText || '').trim();

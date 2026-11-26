@@ -59,6 +59,14 @@ void main() {
     }
   });
 
+  test('a pasted sign-in link becomes the site start page', () {
+    expect(WebChatBridge.chatHome('https://chat.deepseek.com/sign_in'), 'https://chat.deepseek.com/');
+    expect(WebChatBridge.chatHome('chatgpt.com/auth/login'), 'https://chatgpt.com/');
+    expect(WebChatBridge.chatHome('https://claude.ai/login?next=/new'), 'https://claude.ai/');
+    expect(WebChatBridge.chatHome('https://claude.ai/new'), 'https://claude.ai/new');
+    expect(WebChatBridge.chatHome(' https://gemini.google.com/app '), 'https://gemini.google.com/app');
+  });
+
   group('hand-over to a new thread', () {
     test('the new thread starts with the summary and then the real message', () {
       final m = WebChatBridge.handoffMessage('  Goal: build X. Done: files a, b.  ', 'Now add login');

@@ -9,6 +9,7 @@ import 'net/proxy_service.dart';
 import 'tools/browser_service.dart';
 import 'tools/ftp_service.dart';
 import 'tools/saved_logins.dart';
+import 'tools/web_chat_bridge.dart';
 import 'ui/chat_screen.dart';
 import 'ui/startup_error.dart';
 import 'ui/theme.dart';
@@ -82,7 +83,12 @@ class OmniChatApp extends StatelessWidget {
           theme: buildTheme(Brightness.light),
           darkTheme: buildTheme(Brightness.dark, emerald: mode == 'emerald'),
           home: const ChatScreen(),
-          builder: (context, child) => AppBackdrop(emerald: mode == 'emerald', child: child ?? const SizedBox.shrink()),
+          builder: (context, child) => Stack(
+            children: [
+              Positioned.fill(child: AppBackdrop(emerald: mode == 'emerald', child: child ?? const SizedBox.shrink())),
+              const WebChatMount(),
+            ],
+          ),
         );
       },
     );
